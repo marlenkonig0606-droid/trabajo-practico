@@ -1,0 +1,37 @@
+:root {
+  --fondo: #f4f5f2; --tarjeta: #fff; --texto: #1d2420; --suave: #6b736e;
+  --acento: #1f6f5c; --borde: #dfe3df; --error: #b3261e;
+  font-family: system-ui, sans-serif; color: var(--texto); background: var(--fondo);
+}
+body { margin: 0; }
+.app { max-width: 1000px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+h1 { font-size: 1.4rem; margin: 0; }
+h2 { font-size: 1.05rem; margin: 0 0 10px; }
+nav button { background: none; border: 0; padding: 8px 12px; cursor: pointer; color: var(--suave); }
+nav button.activo { color: var(--acento); border-bottom: 2px solid var(--acento); }
+main { margin-top: 16px; }
+.tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin: 10px 0; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; }
+input, select { padding: 6px 8px; border: 1px solid var(--borde); border-radius: 6px; font: inherit; }
+button { background: var(--acento); color: #fff; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; font: inherit; }
+button:disabled { opacity: .4; cursor: default; }
+button.link { background: none; color: var(--acento); padding: 0; text-decoration: underline; }
+table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .9rem; }
+th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--borde); }
+tr.bajo td { color: var(--error); font-weight: 600; }
+.fila-titulo, .bulto, .armar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.armar { margin: 8px 0; flex-direction: row; }
+.armar label { flex-direction: row; align-items: center; }
+.armar input { width: 70px; }
+.bulto { border-top: 1px dashed var(--borde); padding: 8px 0; }
+.bulto label { flex-direction: row; align-items: center; }
+.items { color: var(--suave); font-size: .85rem; }
+.estado { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: #e8ebe8; }
+.estado.VERIFICADO, .estado.CERRADA { background: #d6f0e4; color: #1f6f5c; }
+.estado.RECHAZADO { background: #f9dedc; color: var(--error); }
+.estado.EN_TRANSITO, .estado.DESPACHADA { background: #fdf0cf; color: #7a5a00; }
+.historial { width: 100%; margin: 4px 0 0; font-size: .82rem; color: var(--suave); }
+.error { background: #f9dedc; color: var(--error); padding: 10px; border-radius: 6px; margin-bottom: 12px; cursor: pointer; }
+.vacio { color: var(--suave); font-style: italic; }
