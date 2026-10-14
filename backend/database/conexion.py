@@ -38,6 +38,7 @@ class BaseDeDatos:
             self._conexion.executescript(f.read())
 
     # ---------- helpers de consulta ----------
+    
     def consultar(self, sql, params=()):
         """Devuelve una lista de dicts."""
         cursor = self._conexion.execute(sql, params)
