@@ -1,21 +1,13 @@
-"""
-PATRÓN SINGLETON
-----------------
-Problema: toda la aplicación necesita hablar con la MISMA base de datos.
-Si cada servicio creara su propia conexión, habría conexiones duplicadas y
-transacciones que no se ven entre sí.
-
-Solución: la clase controla su propia instanciación en __new__.
-La primera vez crea el objeto; las siguientes devuelve siempre el mismo.
-
-    a = BaseDeDatos()
-    b = BaseDeDatos()
-    a is b   # True
-"""
+"""Configuración compartida de SQLAlchemy para la base de datos de la aplicación."""
+from contextlib import contextmanager
 import os
-import sqlite3
 
-RUTA_SCHEMA = os.path.join(os.path.dirname(__file__), "schema.sql")
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import scoped_session, sessionmaker
+
+from models.orm import Base
+
 RUTA_DB_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "tp_cd_locales.db")
 
 
@@ -29,37 +21,61 @@ class BaseDeDatos:
         return cls._instancia
 
     def _inicializar(self, ruta):
-        self._ruta = ruta
-        # check_same_thread=False porque Flask atiende requests en distintos hilos
-        self._conexion = sqlite3.connect(ruta, check_same_thread=False)
-        self._conexion.row_factory = sqlite3.Row      # filas accesibles por nombre
-        self._conexion.execute("PRAGMA foreign_keys = ON")
-        with open(RUTA_SCHEMA, encoding="utf-8") as f:
-            self._conexion.executescript(f.read())
+        self._ruta = os.path.abspath(ruta)
+        database_url = URL.create("sqlite", database=self._ruta)
+        self.engine = create_engine(database_url, connect_args={"check_same_thread": False})
+        event.listen(self.engine, "connect", self._habilitar_foreign_keys)
+        self._sesiones = scoped_session(sessionmaker(bind=self.engine, autoflush=True))
+        Base.metadata.create_all(self.engine)
+        self._crear_triggers_historial()
 
-    # ---------- helpers de consulta ----------
-    def consultar(self, sql, params=()):
-        """Devuelve una lista de dicts."""
-        cursor = self._conexion.execute(sql, params)
-        return [dict(fila) for fila in cursor.fetchall()]
+    @staticmethod
+    def _habilitar_foreign_keys(connection, _record):
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
-    def consultar_uno(self, sql, params=()):
-        fila = self._conexion.execute(sql, params).fetchone()
-        return dict(fila) if fila else None
+    def _crear_triggers_historial(self):
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql(
+                """CREATE TRIGGER IF NOT EXISTS historial_sin_update
+                   BEFORE UPDATE ON historial_bulto
+                   BEGIN
+                       SELECT RAISE(ABORT, 'El historial de bultos es inmutable');
+                   END"""
+            )
+            connection.exec_driver_sql(
+                """CREATE TRIGGER IF NOT EXISTS historial_sin_delete
+                   BEFORE DELETE ON historial_bulto
+                   BEGIN
+                       SELECT RAISE(ABORT, 'El historial de bultos es inmutable');
+                   END"""
+            )
 
-    def ejecutar(self, sql, params=()):
-        """INSERT/UPDATE/DELETE. Devuelve el id insertado (si corresponde)."""
-        cursor = self._conexion.execute(sql, params)
-        return cursor.lastrowid
+    @property
+    def sesion(self):
+        return self._sesiones()
 
     def transaccion(self):
-        """Uso:  with db.transaccion():  ...
-        Si algo falla adentro, se hace rollback de todo."""
-        return self._conexion
+        """Confirma la sesión compartida o revierte todos sus cambios al fallar."""
+        return self._transaccion()
+
+    @contextmanager
+    def _transaccion(self):
+        try:
+            yield self.sesion
+            self.sesion.commit()
+        except Exception:
+            self.sesion.rollback()
+            raise
+
+    def limpiar_sesion(self):
+        self._sesiones.remove()
 
     @classmethod
     def reiniciar(cls):
-        """Solo para tests: descarta la instancia única."""
+        """Solo para tests: descarta la instancia y libera sus recursos."""
         if cls._instancia is not None:
-            cls._instancia._conexion.close()
+            cls._instancia._sesiones.remove()
+            cls._instancia.engine.dispose()
         cls._instancia = None

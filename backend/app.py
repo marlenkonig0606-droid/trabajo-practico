@@ -8,9 +8,11 @@ Capas (igual que el repo de referencia, pero separadas en carpetas):
 """
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from sqlalchemy import select
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar as cargar_datos_iniciales
+from models.orm import ProductoORM, SucursalORM
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
@@ -30,13 +32,11 @@ def crear_app():
     reportes = ReportesService()
 
     # ---------- manejo de errores centralizado ----------
+    @app.errorhandler(NoEncontradoError)
     @app.errorhandler(ReglaNegocioError)
     def regla_negocio(e):
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e), "solucion": e.mensaje_especial}), e.status_code
 
-    @app.errorhandler(NoEncontradoError)
-    def no_encontrado(e):
-        return jsonify({"error": str(e)}), 404
 
     @app.errorhandler(NotImplementedError)
     def no_implementado(e):
@@ -45,11 +45,37 @@ def crear_app():
     # ---------- catálogo (solo lectura por ahora) ----------
     @app.get("/api/sucursales")
     def listar_sucursales():
-        return jsonify(db.consultar("SELECT * FROM sucursal ORDER BY tipo, nombre"))
+        sucursales = db.sesion.scalars(
+            select(SucursalORM).order_by(SucursalORM.tipo, SucursalORM.nombre)
+        )
+        return jsonify([
+            {
+                "id": sucursal.id,
+                "nombre": sucursal.nombre,
+                "direccion": sucursal.direccion,
+                "tipo": sucursal.tipo,
+            }
+            for sucursal in sucursales
+        ])
 
     @app.get("/api/productos")
     def listar_productos():
-        return jsonify(db.consultar("SELECT * FROM producto ORDER BY nombre"))
+        productos = db.sesion.scalars(
+            select(ProductoORM).order_by(ProductoORM.nombre)
+        )
+        return jsonify([
+            {
+                "id": producto.id,
+                "codigo": producto.codigo,
+                "nombre": producto.nombre,
+                "categoria_id": producto.categoria_id,
+                "proveedor_id": producto.proveedor_id,
+                "precio_costo": producto.precio_costo,
+                "precio_venta": producto.precio_venta,
+                "stock_minimo": producto.stock_minimo,
+            }
+            for producto in productos
+        ])
 
     # TODO (vos): POST/PUT/DELETE de sucursales, productos, categorías y proveedores
     #   (procesos 1 y 2). Validar duplicados por codigo / cuit -> ReglaNegocioError.
@@ -101,6 +127,10 @@ def crear_app():
     @app.get("/api/reportes/transito")
     def rep_transito():
         return jsonify(reportes.tiempo_promedio_transito())
+
+    @app.teardown_appcontext
+    def limpiar_sesion(_error=None):
+        db.limpiar_sesion()
 
     return app
 

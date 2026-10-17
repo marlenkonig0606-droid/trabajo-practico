@@ -1,19 +1,21 @@
 # TP Integrador DAO 2026 — Tema 3: CD a Locales
 
-Backend en **Python (Flask + SQLite)**, frontend en **React + Vite**. Misma idea que el repo de
+Backend en **Python (Flask + SQLAlchemy + SQLite)**, frontend en **React + Vite**. Misma idea que el repo de
 referencia (`alquilerDeAutos`), pero con las capas separadas en carpetas.
 
 ## Cómo correrlo
 
 ```bash
 # Terminal 1 — backend
-cd backend
+cd trabajo-practico/backend
+python -m venv . # crea el entorno virtual
+.\.venv\Scripts\Activate.ps1 # activa el entorno virtual
 pip install -r requirements.txt
 python app.py                # http://localhost:5000 (crea la base y carga datos de prueba)
 python -m pytest -v          # 10 tests de logística
 
 # Terminal 2 — frontend
-cd frontend
+cd trabajo-practico/frontend
 npm install
 npm run dev                  # http://localhost:5173
 ```
@@ -24,10 +26,12 @@ npm run dev                  # http://localhost:5173
 backend/
   app.py                    rutas de la API (HTTP -> service -> JSON)
   database/
-    conexion.py             ★ SINGLETON: una sola conexión para toda la app
-    schema.sql              tablas + triggers que hacen inmutable el historial
+    conexion.py             ★ SINGLETON: engine y sesiones SQLAlchemy compartidos
+    schema.sql              definición SQL de referencia de las tablas
     datos_iniciales.py      1 CD, 2 locales, 4 productos, stock solo en el CD
-  models/                   clases del dominio (Bulto, EstadoBulto, Sucursal, Producto)
+  models/
+    orm.py                  modelos ORM y esquema relacional
+                            clases del dominio (Bulto, EstadoBulto, Sucursal, Producto)
   patrones/
     observer.py             ★ OBSERVER: Sujeto / Observador / Eventos
     factory_medio_pago.py   ★ FACTORY: esqueleto para que completes

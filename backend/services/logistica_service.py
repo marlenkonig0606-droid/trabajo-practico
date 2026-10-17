@@ -4,24 +4,34 @@ Procesos obligatorios 3, 4, 5 y 6:
   4. Empaquetar en bultos con remito y precinto
   5. Despachar
   6. Recibir y verificar precinto
-
-Este módulo está COMPLETO: usalo como modelo para escribir ventas.
 """
+from datetime import datetime
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import aliased
+
 from database.conexion import BaseDeDatos
 from models.bulto import Bulto, EstadoBulto
+from models.orm import (
+    BultoORM,
+    DetalleBultoORM,
+    DetalleOrdenORM,
+    HistorialBultoORM,
+    OrdenReposicionORM,
+    ProductoORM,
+    RemitoORM,
+    SucursalORM,
+)
 from models.sucursal import Sucursal
 from patrones.observer import Sujeto, Eventos
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 
 
-class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
+class LogisticaService(Sujeto):
     def __init__(self):
         super().__init__()
         self.db = BaseDeDatos()
 
-    # ================================================================
-    # 3. ORDEN DE REPOSICIÓN
-    # ================================================================
     def crear_orden(self, destino_id, items):
         """items: [{"producto_id": 1, "cantidad": 10}, ...]"""
         destino = self._obtener_sucursal(destino_id)
@@ -31,50 +41,89 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
             raise ReglaNegocioError("La orden debe tener al menos un producto")
         self._validar_items(items)
 
-        cd = self.db.consultar_uno("SELECT id FROM sucursal WHERE tipo='CD' LIMIT 1")
-        if cd is None:
+        sesion = self.db.sesion
+        cd_id = sesion.scalar(select(SucursalORM.id).where(SucursalORM.tipo == "CD").limit(1))
+        if cd_id is None:
             raise ReglaNegocioError("No hay un Centro de Distribución cargado")
 
-        with self.db.transaccion():
-            orden_id = self.db.ejecutar(
-                "INSERT INTO orden_reposicion (origen_id, destino_id) VALUES (?, ?)",
-                (cd["id"], destino_id))
-            for it in items:
-                self.db.ejecutar(
-                    "INSERT INTO detalle_orden (orden_id, producto_id, cantidad) VALUES (?, ?, ?)",
-                    (orden_id, it["producto_id"], it["cantidad"]))
+        with self.db.transaccion() as sesion:
+            orden = OrdenReposicionORM(origen_id=cd_id, destino_id=destino_id)
+            sesion.add(orden)
+            sesion.flush()
+            orden_id = orden.id
+            sesion.add_all([
+                DetalleOrdenORM(
+                    orden_id=orden_id,
+                    producto_id=item["producto_id"],
+                    cantidad=item["cantidad"],
+                )
+                for item in items
+            ])
         return self.obtener_orden(orden_id)
 
     def obtener_orden(self, orden_id):
-        orden = self.db.consultar_uno(
-            """SELECT o.*, so.nombre AS origen, sd.nombre AS destino,
-                      r.id AS remito_id, r.numero AS remito_numero, r.estado AS remito_estado
-               FROM orden_reposicion o
-               JOIN sucursal so ON so.id = o.origen_id
-               JOIN sucursal sd ON sd.id = o.destino_id
-               LEFT JOIN remito r ON r.orden_id = o.id
-               WHERE o.id = ?""", (orden_id,))
-        if orden is None:
+        sucursal_destino = aliased(SucursalORM)
+        fila = self.db.sesion.execute(
+            select(
+                OrdenReposicionORM,
+                SucursalORM.nombre.label("origen"),
+                sucursal_destino.nombre.label("destino"),
+                RemitoORM.id.label("remito_id"),
+                RemitoORM.numero.label("remito_numero"),
+                RemitoORM.estado.label("remito_estado"),
+            )
+            .join(SucursalORM, SucursalORM.id == OrdenReposicionORM.origen_id)
+            .join(sucursal_destino, sucursal_destino.id == OrdenReposicionORM.destino_id)
+            .outerjoin(RemitoORM, RemitoORM.orden_id == OrdenReposicionORM.id)
+            .where(OrdenReposicionORM.id == orden_id)
+        ).first()
+        if fila is None:
             raise NoEncontradoError(f"No existe la orden {orden_id}")
-        orden["items"] = self.db.consultar(
-            """SELECT d.producto_id, p.nombre, d.cantidad,
-                      COALESCE((SELECT SUM(db.cantidad) FROM detalle_bulto db
-                                JOIN bulto b ON b.id = db.bulto_id
-                                JOIN remito r ON r.id = b.remito_id
-                                WHERE r.orden_id = d.orden_id AND db.producto_id = d.producto_id), 0)
-                      AS empaquetado
-               FROM detalle_orden d JOIN producto p ON p.id = d.producto_id
-               WHERE d.orden_id = ?""", (orden_id,))
-        orden["bultos"] = [b.to_dict() for b in self._bultos_de_orden(orden_id)]
-        return orden
+
+        orden = fila[0]
+        resultado = {
+            nombre: getattr(orden, nombre)
+            for nombre in ("id", "origen_id", "destino_id", "fecha", "estado")
+        }
+        resultado.update({
+            "origen": fila.origen,
+            "destino": fila.destino,
+            "remito_id": fila.remito_id,
+            "remito_numero": fila.remito_numero,
+            "remito_estado": fila.remito_estado,
+        })
+        items = self.db.sesion.execute(
+            select(
+                DetalleOrdenORM.producto_id,
+                ProductoORM.nombre,
+                DetalleOrdenORM.cantidad,
+                func.coalesce(func.sum(DetalleBultoORM.cantidad), 0).label("empaquetado"),
+            )
+            .join(ProductoORM, ProductoORM.id == DetalleOrdenORM.producto_id)
+            .outerjoin(RemitoORM, RemitoORM.orden_id == DetalleOrdenORM.orden_id)
+            .outerjoin(BultoORM, BultoORM.remito_id == RemitoORM.id)
+            .outerjoin(
+                DetalleBultoORM,
+                (DetalleBultoORM.bulto_id == BultoORM.id)
+                & (DetalleBultoORM.producto_id == DetalleOrdenORM.producto_id),
+            )
+            .where(DetalleOrdenORM.orden_id == orden_id)
+            .group_by(
+                DetalleOrdenORM.producto_id,
+                ProductoORM.nombre,
+                DetalleOrdenORM.cantidad,
+            )
+        ).mappings()
+        resultado["items"] = [dict(item) for item in items]
+        resultado["bultos"] = [bulto.to_dict() for bulto in self._bultos_de_orden(orden_id)]
+        return resultado
 
     def listar_ordenes(self):
-        ids = self.db.consultar("SELECT id FROM orden_reposicion ORDER BY id DESC")
-        return [self.obtener_orden(f["id"]) for f in ids]
+        ids = self.db.sesion.scalars(
+            select(OrdenReposicionORM.id).order_by(OrdenReposicionORM.id.desc())
+        )
+        return [self.obtener_orden(orden_id) for orden_id in ids]
 
-    # ================================================================
-    # 4. EMPAQUETAR (crear bulto) + asignar remito y precinto
-    # ================================================================
     def crear_bulto(self, orden_id, items):
         orden = self.obtener_orden(orden_id)
         if orden["estado"] not in ("PENDIENTE", "EN_PREPARACION"):
@@ -85,77 +134,83 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
             raise ReglaNegocioError("El bulto no puede estar vacío")
         self._validar_items(items)
 
-        # No empaquetar más de lo pedido en la orden
-        pendientes = {i["producto_id"]: i["cantidad"] - i["empaquetado"] for i in orden["items"]}
-        for it in items:
-            if it["producto_id"] not in pendientes:
-                raise ReglaNegocioError(f"El producto {it['producto_id']} no está en la orden")
-            if it["cantidad"] > pendientes[it["producto_id"]]:
+        pendientes = {item["producto_id"]: item["cantidad"] - item["empaquetado"]
+                      for item in orden["items"]}
+        for item in items:
+            producto_id = item["producto_id"]
+            if producto_id not in pendientes:
+                raise ReglaNegocioError(f"El producto {producto_id} no está en la orden")
+            if item["cantidad"] > pendientes[producto_id]:
                 raise ReglaNegocioError(
-                    f"Producto {it['producto_id']}: quedan {pendientes[it['producto_id']]} "
-                    f"por empaquetar y se intentó empaquetar {it['cantidad']}")
+                    f"Producto {producto_id}: quedan {pendientes[producto_id]} "
+                    f"por empaquetar y se intentó empaquetar {item['cantidad']}"
+                )
 
-        with self.db.transaccion():
-            remito_id = orden["remito_id"] or self.db.ejecutar(
-                "INSERT INTO remito (numero, orden_id) VALUES (?, ?)",
-                (f"R-{orden_id:06d}", orden_id))
-            bulto_id = self.db.ejecutar("INSERT INTO bulto (remito_id) VALUES (?)", (remito_id,))
-            for it in items:
-                self.db.ejecutar(
-                    "INSERT INTO detalle_bulto (bulto_id, producto_id, cantidad) VALUES (?, ?, ?)",
-                    (bulto_id, it["producto_id"], it["cantidad"]))
+        with self.db.transaccion() as sesion:
+            remito_id = orden["remito_id"]
+            if remito_id is None:
+                remito = RemitoORM(numero=f"R-{orden_id:06d}", orden_id=orden_id)
+                sesion.add(remito)
+                sesion.flush()
+                remito_id = remito.id
+            bulto = BultoORM(remito_id=remito_id)
+            sesion.add(bulto)
+            sesion.flush()
+            bulto_id = bulto.id
+            sesion.add_all([
+                DetalleBultoORM(
+                    bulto_id=bulto_id,
+                    producto_id=item["producto_id"],
+                    cantidad=item["cantidad"],
+                )
+                for item in items
+            ])
             self._registrar_historial(bulto_id, EstadoBulto.PREPARADO, "Bulto armado en CD")
-            self.db.ejecutar("UPDATE orden_reposicion SET estado='EN_PREPARACION' WHERE id=?",
-                             (orden_id,))
+            sesion.get(OrdenReposicionORM, orden_id).estado = "EN_PREPARACION"
         return self.obtener_bulto(bulto_id).to_dict()
 
     def precintar(self, bulto_id, precinto):
         precinto = (precinto or "").strip()
         if not precinto:
             raise ReglaNegocioError("Debe indicar el número de precinto")
-        if self.db.consultar_uno("SELECT id FROM bulto WHERE precinto=?", (precinto,)):
+        if self.db.sesion.scalar(
+            select(BultoORM.id).where(BultoORM.precinto == precinto)
+        ):
             raise ReglaNegocioError(f"El precinto {precinto} ya fue usado en otro bulto")
 
         bulto = self.obtener_bulto(bulto_id)
-        with self.db.transaccion():
+        with self.db.transaccion() as sesion:
             self._transicionar(bulto, EstadoBulto.PRECINTADO, f"Precinto {precinto}")
-            self.db.ejecutar("UPDATE bulto SET precinto=? WHERE id=?", (precinto, bulto_id))
+            sesion.get(BultoORM, bulto_id).precinto = precinto
         return self.obtener_bulto(bulto_id).to_dict()
 
-    # ================================================================
-    # 5. DESPACHO
-    # ================================================================
     def despachar(self, bulto_id):
         bulto = self.obtener_bulto(bulto_id)
         orden = self._orden_de_remito(bulto.remito_id)
 
-        with self.db.transaccion():
+        with self.db.transaccion() as sesion:
             self._transicionar(bulto, EstadoBulto.EN_TRANSITO, "Despachado desde CD")
-            self.db.ejecutar(
-                "UPDATE bulto SET fecha_despacho=datetime('now','localtime') WHERE id=?",
-                (bulto_id,))
-            self.db.ejecutar("UPDATE remito SET estado='DESPACHADO' WHERE id=?", (bulto.remito_id,))
-            self.db.ejecutar("UPDATE orden_reposicion SET estado='DESPACHADA' WHERE id=?",
-                             (orden["id"],))
-            # Observer: StockObserver descuenta del CD (y si no alcanza, lanza error -> rollback)
+            sesion.get(BultoORM, bulto_id).fecha_despacho = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            sesion.get(RemitoORM, bulto.remito_id).estado = "DESPACHADO"
+            sesion.get(OrdenReposicionORM, orden["id"]).estado = "DESPACHADA"
             self.notificar(Eventos.BULTO_DESPACHADO, {
-                "bulto_id": bulto_id, "origen_id": orden["origen_id"], "items": bulto.items})
+                "bulto_id": bulto_id,
+                "origen_id": orden["origen_id"],
+                "items": bulto.items,
+            })
         return self.obtener_bulto(bulto_id).to_dict()
 
-    # ================================================================
-    # 6. RECEPCIÓN + VERIFICACIÓN DE PRECINTO
-    # ================================================================
     def recibir(self, bulto_id, precinto_leido, precinto_intacto):
-        """El local recibe el bulto, lee el número de precinto y declara si está sano.
-        - Coincide y está intacto  -> VERIFICADO
-        - No coincide o está roto  -> RECHAZADO (rechazo logístico, no habilita venta)"""
+        """Verifica el sello leído en el local y define si el bulto se acepta."""
         bulto = self.obtener_bulto(bulto_id)
 
-        with self.db.transaccion():
+        with self.db.transaccion() as sesion:
             self._transicionar(bulto, EstadoBulto.RECIBIDO, "Recibido en local")
-            self.db.ejecutar(
-                "UPDATE bulto SET fecha_recepcion=datetime('now','localtime') WHERE id=?",
-                (bulto_id,))
+            sesion.get(BultoORM, bulto_id).fecha_recepcion = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
 
             coincide = (precinto_leido or "").strip() == bulto.precinto
             if coincide and precinto_intacto:
@@ -170,81 +225,125 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         return self.obtener_bulto(bulto_id).to_dict()
 
     def _cerrar_remito_si_corresponde(self, remito_id):
-        """El stock NO entra al local hasta que el remito completo quede verificado:
-        o sea, hasta que todos sus bultos estén en un estado final."""
+        """El stock entra al local solo cuando todos los bultos tienen estado final."""
         bultos = self._bultos_de_remito(remito_id)
-        if not all(b.esta_finalizado() for b in bultos):
+        if not all(bulto.esta_finalizado() for bulto in bultos):
             return
 
-        verificados = [b for b in bultos if b.estado == EstadoBulto.VERIFICADO]
+        verificados = [bulto for bulto in bultos if bulto.estado == EstadoBulto.VERIFICADO]
         estado_remito = "VERIFICADO" if verificados else "RECHAZADO"
-        self.db.ejecutar("UPDATE remito SET estado=? WHERE id=?", (estado_remito, remito_id))
+        self.db.sesion.get(RemitoORM, remito_id).estado = estado_remito
         orden = self._orden_de_remito(remito_id)
-        self.db.ejecutar("UPDATE orden_reposicion SET estado='CERRADA' WHERE id=?", (orden["id"],))
+        self.db.sesion.get(OrdenReposicionORM, orden["id"]).estado = "CERRADA"
 
         if verificados:
             self.notificar(Eventos.REMITO_VERIFICADO, {
                 "remito_numero": orden["remito_numero"],
                 "destino_id": orden["destino_id"],
-                "items_verificados": [it for b in verificados for it in b.items],
+                "items_verificados": [
+                    item for bulto in verificados for item in bulto.items
+                ],
             })
 
-    # ================================================================
-    # Consultas y helpers
-    # ================================================================
     def obtener_bulto(self, bulto_id):
-        fila = self.db.consultar_uno("SELECT * FROM bulto WHERE id=?", (bulto_id,))
+        fila = self.db.sesion.get(BultoORM, bulto_id)
         if fila is None:
             raise NoEncontradoError(f"No existe el bulto {bulto_id}")
-        items = self.db.consultar(
-            "SELECT producto_id, cantidad FROM detalle_bulto WHERE bulto_id=?", (bulto_id,))
-        return Bulto.desde_fila(fila, items)
+        items = self.db.sesion.execute(
+            select(DetalleBultoORM.producto_id, DetalleBultoORM.cantidad)
+            .where(DetalleBultoORM.bulto_id == bulto_id)
+        ).mappings()
+        return Bulto.desde_fila(
+            {
+                "id": fila.id,
+                "remito_id": fila.remito_id,
+                "estado": fila.estado,
+                "precinto": fila.precinto,
+                "fecha_despacho": fila.fecha_despacho,
+                "fecha_recepcion": fila.fecha_recepcion,
+            },
+            [dict(item) for item in items],
+        )
 
     def historial(self, bulto_id):
-        self.obtener_bulto(bulto_id)   # valida que exista
-        return self.db.consultar(
-            "SELECT estado, fecha, observacion FROM historial_bulto WHERE bulto_id=? ORDER BY id",
-            (bulto_id,))
+        self.obtener_bulto(bulto_id)
+        filas = self.db.sesion.execute(
+            select(
+                HistorialBultoORM.estado,
+                HistorialBultoORM.fecha,
+                HistorialBultoORM.observacion,
+            )
+            .where(HistorialBultoORM.bulto_id == bulto_id)
+            .order_by(HistorialBultoORM.id)
+        ).mappings()
+        return [dict(fila) for fila in filas]
 
     def _transicionar(self, bulto: Bulto, nuevo_estado, observacion):
         try:
-            bulto.cambiar_estado(nuevo_estado)    # el modelo valida la transición
-        except ValueError as e:
-            raise ReglaNegocioError(str(e))
-        self.db.ejecutar("UPDATE bulto SET estado=? WHERE id=?", (nuevo_estado, bulto.id))
+            bulto.cambiar_estado(nuevo_estado)
+        except ValueError as error:
+            raise ReglaNegocioError(str(error)) from error
+
+        self.db.sesion.get(BultoORM, bulto.id).estado = nuevo_estado
         self._registrar_historial(bulto.id, nuevo_estado, observacion)
 
     def _registrar_historial(self, bulto_id, estado, observacion):
-        self.db.ejecutar(
-            "INSERT INTO historial_bulto (bulto_id, estado, observacion) VALUES (?, ?, ?)",
-            (bulto_id, estado, observacion))
+        self.db.sesion.add(
+            HistorialBultoORM(
+                bulto_id=bulto_id,
+                estado=estado,
+                observacion=observacion,
+            )
+        )
 
     def _bultos_de_remito(self, remito_id):
-        ids = self.db.consultar("SELECT id FROM bulto WHERE remito_id=? ORDER BY id", (remito_id,))
-        return [self.obtener_bulto(f["id"]) for f in ids]
+        bulto_ids = self.db.sesion.scalars(
+            select(BultoORM.id).where(BultoORM.remito_id == remito_id).order_by(BultoORM.id)
+        )
+        return [self.obtener_bulto(bulto_id) for bulto_id in bulto_ids]
 
     def _bultos_de_orden(self, orden_id):
-        remito = self.db.consultar_uno("SELECT id FROM remito WHERE orden_id=?", (orden_id,))
-        return self._bultos_de_remito(remito["id"]) if remito else []
+        remito_id = self.db.sesion.scalar(
+            select(RemitoORM.id).where(RemitoORM.orden_id == orden_id)
+        )
+        return self._bultos_de_remito(remito_id) if remito_id else []
 
     def _orden_de_remito(self, remito_id):
-        return self.db.consultar_uno(
-            """SELECT o.*, r.numero AS remito_numero FROM remito r
-               JOIN orden_reposicion o ON o.id = r.orden_id WHERE r.id=?""", (remito_id,))
+        fila = self.db.sesion.execute(
+            select(
+                OrdenReposicionORM,
+                RemitoORM.numero.label("remito_numero"),
+            )
+            .join(RemitoORM, RemitoORM.orden_id == OrdenReposicionORM.id)
+            .where(RemitoORM.id == remito_id)
+        ).first()
+        orden = fila[0]
+        resultado = {
+            nombre: getattr(orden, nombre)
+            for nombre in ("id", "origen_id", "destino_id", "fecha", "estado")
+        }
+        resultado["remito_numero"] = fila.remito_numero
+        return resultado
 
     def _obtener_sucursal(self, sucursal_id):
-        fila = self.db.consultar_uno("SELECT * FROM sucursal WHERE id=?", (sucursal_id,))
+        fila = self.db.sesion.get(SucursalORM, sucursal_id)
         if fila is None:
             raise NoEncontradoError(f"No existe la sucursal {sucursal_id}")
-        return Sucursal.desde_fila(fila)
+        return Sucursal.desde_fila({
+            "id": fila.id,
+            "nombre": fila.nombre,
+            "direccion": fila.direccion,
+            "tipo": fila.tipo,
+        })
 
     def _validar_items(self, items):
         vistos = set()
-        for it in items:
-            if it.get("cantidad", 0) <= 0:
+        for item in items:
+            if item.get("cantidad", 0) <= 0:
                 raise ReglaNegocioError("Las cantidades deben ser mayores a cero")
-            if it["producto_id"] in vistos:
-                raise ReglaNegocioError(f"Producto {it['producto_id']} repetido")
-            vistos.add(it["producto_id"])
-            if not self.db.consultar_uno("SELECT id FROM producto WHERE id=?", (it["producto_id"],)):
-                raise NoEncontradoError(f"No existe el producto {it['producto_id']}")
+            producto_id = item["producto_id"]
+            if producto_id in vistos:
+                raise ReglaNegocioError(f"Producto {producto_id} repetido")
+            vistos.add(producto_id)
+            if self.db.sesion.get(ProductoORM, producto_id) is None:
+                raise NoEncontradoError(f"No existe el producto {producto_id}")

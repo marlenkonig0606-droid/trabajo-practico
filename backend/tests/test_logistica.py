@@ -1,9 +1,11 @@
 """Correr desde backend/:   python -m pytest -v"""
-import sqlite3
 import pytest
+from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
+from models.orm import HistorialBultoORM
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.excepciones import ReglaNegocioError
@@ -102,8 +104,10 @@ def test_despacho_sin_stock_en_cd_hace_rollback(svc):
 
 def test_historial_es_inmutable(svc):
     _, bulto = armar_y_despachar(svc)
-    with pytest.raises(sqlite3.DatabaseError):
-        BaseDeDatos().ejecutar("DELETE FROM historial_bulto WHERE bulto_id=?", (bulto["id"],))
+    with pytest.raises(IntegrityError):
+        BaseDeDatos().sesion.execute(
+            delete(HistorialBultoORM).where(HistorialBultoORM.bulto_id == bulto["id"])
+        )
 
 
 def test_orden_a_cd_no_permitida(svc):

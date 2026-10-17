@@ -1,53 +1,72 @@
 from database.conexion import BaseDeDatos
+from models.orm import MovimientoStockORM, ProductoORM, StockORM
 from patrones.observer import Observador, Eventos
 from services.excepciones import ReglaNegocioError
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 
 class StockService:
     """Operaciones sobre el stock DISPONIBLE (el único que se puede vender)."""
 
     def __init__(self):
-        self.db = BaseDeDatos()          # Singleton: siempre la misma conexión
+        self.db = BaseDeDatos()
 
     def disponible(self, sucursal_id, producto_id):
-        fila = self.db.consultar_uno(
-            "SELECT disponible FROM stock WHERE sucursal_id=? AND producto_id=?",
-            (sucursal_id, producto_id))
-        return fila["disponible"] if fila else 0
+        stock = self.db.sesion.get(StockORM, (sucursal_id, producto_id))
+        return stock.disponible if stock else 0
 
     def sumar(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
-        self.db.ejecutar(
-            """INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (?, ?, ?)
-               ON CONFLICT(sucursal_id, producto_id)
-               DO UPDATE SET disponible = disponible + excluded.disponible""",
-            (sucursal_id, producto_id, cantidad))
+        insertar = sqlite_insert(StockORM).values(
+            sucursal_id=sucursal_id, producto_id=producto_id, disponible=cantidad
+        )
+        self.db.sesion.execute(
+            insertar.on_conflict_do_update(
+                index_elements=[StockORM.sucursal_id, StockORM.producto_id],
+                set_={"disponible": StockORM.disponible + insertar.excluded.disponible},
+            )
+        )
         self._registrar_movimiento(sucursal_id, producto_id, cantidad, motivo, referencia)
 
     def restar(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
         """Valida que alcance ANTES de descontar. Lo vas a reusar en ventas."""
-        actual = self.disponible(sucursal_id, producto_id)
+        stock = self.db.sesion.get(StockORM, (sucursal_id, producto_id))
+        actual = stock.disponible if stock else 0
         if cantidad > actual:
             raise ReglaNegocioError(
                 f"Stock insuficiente del producto {producto_id}: "
                 f"hay {actual}, se pidieron {cantidad}")
-        self.db.ejecutar(
-            "UPDATE stock SET disponible = disponible - ? WHERE sucursal_id=? AND producto_id=?",
-            (cantidad, sucursal_id, producto_id))
+        stock.disponible -= cantidad
         self._registrar_movimiento(sucursal_id, producto_id, -cantidad, motivo, referencia)
 
     def _registrar_movimiento(self, sucursal_id, producto_id, cantidad, motivo, referencia):
-        self.db.ejecutar(
-            """INSERT INTO movimiento_stock (sucursal_id, producto_id, cantidad, motivo, referencia)
-               VALUES (?, ?, ?, ?, ?)""",
-            (sucursal_id, producto_id, cantidad, motivo, referencia))
+        self.db.sesion.add(
+            MovimientoStockORM(
+                sucursal_id=sucursal_id,
+                producto_id=producto_id,
+                cantidad=cantidad,
+                motivo=motivo,
+                referencia=referencia,
+            )
+        )
 
     def listar(self, sucursal_id):
-        return self.db.consultar(
-            """SELECT p.id AS producto_id, p.codigo, p.nombre, p.stock_minimo,
-                      COALESCE(s.disponible, 0) AS disponible
-               FROM producto p
-               LEFT JOIN stock s ON s.producto_id = p.id AND s.sucursal_id = ?
-               ORDER BY p.nombre""", (sucursal_id,))
+        filas = self.db.sesion.execute(
+            select(
+                ProductoORM.id.label("producto_id"),
+                ProductoORM.codigo,
+                ProductoORM.nombre,
+                ProductoORM.stock_minimo,
+                func.coalesce(StockORM.disponible, 0).label("disponible"),
+            )
+            .outerjoin(
+                StockORM,
+                (StockORM.producto_id == ProductoORM.id)
+                & (StockORM.sucursal_id == sucursal_id),
+            )
+            .order_by(ProductoORM.nombre)
+        ).mappings()
+        return [dict(fila) for fila in filas]
 
 
 class StockObserver(Observador):
