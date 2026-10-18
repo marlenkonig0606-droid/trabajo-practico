@@ -26,12 +26,16 @@ backend/
   app.py                    rutas de la API (HTTP -> service -> JSON)
   database/
     conexion.py             ★ SINGLETON: engine y sesiones SQLAlchemy compartidos
-    schema.sql              definición SQL de referencia de las tablas
     datos_iniciales.py      1 CD, 2 locales, 4 productos, stock solo en el CD
   models/
     base.py                 base declarativa compartida de SQLAlchemy
-    orm.py                  modelos ORM del resto del esquema relacional
-    contenedor.py           Contenedor: modelo de dominio y modelo SQLAlchemy unificados
+    categoria.py            Categoria: entidad y mapeo SQLAlchemy
+    producto.py             Producto: entidad y mapeo SQLAlchemy
+    proveedor.py            Proveedor: entidad y mapeo SQLAlchemy
+    sucursal.py             Sucursal y subtipos: entidad y mapeo SQLAlchemy
+    orden_reposicion.py     OrdenReposicion, DetalleOrden y Remito
+    stock.py                Stock y MovimientoStock
+    contenedor.py           Contenedor, DetalleContenedor y HistorialContenedor
   patrones/
     observer.py             ★ OBSERVER: Sujeto / Observador / Eventos
     factory_medio_pago.py   ★ FACTORY: esqueleto para que completes
@@ -54,6 +58,9 @@ objeto rechaza saltos (`cambiar_estado`). No se puede despachar sin precintar, n
 **Trazabilidad inmutable**: cada cambio inserta una fila en `historial_contenedor`. Dos triggers SQL
 abortan cualquier `UPDATE` o `DELETE` sobre esa tabla → la inmutabilidad la garantiza la base,
 no solo el código.
+
+**Modelos**: cada entidad persistida es una única clase SQLAlchemy en `models/`.
+La misma instancia aplica reglas del dominio y se guarda en SQLite.
 
 **Stock no disponible hasta verificar**: al despachar sale del CD; al local **no** entra nada hasta que
 *todos* los contenedores del remito están en estado final. Entonces el remito pasa a `VERIFICADO` y solo
@@ -98,8 +105,7 @@ con los productos por debajo de `stock_minimo` en ese local. Pista: `StockServic
 pruebe que un tipo inexistente lanza error.
 
 ### Paso 5 — Ventas y devoluciones (proceso 7)
-1. Tablas en `schema.sql`: `venta`, `detalle_venta` (guardá el precio del momento), `pago`,
-   `comprobante`, `devolucion`, `detalle_devolucion`.
+
 2. `VentasService.registrar_venta` siguiendo los comentarios. `StockService.restar` ya valida
    que no se venda más de lo disponible.
 3. `registrar_devolucion`: la venta debe existir y no se puede devolver más de lo vendido

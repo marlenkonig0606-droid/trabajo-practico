@@ -12,15 +12,10 @@ from sqlalchemy.orm import aliased
 
 from database.conexion import BaseDeDatos
 from models.contenedor import Contenedor, EstadoContenedor
-from models.orm import (
-    DetalleContenedorORM,
-    DetalleOrdenORM,
-    HistorialContenedorORM,
-    OrdenReposicionORM,
-    ProductoORM,
-    RemitoORM,
-    SucursalORM,
-)
+from models.contenedor import DetalleContenedor, HistorialContenedor
+from models.orden_reposicion import DetalleOrden, OrdenReposicion, Remito
+from models.producto import Producto
+from models.sucursal import Sucursal
 from models.sucursal import Sucursal
 from patrones.observer import Sujeto, Eventos
 from services.excepciones import ReglaNegocioError, NoEncontradoError
@@ -41,17 +36,17 @@ class LogisticaService(Sujeto):
         self._validar_items(items)
 
         sesion = self.db.sesion
-        cd_id = sesion.scalar(select(SucursalORM.id).where(SucursalORM.tipo == "CD").limit(1))
+        cd_id = sesion.scalar(select(Sucursal.id).where(Sucursal.tipo == "CD").limit(1))
         if cd_id is None:
             raise ReglaNegocioError("No hay un Centro de Distribución cargado")
 
         with self.db.transaccion() as sesion:
-            orden = OrdenReposicionORM(origen_id=cd_id, destino_id=destino_id)
+            orden = OrdenReposicion(origen_id=cd_id, destino_id=destino_id)
             sesion.add(orden)
             sesion.flush()
             orden_id = orden.id
             sesion.add_all([
-                DetalleOrdenORM(
+                DetalleOrden(
                     orden_id=orden_id,
                     producto_id=item["producto_id"],
                     cantidad=item["cantidad"],
@@ -61,20 +56,20 @@ class LogisticaService(Sujeto):
         return self.obtener_orden(orden_id)
 
     def obtener_orden(self, orden_id):
-        sucursal_destino = aliased(SucursalORM)
+        sucursal_destino = aliased(Sucursal)
         fila = self.db.sesion.execute(
             select(
-                OrdenReposicionORM,
-                SucursalORM.nombre.label("origen"),
+                OrdenReposicion,
+                Sucursal.nombre.label("origen"),
                 sucursal_destino.nombre.label("destino"),
-                RemitoORM.id.label("remito_id"),
-                RemitoORM.numero.label("remito_numero"),
-                RemitoORM.estado.label("remito_estado"),
+                Remito.id.label("remito_id"),
+                Remito.numero.label("remito_numero"),
+                Remito.estado.label("remito_estado"),
             )
-            .join(SucursalORM, SucursalORM.id == OrdenReposicionORM.origen_id)
-            .join(sucursal_destino, sucursal_destino.id == OrdenReposicionORM.destino_id)
-            .outerjoin(RemitoORM, RemitoORM.orden_id == OrdenReposicionORM.id)
-            .where(OrdenReposicionORM.id == orden_id)
+            .join(Sucursal, Sucursal.id == OrdenReposicion.origen_id)
+            .join(sucursal_destino, sucursal_destino.id == OrdenReposicion.destino_id)
+            .outerjoin(Remito, Remito.orden_id == OrdenReposicion.id)
+            .where(OrdenReposicion.id == orden_id)
         ).first()
         if fila is None:
             raise NoEncontradoError(f"No existe la orden {orden_id}")
@@ -93,24 +88,24 @@ class LogisticaService(Sujeto):
         })
         items = self.db.sesion.execute(
             select(
-                DetalleOrdenORM.producto_id,
-                ProductoORM.nombre,
-                DetalleOrdenORM.cantidad,
-                func.coalesce(func.sum(DetalleContenedorORM.cantidad), 0).label("empaquetado"),
+                DetalleOrden.producto_id,
+                Producto.nombre,
+                DetalleOrden.cantidad,
+                func.coalesce(func.sum(DetalleContenedor.cantidad), 0).label("empaquetado"),
             )
-            .join(ProductoORM, ProductoORM.id == DetalleOrdenORM.producto_id)
-            .outerjoin(RemitoORM, RemitoORM.orden_id == DetalleOrdenORM.orden_id)
-            .outerjoin(Contenedor, Contenedor.remito_id == RemitoORM.id)
+            .join(Producto, Producto.id == DetalleOrden.producto_id)
+            .outerjoin(Remito, Remito.orden_id == DetalleOrden.orden_id)
+            .outerjoin(Contenedor, Contenedor.remito_id == Remito.id)
             .outerjoin(
-                DetalleContenedorORM,
-                (DetalleContenedorORM.contenedor_id == Contenedor.id)
-                & (DetalleContenedorORM.producto_id == DetalleOrdenORM.producto_id),
+                DetalleContenedor,
+                (DetalleContenedor.contenedor_id == Contenedor.id)
+                & (DetalleContenedor.producto_id == DetalleOrden.producto_id),
             )
-            .where(DetalleOrdenORM.orden_id == orden_id)
+            .where(DetalleOrden.orden_id == orden_id)
             .group_by(
-                DetalleOrdenORM.producto_id,
-                ProductoORM.nombre,
-                DetalleOrdenORM.cantidad,
+                DetalleOrden.producto_id,
+                Producto.nombre,
+                DetalleOrden.cantidad,
             )
         ).mappings()
         resultado["items"] = [dict(item) for item in items]
@@ -119,7 +114,7 @@ class LogisticaService(Sujeto):
 
     def listar_ordenes(self):
         ids = self.db.sesion.scalars(
-            select(OrdenReposicionORM.id).order_by(OrdenReposicionORM.id.desc())
+            select(OrdenReposicion.id).order_by(OrdenReposicion.id.desc())
         )
         return [self.obtener_orden(orden_id) for orden_id in ids]
 
@@ -148,7 +143,7 @@ class LogisticaService(Sujeto):
         with self.db.transaccion() as sesion:
             remito_id = orden["remito_id"]
             if remito_id is None:
-                remito = RemitoORM(numero=f"R-{orden_id:06d}", orden_id=orden_id)
+                remito = Remito(numero=f"R-{orden_id:06d}", orden_id=orden_id)
                 sesion.add(remito)
                 sesion.flush()
                 remito_id = remito.id
@@ -157,7 +152,7 @@ class LogisticaService(Sujeto):
             sesion.flush()
             contenedor_id = contenedor.id
             sesion.add_all([
-                DetalleContenedorORM(
+                DetalleContenedor(
                     contenedor_id=contenedor_id,
                     producto_id=item["producto_id"],
                     cantidad=item["cantidad"],
@@ -165,7 +160,7 @@ class LogisticaService(Sujeto):
                 for item in items
             ])
             self._registrar_historial(contenedor_id, EstadoContenedor.PREPARADO, "Contenedor armado en CD")
-            sesion.get(OrdenReposicionORM, orden_id).estado = "EN_PREPARACION"
+            sesion.get(OrdenReposicion, orden_id).estado = "EN_PREPARACION"
         return self.obtener_contenedor(contenedor_id).to_dict()
 
     def precintar(self, contenedor_id, precinto):
@@ -192,8 +187,8 @@ class LogisticaService(Sujeto):
             contenedor.fecha_despacho = datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
-            sesion.get(RemitoORM, contenedor.remito_id).estado = "DESPACHADO"
-            sesion.get(OrdenReposicionORM, orden["id"]).estado = "DESPACHADA"
+            sesion.get(Remito, contenedor.remito_id).estado = "DESPACHADO"
+            sesion.get(OrdenReposicion, orden["id"]).estado = "DESPACHADA"
             self.notificar(Eventos.CONTENEDOR_DESPACHADO, {
                 "contenedor_id": contenedor_id,
                 "origen_id": orden["origen_id"],
@@ -231,9 +226,9 @@ class LogisticaService(Sujeto):
 
         verificados = [contenedor for contenedor in contenedores if contenedor.estado == EstadoContenedor.VERIFICADO]
         estado_remito = "VERIFICADO" if verificados else "RECHAZADO"
-        self.db.sesion.get(RemitoORM, remito_id).estado = estado_remito
+        self.db.sesion.get(Remito, remito_id).estado = estado_remito
         orden = self._orden_de_remito(remito_id)
-        self.db.sesion.get(OrdenReposicionORM, orden["id"]).estado = "CERRADA"
+        self.db.sesion.get(OrdenReposicion, orden["id"]).estado = "CERRADA"
 
         if verificados:
             self.notificar(Eventos.REMITO_VERIFICADO, {
@@ -249,8 +244,8 @@ class LogisticaService(Sujeto):
         if contenedor is None:
             raise NoEncontradoError(f"No existe el contenedor {contenedor_id}")
         items = self.db.sesion.execute(
-            select(DetalleContenedorORM.producto_id, DetalleContenedorORM.cantidad)
-            .where(DetalleContenedorORM.contenedor_id == contenedor_id)
+            select(DetalleContenedor.producto_id, DetalleContenedor.cantidad)
+            .where(DetalleContenedor.contenedor_id == contenedor_id)
         ).mappings()
         contenedor.items = [dict(item) for item in items]
         return contenedor
@@ -259,12 +254,12 @@ class LogisticaService(Sujeto):
         self.obtener_contenedor(contenedor_id)
         filas = self.db.sesion.execute(
             select(
-                HistorialContenedorORM.estado,
-                HistorialContenedorORM.fecha,
-                HistorialContenedorORM.observacion,
+                HistorialContenedor.estado,
+                HistorialContenedor.fecha,
+                HistorialContenedor.observacion,
             )
-            .where(HistorialContenedorORM.contenedor_id == contenedor_id)
-            .order_by(HistorialContenedorORM.id)
+            .where(HistorialContenedor.contenedor_id == contenedor_id)
+            .order_by(HistorialContenedor.id)
         ).mappings()
         return [dict(fila) for fila in filas]
 
@@ -278,9 +273,10 @@ class LogisticaService(Sujeto):
 
     def _registrar_historial(self, contenedor_id, estado, observacion):
         self.db.sesion.add(
-            HistorialContenedorORM(
+            HistorialContenedor(
                 contenedor_id=contenedor_id,
                 estado=estado,
+                fecha=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 observacion=observacion,
             )
         )
@@ -293,18 +289,18 @@ class LogisticaService(Sujeto):
 
     def _contenedores_de_orden(self, orden_id):
         remito_id = self.db.sesion.scalar(
-            select(RemitoORM.id).where(RemitoORM.orden_id == orden_id)
+            select(Remito.id).where(Remito.orden_id == orden_id)
         )
         return self._contenedores_de_remito(remito_id) if remito_id else []
 
     def _orden_de_remito(self, remito_id):
         fila = self.db.sesion.execute(
             select(
-                OrdenReposicionORM,
-                RemitoORM.numero.label("remito_numero"),
+                OrdenReposicion,
+                Remito.numero.label("remito_numero"),
             )
-            .join(RemitoORM, RemitoORM.orden_id == OrdenReposicionORM.id)
-            .where(RemitoORM.id == remito_id)
+            .join(Remito, Remito.orden_id == OrdenReposicion.id)
+            .where(Remito.id == remito_id)
         ).first()
         orden = fila[0]
         resultado = {
@@ -315,15 +311,10 @@ class LogisticaService(Sujeto):
         return resultado
 
     def _obtener_sucursal(self, sucursal_id):
-        fila = self.db.sesion.get(SucursalORM, sucursal_id)
-        if fila is None:
+        sucursal = self.db.sesion.get(Sucursal, sucursal_id)
+        if sucursal is None:
             raise NoEncontradoError(f"No existe la sucursal {sucursal_id}")
-        return Sucursal.desde_fila({
-            "id": fila.id,
-            "nombre": fila.nombre,
-            "direccion": fila.direccion,
-            "tipo": fila.tipo,
-        })
+        return sucursal
 
     def _validar_items(self, items):
         vistos = set()
@@ -334,5 +325,5 @@ class LogisticaService(Sujeto):
             if producto_id in vistos:
                 raise ReglaNegocioError(f"Producto {producto_id} repetido")
             vistos.add(producto_id)
-            if self.db.sesion.get(ProductoORM, producto_id) is None:
+            if self.db.sesion.get(Producto, producto_id) is None:
                 raise NoEncontradoError(f"No existe el producto {producto_id}")

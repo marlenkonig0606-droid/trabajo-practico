@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar as cargar_datos_iniciales
-from models.orm import SucursalORM
+from models.sucursal import Sucursal
 from services.catalogo_service import CatalogoService
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 from services.logistica_service import LogisticaService
@@ -50,7 +50,7 @@ def crear_app():
     @app.get("/api/sucursales")
     def listar_sucursales():
         sucursales = db.sesion.scalars(
-            select(SucursalORM).order_by(SucursalORM.tipo, SucursalORM.nombre)
+            select(Sucursal).order_by(Sucursal.tipo, Sucursal.nombre)
         )
         return jsonify([
             {

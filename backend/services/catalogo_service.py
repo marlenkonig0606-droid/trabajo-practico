@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database.conexion import BaseDeDatos
 from models.categoria import Categoria
-from models.orm import CategoriaORM, ProductoORM, ProveedorORM
+from models.producto import Producto
 from models.proveedor import Proveedor
 from services.excepciones import NoEncontradoError, ReglaNegocioError
 
@@ -14,17 +14,17 @@ class CatalogoService:
 
     def listar_categorias(self):
         filas = self.db.sesion.scalars(
-            select(CategoriaORM).order_by(CategoriaORM.nombre, CategoriaORM.id)
+            select(Categoria).order_by(Categoria.nombre, Categoria.id)
         )
-        return [self._categoria(fila).to_dict() for fila in filas]
+        return [fila.to_dict() for fila in filas]
 
     def obtener_categoria(self, categoria_id):
-        return self._categoria(self._categoria_modelo(categoria_id)).to_dict()
+        return self._categoria_modelo(categoria_id).to_dict()
 
     def crear_categoria(self, datos):
         valores = self._validar_texto(datos, "nombre")
         self._validar_nombre_categoria(valores["nombre"])
-        entidad = CategoriaORM(**valores)
+        entidad = Categoria(**valores)
         try:
             with self.db.transaccion() as sesion:
                 sesion.add(entidad)
@@ -44,7 +44,7 @@ class CatalogoService:
         self._validar_nombre_categoria(valores["nombre"], excluir_id=categoria_id)
         try:
             with self.db.transaccion() as sesion:
-                sesion.get(CategoriaORM, categoria_id).nombre = valores["nombre"]
+                sesion.get(Categoria, categoria_id).nombre = valores["nombre"]
         except IntegrityError as error:
             raise ReglaNegocioError(
                 f"Ya existe una categoría con el nombre '{valores['nombre']}'"
@@ -54,8 +54,8 @@ class CatalogoService:
     def eliminar_categoria(self, categoria_id):
         categoria = self._categoria_modelo(categoria_id)
         if self.db.sesion.scalar(
-            select(ProductoORM.id).where(
-                ProductoORM.categoria_id == categoria_id
+            select(Producto.id).where(
+                Producto.categoria_id == categoria_id
             ).limit(1)
         ) is not None:
             raise ReglaNegocioError(
@@ -63,7 +63,7 @@ class CatalogoService:
             )
         try:
             with self.db.transaccion() as sesion:
-                sesion.delete(sesion.get(CategoriaORM, categoria_id))
+                sesion.delete(sesion.get(Categoria, categoria_id))
         except IntegrityError as error:
             raise ReglaNegocioError(
                 "No se puede eliminar la categoría porque tiene registros asociados"
@@ -72,17 +72,17 @@ class CatalogoService:
 
     def listar_proveedores(self):
         filas = self.db.sesion.scalars(
-            select(ProveedorORM).order_by(ProveedorORM.razon_social, ProveedorORM.id)
+            select(Proveedor).order_by(Proveedor.razon_social, Proveedor.id)
         )
-        return [self._proveedor(fila).to_dict() for fila in filas]
+        return [fila.to_dict() for fila in filas]
 
     def obtener_proveedor(self, proveedor_id):
-        return self._proveedor(self._proveedor_modelo(proveedor_id)).to_dict()
+        return self._proveedor_modelo(proveedor_id).to_dict()
 
     def crear_proveedor(self, datos):
         valores = self._validar_proveedor(datos)
         self._validar_cuit(valores["cuit"])
-        entidad = ProveedorORM(**valores)
+        entidad = Proveedor(**valores)
         try:
             with self.db.transaccion() as sesion:
                 sesion.add(entidad)
@@ -102,7 +102,7 @@ class CatalogoService:
         self._validar_cuit(valores["cuit"], excluir_id=proveedor_id)
         try:
             with self.db.transaccion() as sesion:
-                entidad = sesion.get(ProveedorORM, proveedor_id)
+                entidad = sesion.get(Proveedor, proveedor_id)
                 entidad.cuit = valores["cuit"]
                 entidad.razon_social = valores["razon_social"]
         except IntegrityError as error:
@@ -114,8 +114,8 @@ class CatalogoService:
     def eliminar_proveedor(self, proveedor_id):
         proveedor = self._proveedor_modelo(proveedor_id)
         if self.db.sesion.scalar(
-            select(ProductoORM.id).where(
-                ProductoORM.proveedor_id == proveedor_id
+            select(Producto.id).where(
+                Producto.proveedor_id == proveedor_id
             ).limit(1)
         ) is not None:
             raise ReglaNegocioError(
@@ -123,7 +123,7 @@ class CatalogoService:
             )
         try:
             with self.db.transaccion() as sesion:
-                sesion.delete(sesion.get(ProveedorORM, proveedor_id))
+                sesion.delete(sesion.get(Proveedor, proveedor_id))
         except IntegrityError as error:
             raise ReglaNegocioError(
                 "No se puede eliminar el proveedor porque tiene registros asociados"
@@ -167,39 +167,27 @@ class CatalogoService:
         return {campo: valor.strip()}
 
     def _validar_nombre_categoria(self, nombre, excluir_id=None):
-        consulta = select(CategoriaORM.id).where(CategoriaORM.nombre == nombre)
+        consulta = select(Categoria.id).where(Categoria.nombre == nombre)
         if excluir_id is not None:
-            consulta = consulta.where(CategoriaORM.id != excluir_id)
+            consulta = consulta.where(Categoria.id != excluir_id)
         if self.db.sesion.scalar(consulta.limit(1)) is not None:
             raise ReglaNegocioError(f"Ya existe una categoría con el nombre '{nombre}'")
 
     def _validar_cuit(self, cuit, excluir_id=None):
-        consulta = select(ProveedorORM.id).where(ProveedorORM.cuit == cuit)
+        consulta = select(Proveedor.id).where(Proveedor.cuit == cuit)
         if excluir_id is not None:
-            consulta = consulta.where(ProveedorORM.id != excluir_id)
+            consulta = consulta.where(Proveedor.id != excluir_id)
         if self.db.sesion.scalar(consulta.limit(1)) is not None:
             raise ReglaNegocioError(f"Ya existe un proveedor con el CUIT '{cuit}'")
 
     def _categoria_modelo(self, categoria_id):
-        entidad = self.db.sesion.get(CategoriaORM, categoria_id)
+        entidad = self.db.sesion.get(Categoria, categoria_id)
         if entidad is None:
             raise NoEncontradoError(f"No existe la categoría {categoria_id}")
         return entidad
 
     def _proveedor_modelo(self, proveedor_id):
-        entidad = self.db.sesion.get(ProveedorORM, proveedor_id)
+        entidad = self.db.sesion.get(Proveedor, proveedor_id)
         if entidad is None:
             raise NoEncontradoError(f"No existe el proveedor {proveedor_id}")
         return entidad
-
-    @staticmethod
-    def _categoria(entidad):
-        return Categoria.desde_fila({"id": entidad.id, "nombre": entidad.nombre})
-
-    @staticmethod
-    def _proveedor(entidad):
-        return Proveedor.desde_fila({
-            "id": entidad.id,
-            "cuit": entidad.cuit,
-            "razon_social": entidad.razon_social,
-        })

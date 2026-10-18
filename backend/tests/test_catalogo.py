@@ -17,12 +17,12 @@ def cliente(tmp_path):
 
 
 def test_modelos_de_dominio_serializan_entidades():
-    categoria = Categoria.desde_fila({"id": 10, "nombre": "Limpieza"})
-    proveedor = Proveedor.desde_fila({
-        "id": 20,
-        "cuit": "30-11111111-2",
-        "razon_social": "Proveedor Demo",
-    })
+    categoria = Categoria(nombre="Limpieza", id=10)
+    proveedor = Proveedor(
+        cuit="30-11111111-2",
+        razon_social="Proveedor Demo",
+        id=20,
+    )
 
     assert categoria.to_dict() == {"id": 10, "nombre": "Limpieza"}
     assert proveedor.to_dict() == {

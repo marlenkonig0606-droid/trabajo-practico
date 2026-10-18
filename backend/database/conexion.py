@@ -6,7 +6,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from models.orm import Base
+from models.base import Base
+from models import categoria, contenedor, orden_reposicion, producto, proveedor, stock, sucursal
 
 RUTA_DB_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "tp_cd_locales.db")
 
