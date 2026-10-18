@@ -21,12 +21,12 @@ button.link { background: none; color: var(--acento); padding: 0; text-decoratio
 table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .9rem; }
 th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--borde); }
 tr.bajo td { color: var(--error); font-weight: 600; }
-.fila-titulo, .bulto, .armar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.fila-titulo, .contenedor, .armar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .armar { margin: 8px 0; flex-direction: row; }
 .armar label { flex-direction: row; align-items: center; }
 .armar input { width: 70px; }
-.bulto { border-top: 1px dashed var(--borde); padding: 8px 0; }
-.bulto label { flex-direction: row; align-items: center; }
+.contenedor { border-top: 1px dashed var(--borde); padding: 8px 0; }
+.contenedor label { flex-direction: row; align-items: center; }
 .items { color: var(--suave); font-size: .85rem; }
 .estado { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: #e8ebe8; }
 .estado.VERIFICADO, .estado.CERRADA { background: #d6f0e4; color: #1f6f5c; }

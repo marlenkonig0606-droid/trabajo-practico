@@ -1,7 +1,6 @@
 # TP Integrador DAO 2026 — Tema 3: CD a Locales
 
-Backend en **Python (Flask + SQLAlchemy + SQLite)**, frontend en **React + Vite**. Misma idea que el repo de
-referencia (`alquilerDeAutos`), pero con las capas separadas en carpetas.
+Backend en **Python (Flask + SQLAlchemy + SQLite)**, frontend en **React + Vite**.
 
 ## Cómo correrlo
 
@@ -12,7 +11,7 @@ python -m venv . # crea el entorno virtual
 .\.venv\Scripts\Activate.ps1 # activa el entorno virtual
 pip install -r requirements.txt
 python app.py                # http://localhost:5000 (crea la base y carga datos de prueba)
-python -m pytest -v          # 10 tests de logística
+python -m pytest -v          # 11 tests de logística
 
 # Terminal 2 — frontend
 cd trabajo-practico/frontend
@@ -30,8 +29,9 @@ backend/
     schema.sql              definición SQL de referencia de las tablas
     datos_iniciales.py      1 CD, 2 locales, 4 productos, stock solo en el CD
   models/
-    orm.py                  modelos ORM y esquema relacional
-                            clases del dominio (Bulto, EstadoBulto, Sucursal, Producto)
+    base.py                 base declarativa compartida de SQLAlchemy
+    orm.py                  modelos ORM del resto del esquema relacional
+    contenedor.py           Contenedor: modelo de dominio y modelo SQLAlchemy unificados
   patrones/
     observer.py             ★ OBSERVER: Sujeto / Observador / Eventos
     factory_medio_pago.py   ★ FACTORY: esqueleto para que completes
@@ -47,20 +47,20 @@ frontend/src/pages/
 
 ## Qué ya está resuelto (y cómo defenderlo)
 
-**Ciclo de vida del bulto** (`models/bulto.py`): `PREPARADO → PRECINTADO → EN_TRANSITO → RECIBIDO →
+**Ciclo de vida del contenedor** (`models/contenedor.py`): `PREPARADO → PRECINTADO → EN_TRANSITO → RECIBIDO →
 VERIFICADO | RECHAZADO`. Las transiciones válidas están en una tabla (`TRANSICIONES`) y el propio
 objeto rechaza saltos (`cambiar_estado`). No se puede despachar sin precintar, ni recibir dos veces.
 
-**Trazabilidad inmutable**: cada cambio inserta una fila en `historial_bulto`. Dos triggers SQL
+**Trazabilidad inmutable**: cada cambio inserta una fila en `historial_contenedor`. Dos triggers SQL
 abortan cualquier `UPDATE` o `DELETE` sobre esa tabla → la inmutabilidad la garantiza la base,
 no solo el código.
 
 **Stock no disponible hasta verificar**: al despachar sale del CD; al local **no** entra nada hasta que
-*todos* los bultos del remito están en estado final. Entonces el remito pasa a `VERIFICADO` y solo
-se suma lo de los bultos verificados. Un bulto con precinto roto o con número distinto queda
+*todos* los contenedores del remito están en estado final. Entonces el remito pasa a `VERIFICADO` y solo
+se suma lo de los contenedores verificados. Un contenedor con precinto roto o con número distinto queda
 `RECHAZADO` y su mercadería nunca se vuelve vendible (aparece en el reporte de mermas).
 
-**Transacciones**: si el CD no tiene stock al despachar, el error hace rollback y el bulto queda
+**Transacciones**: si el CD no tiene stock al despachar, el error hace rollback y el contenedor queda
 `PRECINTADO` (hay un test que lo prueba).
 
 **Patrones**
@@ -79,8 +79,8 @@ Cuando tengas algo, mandámelo y lo corregimos.
 
 ### Paso 1 — Leer y entender lo hecho (antes de escribir nada)
 Abrí `logistica_service.py` y respondete:
-- ¿Por qué `crear_bulto` valida *todo* antes del `with self.db.transaccion()`?
-- ¿Qué pasaría si `StockObserver` sumara stock en `BULTO_DESPACHADO` en lugar de en `REMITO_VERIFICADO`?
+- ¿Por qué `crear_contenedor` valida *todo* antes del `with self.db.transaccion()`?
+- ¿Qué pasaría si `StockObserver` sumara stock en `CONTENEDOR_DESPACHADO` en lugar de en `REMITO_VERIFICADO`?
 - ¿Quién llama a `StockObserver.actualizar`? (no es `app.py` directamente)
 
 ### Paso 2 — ABM de catálogo (procesos 1 y 2) ✅

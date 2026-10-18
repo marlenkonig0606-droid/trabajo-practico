@@ -76,14 +76,14 @@ class StockObserver(Observador):
         self.stock = stock_service
 
     def actualizar(self, evento, datos):
-        if evento == Eventos.BULTO_DESPACHADO:
+        if evento == Eventos.CONTENEDOR_DESPACHADO:
             # Sale mercadería del CD
             for item in datos["items"]:
                 self.stock.restar(datos["origen_id"], item["producto_id"], item["cantidad"],
-                                  "DESPACHO", f"bulto {datos['bulto_id']}")
+                                  "DESPACHO", f"contenedor {datos['contenedor_id']}")
 
         elif evento == Eventos.REMITO_VERIFICADO:
-            # Recién ahora entra como DISPONIBLE en el local, y solo lo de bultos verificados
+            # Recién ahora entra como DISPONIBLE en el local, y solo lo de contenedores verificados
             for item in datos["items_verificados"]:
                 self.stock.sumar(datos["destino_id"], item["producto_id"], item["cantidad"],
                                  "RECEPCION", f"remito {datos['remito_numero']}")

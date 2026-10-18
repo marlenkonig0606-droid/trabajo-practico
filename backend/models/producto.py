@@ -30,4 +30,4 @@ class Producto:
     def __str__(self):
         return f"Producto(id={self.id}, codigo={self.codigo}, nombre={self.nombre}, "
 
-# TODO (vos): clases Categoria y Proveedor siguiendo el mismo estilo.
+

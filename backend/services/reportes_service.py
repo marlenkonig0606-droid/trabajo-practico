@@ -3,10 +3,10 @@ La consigna pide AL MENOS 4 reportes no triviales.
 Hay 2 hechos (ambos de logística). Te quedan los de ventas/stock (ver README, paso 6).
 """
 from database.conexion import BaseDeDatos
+from models.contenedor import Contenedor
 from models.orm import (
-    BultoORM,
-    DetalleBultoORM,
-    HistorialBultoORM,
+    DetalleContenedorORM,
+    HistorialContenedorORM,
     OrdenReposicionORM,
     ProductoORM,
     RemitoORM,
@@ -19,45 +19,45 @@ class ReportesService:
     def __init__(self):
         self.db = BaseDeDatos()
 
-    # ✅ HECHO: bultos rechazados y merma valorizada por rotura de precinto
-    def bultos_rechazados(self, desde=None, hasta=None):
+    # ✅ HECHO: contenedores rechazados y merma valorizada por rotura de precinto
+    def contenedores_rechazados(self, desde=None, hasta=None):
         motivo = (
-            select(HistorialBultoORM.observacion)
+            select(HistorialContenedorORM.observacion)
             .where(
-                HistorialBultoORM.bulto_id == BultoORM.id,
-                HistorialBultoORM.estado == "RECHAZADO",
+                HistorialContenedorORM.contenedor_id == Contenedor.id,
+                HistorialContenedorORM.estado == "RECHAZADO",
             )
-            .order_by(HistorialBultoORM.id)
+            .order_by(HistorialContenedorORM.id)
             .limit(1)
             .scalar_subquery()
         )
-        filtros = [BultoORM.estado == "RECHAZADO"]
+        filtros = [Contenedor.estado == "RECHAZADO"]
         if desde:
-            filtros.append(func.date(BultoORM.fecha_recepcion) >= func.date(desde))
+            filtros.append(func.date(Contenedor.fecha_recepcion) >= func.date(desde))
         if hasta:
-            filtros.append(func.date(BultoORM.fecha_recepcion) <= func.date(hasta))
+            filtros.append(func.date(Contenedor.fecha_recepcion) <= func.date(hasta))
 
         filas = self.db.sesion.execute(
             select(
-                BultoORM.id.label("bulto_id"),
-                BultoORM.precinto,
+                Contenedor.id.label("contenedor_id"),
+                Contenedor.precinto,
                 RemitoORM.numero.label("remito"),
                 SucursalORM.nombre.label("destino"),
-                BultoORM.fecha_recepcion,
+                Contenedor.fecha_recepcion,
                 motivo.label("motivo"),
-                func.sum(DetalleBultoORM.cantidad).label("unidades"),
+                func.sum(DetalleContenedorORM.cantidad).label("unidades"),
                 func.round(
-                    func.sum(DetalleBultoORM.cantidad * ProductoORM.precio_costo), 2
+                    func.sum(DetalleContenedorORM.cantidad * ProductoORM.precio_costo), 2
                 ).label("merma_valorizada"),
             )
-            .join(RemitoORM, RemitoORM.id == BultoORM.remito_id)
+            .join(RemitoORM, RemitoORM.id == Contenedor.remito_id)
             .join(OrdenReposicionORM, OrdenReposicionORM.id == RemitoORM.orden_id)
             .join(SucursalORM, SucursalORM.id == OrdenReposicionORM.destino_id)
-            .join(DetalleBultoORM, DetalleBultoORM.bulto_id == BultoORM.id)
-            .join(ProductoORM, ProductoORM.id == DetalleBultoORM.producto_id)
+            .join(DetalleContenedorORM, DetalleContenedorORM.contenedor_id == Contenedor.id)
+            .join(ProductoORM, ProductoORM.id == DetalleContenedorORM.producto_id)
             .where(*filtros)
-            .group_by(BultoORM.id)
-            .order_by(BultoORM.fecha_recepcion.desc())
+            .group_by(Contenedor.id)
+            .order_by(Contenedor.fecha_recepcion.desc())
         ).mappings()
         return [dict(fila) for fila in filas]
 
@@ -66,12 +66,12 @@ class ReportesService:
         filas = self.db.sesion.execute(
             select(
                 SucursalORM.nombre.label("local"),
-                func.count().label("bultos"),
+                func.count().label("contenedores"),
                 func.round(
                     func.avg(
                         (
-                            func.julianday(BultoORM.fecha_recepcion)
-                            - func.julianday(BultoORM.fecha_despacho)
+                            func.julianday(Contenedor.fecha_recepcion)
+                            - func.julianday(Contenedor.fecha_despacho)
                         )
                         * 24
                     ),
@@ -80,17 +80,17 @@ class ReportesService:
             )
             .join(OrdenReposicionORM, OrdenReposicionORM.destino_id == SucursalORM.id)
             .join(RemitoORM, RemitoORM.orden_id == OrdenReposicionORM.id)
-            .join(BultoORM, BultoORM.remito_id == RemitoORM.id)
+            .join(Contenedor, Contenedor.remito_id == RemitoORM.id)
             .where(
-                BultoORM.fecha_despacho.is_not(None),
-                BultoORM.fecha_recepcion.is_not(None),
+                Contenedor.fecha_despacho.is_not(None),
+                Contenedor.fecha_recepcion.is_not(None),
             )
             .group_by(SucursalORM.id)
             .order_by(func.round(
                 func.avg(
                     (
-                        func.julianday(BultoORM.fecha_recepcion)
-                        - func.julianday(BultoORM.fecha_despacho)
+                        func.julianday(Contenedor.fecha_recepcion)
+                        - func.julianday(Contenedor.fecha_despacho)
                     )
                     * 24
                 ),

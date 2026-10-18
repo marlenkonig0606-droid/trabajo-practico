@@ -31,13 +31,13 @@ export const api = {
 
   ordenes: () => pedir('GET', '/ordenes'),
   crearOrden: (destino_id, items) => pedir('POST', '/ordenes', { destino_id, items }),
-  crearBulto: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/bultos`, { items }),
-  precintar: (id, precinto) => pedir('POST', `/bultos/${id}/precintar`, { precinto }),
-  despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
-  recibir: (id, precinto, intacto) => pedir('POST', `/bultos/${id}/recibir`, { precinto, intacto }),
-  historial: (id) => pedir('GET', `/bultos/${id}/historial`),
+  crearContenedor: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/contenedores`, { items }),
+  precintar: (id, precinto) => pedir('POST', `/contenedores/${id}/precintar`, { precinto }),
+  despachar: (id) => pedir('POST', `/contenedores/${id}/despachar`),
+  recibir: (id, precinto, intacto) => pedir('POST', `/contenedores/${id}/recibir`, { precinto, intacto }),
+  historial: (id) => pedir('GET', `/contenedores/${id}/historial`),
 
-  reporteRechazados: () => pedir('GET', '/reportes/bultos-rechazados'),
+  reporteRechazados: () => pedir('GET', '/reportes/contenedores-rechazados'),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
   // TODO (vos): ventas, devoluciones y resto de reportes
 }

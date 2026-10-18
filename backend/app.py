@@ -158,34 +158,34 @@ def crear_app():
         d = request.get_json()
         return jsonify(logistica.crear_orden(d["destino_id"], d["items"])), 201
 
-    @app.post("/api/ordenes/<int:orden_id>/bultos")
-    def crear_bulto(orden_id):
-        return jsonify(logistica.crear_bulto(orden_id, request.get_json()["items"])), 201
+    @app.post("/api/ordenes/<int:orden_id>/contenedores")
+    def crear_contenedor(orden_id):
+        return jsonify(logistica.crear_contenedor(orden_id, request.get_json()["items"])), 201
 
-    @app.post("/api/bultos/<int:bulto_id>/precintar")
-    def precintar(bulto_id):
-        return jsonify(logistica.precintar(bulto_id, request.get_json().get("precinto")))
+    @app.post("/api/contenedores/<int:contenedor_id>/precintar")
+    def precintar(contenedor_id):
+        return jsonify(logistica.precintar(contenedor_id, request.get_json().get("precinto")))
 
-    @app.post("/api/bultos/<int:bulto_id>/despachar")
-    def despachar(bulto_id):
-        return jsonify(logistica.despachar(bulto_id))
+    @app.post("/api/contenedores/<int:contenedor_id>/despachar")
+    def despachar(contenedor_id):
+        return jsonify(logistica.despachar(contenedor_id))
 
-    @app.post("/api/bultos/<int:bulto_id>/recibir")
-    def recibir(bulto_id):
+    @app.post("/api/contenedores/<int:contenedor_id>/recibir")
+    def recibir(contenedor_id):
         d = request.get_json()
-        return jsonify(logistica.recibir(bulto_id, d.get("precinto"), bool(d.get("intacto"))))
+        return jsonify(logistica.recibir(contenedor_id, d.get("precinto"), bool(d.get("intacto"))))
 
-    @app.get("/api/bultos/<int:bulto_id>/historial")
-    def historial(bulto_id):
-        return jsonify(logistica.historial(bulto_id))
+    @app.get("/api/contenedores/<int:contenedor_id>/historial")
+    def historial(contenedor_id):
+        return jsonify(logistica.historial(contenedor_id))
 
     # ---------- ventas (TODO) ----------
     # @app.post("/api/ventas") ...  usar VentasService
 
     # ---------- reportes ----------
-    @app.get("/api/reportes/bultos-rechazados")
+    @app.get("/api/reportes/contenedores-rechazados")
     def rep_rechazados():
-        return jsonify(reportes.bultos_rechazados(request.args.get("desde"),
+        return jsonify(reportes.contenedores_rechazados(request.args.get("desde"),
                                                   request.args.get("hasta")))
 
     @app.get("/api/reportes/transito")

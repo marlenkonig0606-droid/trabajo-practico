@@ -38,17 +38,17 @@ class BaseDeDatos:
     def _crear_triggers_historial(self):
         with self.engine.begin() as connection:
             connection.exec_driver_sql(
-                """CREATE TRIGGER IF NOT EXISTS historial_sin_update
-                   BEFORE UPDATE ON historial_bulto
+                """CREATE TRIGGER IF NOT EXISTS historial_contenedor_sin_update
+                   BEFORE UPDATE ON historial_contenedor
                    BEGIN
-                       SELECT RAISE(ABORT, 'El historial de bultos es inmutable');
+                       SELECT RAISE(ABORT, 'El historial de contenedores es inmutable');
                    END"""
             )
             connection.exec_driver_sql(
-                """CREATE TRIGGER IF NOT EXISTS historial_sin_delete
-                   BEFORE DELETE ON historial_bulto
+                """CREATE TRIGGER IF NOT EXISTS historial_contenedor_sin_delete
+                   BEFORE DELETE ON historial_contenedor
                    BEGIN
-                       SELECT RAISE(ABORT, 'El historial de bultos es inmutable');
+                       SELECT RAISE(ABORT, 'El historial de contenedores es inmutable');
                    END"""
             )
 

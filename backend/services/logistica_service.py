@@ -1,7 +1,7 @@
 """
 Procesos obligatorios 3, 4, 5 y 6:
   3. Orden de reposición CD -> local
-  4. Empaquetar en bultos con remito y precinto
+  4. Empaquetar en contenedores con remito y precinto
   5. Despachar
   6. Recibir y verificar precinto
 """
@@ -11,12 +11,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import aliased
 
 from database.conexion import BaseDeDatos
-from models.bulto import Bulto, EstadoBulto
+from models.contenedor import Contenedor, EstadoContenedor
 from models.orm import (
-    BultoORM,
-    DetalleBultoORM,
+    DetalleContenedorORM,
     DetalleOrdenORM,
-    HistorialBultoORM,
+    HistorialContenedorORM,
     OrdenReposicionORM,
     ProductoORM,
     RemitoORM,
@@ -97,15 +96,15 @@ class LogisticaService(Sujeto):
                 DetalleOrdenORM.producto_id,
                 ProductoORM.nombre,
                 DetalleOrdenORM.cantidad,
-                func.coalesce(func.sum(DetalleBultoORM.cantidad), 0).label("empaquetado"),
+                func.coalesce(func.sum(DetalleContenedorORM.cantidad), 0).label("empaquetado"),
             )
             .join(ProductoORM, ProductoORM.id == DetalleOrdenORM.producto_id)
             .outerjoin(RemitoORM, RemitoORM.orden_id == DetalleOrdenORM.orden_id)
-            .outerjoin(BultoORM, BultoORM.remito_id == RemitoORM.id)
+            .outerjoin(Contenedor, Contenedor.remito_id == RemitoORM.id)
             .outerjoin(
-                DetalleBultoORM,
-                (DetalleBultoORM.bulto_id == BultoORM.id)
-                & (DetalleBultoORM.producto_id == DetalleOrdenORM.producto_id),
+                DetalleContenedorORM,
+                (DetalleContenedorORM.contenedor_id == Contenedor.id)
+                & (DetalleContenedorORM.producto_id == DetalleOrdenORM.producto_id),
             )
             .where(DetalleOrdenORM.orden_id == orden_id)
             .group_by(
@@ -115,7 +114,7 @@ class LogisticaService(Sujeto):
             )
         ).mappings()
         resultado["items"] = [dict(item) for item in items]
-        resultado["bultos"] = [bulto.to_dict() for bulto in self._bultos_de_orden(orden_id)]
+        resultado["contenedores"] = [contenedor.to_dict() for contenedor in self._contenedores_de_orden(orden_id)]
         return resultado
 
     def listar_ordenes(self):
@@ -124,14 +123,14 @@ class LogisticaService(Sujeto):
         )
         return [self.obtener_orden(orden_id) for orden_id in ids]
 
-    def crear_bulto(self, orden_id, items):
+    def crear_contenedor(self, orden_id, items):
         orden = self.obtener_orden(orden_id)
         if orden["estado"] not in ("PENDIENTE", "EN_PREPARACION"):
-            raise ReglaNegocioError("Solo se pueden armar bultos de órdenes pendientes")
+            raise ReglaNegocioError("Solo se pueden armar contenedores de órdenes pendientes")
         if orden["remito_estado"] not in (None, "ABIERTO"):
-            raise ReglaNegocioError("El remito ya fue despachado: no se le pueden agregar bultos")
+            raise ReglaNegocioError("El remito ya fue despachado: no se le pueden agregar contenedores")
         if not items:
-            raise ReglaNegocioError("El bulto no puede estar vacío")
+            raise ReglaNegocioError("El contenedor no puede estar vacío")
         self._validar_items(items)
 
         pendientes = {item["producto_id"]: item["cantidad"] - item["empaquetado"]
@@ -153,84 +152,84 @@ class LogisticaService(Sujeto):
                 sesion.add(remito)
                 sesion.flush()
                 remito_id = remito.id
-            bulto = BultoORM(remito_id=remito_id)
-            sesion.add(bulto)
+            contenedor = Contenedor(remito_id=remito_id, items=items)
+            sesion.add(contenedor)
             sesion.flush()
-            bulto_id = bulto.id
+            contenedor_id = contenedor.id
             sesion.add_all([
-                DetalleBultoORM(
-                    bulto_id=bulto_id,
+                DetalleContenedorORM(
+                    contenedor_id=contenedor_id,
                     producto_id=item["producto_id"],
                     cantidad=item["cantidad"],
                 )
                 for item in items
             ])
-            self._registrar_historial(bulto_id, EstadoBulto.PREPARADO, "Bulto armado en CD")
+            self._registrar_historial(contenedor_id, EstadoContenedor.PREPARADO, "Contenedor armado en CD")
             sesion.get(OrdenReposicionORM, orden_id).estado = "EN_PREPARACION"
-        return self.obtener_bulto(bulto_id).to_dict()
+        return self.obtener_contenedor(contenedor_id).to_dict()
 
-    def precintar(self, bulto_id, precinto):
+    def precintar(self, contenedor_id, precinto):
         precinto = (precinto or "").strip()
         if not precinto:
             raise ReglaNegocioError("Debe indicar el número de precinto")
         if self.db.sesion.scalar(
-            select(BultoORM.id).where(BultoORM.precinto == precinto)
+            select(Contenedor.id).where(Contenedor.precinto == precinto)
         ):
-            raise ReglaNegocioError(f"El precinto {precinto} ya fue usado en otro bulto")
+            raise ReglaNegocioError(f"El precinto {precinto} ya fue usado en otro contenedor")
 
-        bulto = self.obtener_bulto(bulto_id)
+        contenedor = self.obtener_contenedor(contenedor_id)
         with self.db.transaccion() as sesion:
-            self._transicionar(bulto, EstadoBulto.PRECINTADO, f"Precinto {precinto}")
-            sesion.get(BultoORM, bulto_id).precinto = precinto
-        return self.obtener_bulto(bulto_id).to_dict()
+            self._transicionar(contenedor, EstadoContenedor.PRECINTADO, f"Precinto {precinto}")
+            contenedor.precinto = precinto
+        return self.obtener_contenedor(contenedor_id).to_dict()
 
-    def despachar(self, bulto_id):
-        bulto = self.obtener_bulto(bulto_id)
-        orden = self._orden_de_remito(bulto.remito_id)
+    def despachar(self, contenedor_id):
+        contenedor = self.obtener_contenedor(contenedor_id)
+        orden = self._orden_de_remito(contenedor.remito_id)
 
         with self.db.transaccion() as sesion:
-            self._transicionar(bulto, EstadoBulto.EN_TRANSITO, "Despachado desde CD")
-            sesion.get(BultoORM, bulto_id).fecha_despacho = datetime.now().strftime(
+            self._transicionar(contenedor, EstadoContenedor.EN_TRANSITO, "Despachado desde CD")
+            contenedor.fecha_despacho = datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
-            sesion.get(RemitoORM, bulto.remito_id).estado = "DESPACHADO"
+            sesion.get(RemitoORM, contenedor.remito_id).estado = "DESPACHADO"
             sesion.get(OrdenReposicionORM, orden["id"]).estado = "DESPACHADA"
-            self.notificar(Eventos.BULTO_DESPACHADO, {
-                "bulto_id": bulto_id,
+            self.notificar(Eventos.CONTENEDOR_DESPACHADO, {
+                "contenedor_id": contenedor_id,
                 "origen_id": orden["origen_id"],
-                "items": bulto.items,
+                "items": contenedor.items,
             })
-        return self.obtener_bulto(bulto_id).to_dict()
+        return self.obtener_contenedor(contenedor_id).to_dict()
 
-    def recibir(self, bulto_id, precinto_leido, precinto_intacto):
-        """Verifica el sello leído en el local y define si el bulto se acepta."""
-        bulto = self.obtener_bulto(bulto_id)
+    def recibir(self, contenedor_id, precinto_leido, precinto_intacto):
+        """Verifica el sello leído en el local y define si el contenedor se acepta."""
+        contenedor = self.obtener_contenedor(contenedor_id)
 
         with self.db.transaccion() as sesion:
-            self._transicionar(bulto, EstadoBulto.RECIBIDO, "Recibido en local")
-            sesion.get(BultoORM, bulto_id).fecha_recepcion = datetime.now().strftime(
+            self._transicionar(contenedor, EstadoContenedor.RECIBIDO, "Recibido en local")
+            contenedor.fecha_recepcion = datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
 
-            coincide = (precinto_leido or "").strip() == bulto.precinto
+            coincide = (precinto_leido or "").strip() == contenedor.precinto
             if coincide and precinto_intacto:
-                self._transicionar(bulto, EstadoBulto.VERIFICADO, "Precinto OK")
+                self._transicionar(contenedor, EstadoContenedor.VERIFICADO, "Precinto OK")
             else:
                 motivo = "Precinto roto" if not precinto_intacto else \
                          f"Precinto no coincide (leído {precinto_leido})"
-                self._transicionar(bulto, EstadoBulto.RECHAZADO, motivo)
-                self.notificar(Eventos.BULTO_RECHAZADO, {"bulto_id": bulto_id, "motivo": motivo})
+                self._transicionar(contenedor, EstadoContenedor.RECHAZADO, motivo)
+                self.notificar(Eventos.CONTENEDOR_RECHAZADO, {"contenedor_id": contenedor_id, "motivo": motivo})
 
-            self._cerrar_remito_si_corresponde(bulto.remito_id)
-        return self.obtener_bulto(bulto_id).to_dict()
+            self._cerrar_remito_si_corresponde(contenedor.remito_id)
+        return self.obtener_contenedor(contenedor_id).to_dict()
 
     def _cerrar_remito_si_corresponde(self, remito_id):
-        """El stock entra al local solo cuando todos los bultos tienen estado final."""
-        bultos = self._bultos_de_remito(remito_id)
-        if not all(bulto.esta_finalizado() for bulto in bultos):
+        """El stock entra al local solo cuando todos los contenedores tienen estado final."""
+        contenedores = self._contenedores_de_remito(remito_id)
+        if not all(contenedor.esta_finalizado() for contenedor in contenedores):
             return
 
-        verificados = [bulto for bulto in bultos if bulto.estado == EstadoBulto.VERIFICADO]
+        verificados = [contenedor for contenedor in contenedores if contenedor.estado == EstadoContenedor.VERIFICADO]
         estado_remito = "VERIFICADO" if verificados else "RECHAZADO"
         self.db.sesion.get(RemitoORM, remito_id).estado = estado_remito
         orden = self._orden_de_remito(remito_id)
@@ -241,72 +240,62 @@ class LogisticaService(Sujeto):
                 "remito_numero": orden["remito_numero"],
                 "destino_id": orden["destino_id"],
                 "items_verificados": [
-                    item for bulto in verificados for item in bulto.items
+                    item for contenedor in verificados for item in contenedor.items
                 ],
             })
 
-    def obtener_bulto(self, bulto_id):
-        fila = self.db.sesion.get(BultoORM, bulto_id)
-        if fila is None:
-            raise NoEncontradoError(f"No existe el bulto {bulto_id}")
+    def obtener_contenedor(self, contenedor_id):
+        contenedor = self.db.sesion.get(Contenedor, contenedor_id)
+        if contenedor is None:
+            raise NoEncontradoError(f"No existe el contenedor {contenedor_id}")
         items = self.db.sesion.execute(
-            select(DetalleBultoORM.producto_id, DetalleBultoORM.cantidad)
-            .where(DetalleBultoORM.bulto_id == bulto_id)
+            select(DetalleContenedorORM.producto_id, DetalleContenedorORM.cantidad)
+            .where(DetalleContenedorORM.contenedor_id == contenedor_id)
         ).mappings()
-        return Bulto.desde_fila(
-            {
-                "id": fila.id,
-                "remito_id": fila.remito_id,
-                "estado": fila.estado,
-                "precinto": fila.precinto,
-                "fecha_despacho": fila.fecha_despacho,
-                "fecha_recepcion": fila.fecha_recepcion,
-            },
-            [dict(item) for item in items],
-        )
+        contenedor.items = [dict(item) for item in items]
+        return contenedor
 
-    def historial(self, bulto_id):
-        self.obtener_bulto(bulto_id)
+    def historial(self, contenedor_id):
+        self.obtener_contenedor(contenedor_id)
         filas = self.db.sesion.execute(
             select(
-                HistorialBultoORM.estado,
-                HistorialBultoORM.fecha,
-                HistorialBultoORM.observacion,
+                HistorialContenedorORM.estado,
+                HistorialContenedorORM.fecha,
+                HistorialContenedorORM.observacion,
             )
-            .where(HistorialBultoORM.bulto_id == bulto_id)
-            .order_by(HistorialBultoORM.id)
+            .where(HistorialContenedorORM.contenedor_id == contenedor_id)
+            .order_by(HistorialContenedorORM.id)
         ).mappings()
         return [dict(fila) for fila in filas]
 
-    def _transicionar(self, bulto: Bulto, nuevo_estado, observacion):
+    def _transicionar(self, contenedor: Contenedor, nuevo_estado, observacion):
         try:
-            bulto.cambiar_estado(nuevo_estado)
+            contenedor.cambiar_estado(nuevo_estado)
         except ValueError as error:
             raise ReglaNegocioError(str(error)) from error
 
-        self.db.sesion.get(BultoORM, bulto.id).estado = nuevo_estado
-        self._registrar_historial(bulto.id, nuevo_estado, observacion)
+        self._registrar_historial(contenedor.id, nuevo_estado, observacion)
 
-    def _registrar_historial(self, bulto_id, estado, observacion):
+    def _registrar_historial(self, contenedor_id, estado, observacion):
         self.db.sesion.add(
-            HistorialBultoORM(
-                bulto_id=bulto_id,
+            HistorialContenedorORM(
+                contenedor_id=contenedor_id,
                 estado=estado,
                 observacion=observacion,
             )
         )
 
-    def _bultos_de_remito(self, remito_id):
-        bulto_ids = self.db.sesion.scalars(
-            select(BultoORM.id).where(BultoORM.remito_id == remito_id).order_by(BultoORM.id)
+    def _contenedores_de_remito(self, remito_id):
+        contenedor_ids = self.db.sesion.scalars(
+            select(Contenedor.id).where(Contenedor.remito_id == remito_id).order_by(Contenedor.id)
         )
-        return [self.obtener_bulto(bulto_id) for bulto_id in bulto_ids]
+        return [self.obtener_contenedor(contenedor_id) for contenedor_id in contenedor_ids]
 
-    def _bultos_de_orden(self, orden_id):
+    def _contenedores_de_orden(self, orden_id):
         remito_id = self.db.sesion.scalar(
             select(RemitoORM.id).where(RemitoORM.orden_id == orden_id)
         )
-        return self._bultos_de_remito(remito_id) if remito_id else []
+        return self._contenedores_de_remito(remito_id) if remito_id else []
 
     def _orden_de_remito(self, remito_id):
         fila = self.db.sesion.execute(

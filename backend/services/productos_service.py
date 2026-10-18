@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from database.conexion import BaseDeDatos
 from models.orm import (
     CategoriaORM,
-    DetalleBultoORM,
+    DetalleContenedorORM,
     DetalleOrdenORM,
     MovimientoStockORM,
     ProductoORM,
@@ -76,7 +76,7 @@ class ProductosService:
             (StockORM.producto_id, "stock"),
             (MovimientoStockORM.producto_id, "movimientos de stock"),
             (DetalleOrdenORM.producto_id, "órdenes de reposición"),
-            (DetalleBultoORM.producto_id, "bultos"),
+            (DetalleContenedorORM.producto_id, "contenedores"),
         )
         for columna, descripcion in referencias:
             if self.db.sesion.scalar(select(columna).where(columna == producto_id).limit(1)):

@@ -7,11 +7,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
-
-class Base(DeclarativeBase):
-    pass
+from models.base import Base
 
 
 class SucursalORM(Base):
@@ -119,33 +117,25 @@ class RemitoORM(Base):
     estado: Mapped[str] = mapped_column(String, nullable=False, default="ABIERTO")
 
 
-class BultoORM(Base):
-    __tablename__ = "bulto"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    remito_id: Mapped[int] = mapped_column(ForeignKey("remito.id"), nullable=False)
-    precinto: Mapped[str | None] = mapped_column(String, unique=True)
-    estado: Mapped[str] = mapped_column(String, nullable=False, default="PREPARADO")
-    fecha_despacho: Mapped[str | None] = mapped_column(String)
-    fecha_recepcion: Mapped[str | None] = mapped_column(String)
-
-
-class DetalleBultoORM(Base):
-    __tablename__ = "detalle_bulto"
+class DetalleContenedorORM(Base):
+    __tablename__ = "detalle_contenedor"
     __table_args__ = (CheckConstraint("cantidad > 0"),)
 
-    bulto_id: Mapped[int] = mapped_column(ForeignKey("bulto.id"), primary_key=True)
+    contenedor_id: Mapped[int] = mapped_column(ForeignKey("contenedor.id"), primary_key=True)
     producto_id: Mapped[int] = mapped_column(ForeignKey("producto.id"), primary_key=True)
     cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
-class HistorialBultoORM(Base):
-    __tablename__ = "historial_bulto"
+class HistorialContenedorORM(Base):
+    __tablename__ = "historial_contenedor"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    bulto_id: Mapped[int] = mapped_column(ForeignKey("bulto.id"), nullable=False)
+    contenedor_id: Mapped[int] = mapped_column(ForeignKey("contenedor.id"), nullable=False)
     estado: Mapped[str] = mapped_column(String, nullable=False)
     fecha: Mapped[str] = mapped_column(
         String, nullable=False, server_default="(datetime('now', 'localtime'))"
     )
     observacion: Mapped[str | None] = mapped_column(Text)
+
+
+from models.contenedor import Contenedor

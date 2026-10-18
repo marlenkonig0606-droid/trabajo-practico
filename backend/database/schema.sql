@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS detalle_orden (
     PRIMARY KEY (orden_id, producto_id)
 );
 
--- ---------- 4. Remito y bultos ----------
+-- ---------- 4. Remito y contenedores ----------
 CREATE TABLE IF NOT EXISTS remito (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     numero    TEXT NOT NULL UNIQUE,
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS remito (
               CHECK (estado IN ('ABIERTO', 'DESPACHADO', 'VERIFICADO', 'RECHAZADO'))
 );
 
-CREATE TABLE IF NOT EXISTS bulto (
+CREATE TABLE IF NOT EXISTS contenedor (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     remito_id       INTEGER NOT NULL REFERENCES remito(id),
     precinto        TEXT UNIQUE,            -- se asigna al precintar
@@ -90,32 +90,32 @@ CREATE TABLE IF NOT EXISTS bulto (
     fecha_recepcion TEXT
 );
 
-CREATE TABLE IF NOT EXISTS detalle_bulto (
-    bulto_id     INTEGER NOT NULL REFERENCES bulto(id),
+CREATE TABLE IF NOT EXISTS detalle_contenedor (
+    contenedor_id     INTEGER NOT NULL REFERENCES contenedor(id),
     producto_id  INTEGER NOT NULL REFERENCES producto(id),
     cantidad     INTEGER NOT NULL CHECK (cantidad > 0),
-    PRIMARY KEY (bulto_id, producto_id)
+    PRIMARY KEY (contenedor_id, producto_id)
 );
 
 -- Trazabilidad INMUTABLE: solo se puede insertar.
-CREATE TABLE IF NOT EXISTS historial_bulto (
+CREATE TABLE IF NOT EXISTS historial_contenedor (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    bulto_id     INTEGER NOT NULL REFERENCES bulto(id),
+    contenedor_id     INTEGER NOT NULL REFERENCES contenedor(id),
     estado       TEXT NOT NULL,
     fecha        TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     observacion  TEXT
 );
 
-CREATE TRIGGER IF NOT EXISTS historial_sin_update
-BEFORE UPDATE ON historial_bulto
+CREATE TRIGGER IF NOT EXISTS historial_contenedor_sin_update
+BEFORE UPDATE ON historial_contenedor
 BEGIN
-    SELECT RAISE(ABORT, 'El historial de bultos es inmutable');
+    SELECT RAISE(ABORT, 'El historial de contenedores es inmutable');
 END;
 
-CREATE TRIGGER IF NOT EXISTS historial_sin_delete
-BEFORE DELETE ON historial_bulto
+CREATE TRIGGER IF NOT EXISTS historial_contenedor_sin_delete
+BEFORE DELETE ON historial_contenedor
 BEGIN
-    SELECT RAISE(ABORT, 'El historial de bultos es inmutable');
+    SELECT RAISE(ABORT, 'El historial de contenedores es inmutable');
 END;
 
 -- ---------- 7. Ventas (TODO: completar vos) ----------
