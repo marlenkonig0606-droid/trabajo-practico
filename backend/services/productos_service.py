@@ -4,15 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from database.conexion import BaseDeDatos
-from models.orm import (
-    CategoriaORM,
-    DetalleContenedorORM,
-    DetalleOrdenORM,
-    MovimientoStockORM,
-    ProductoORM,
-    ProveedorORM,
-    StockORM,
-)
+from models.categoria import Categoria
+from models.contenedor import DetalleContenedor
+from models.orden_reposicion import DetalleOrden
+from models.producto import Producto
+from models.proveedor import Proveedor
+from models.stock import MovimientoStock, Stock
 from services.excepciones import NoEncontradoError, ReglaNegocioError
 
 
@@ -30,22 +27,22 @@ class ProductosService:
 
     def listar(self):
         productos = self.db.sesion.scalars(
-            select(ProductoORM).order_by(ProductoORM.nombre, ProductoORM.id)
+            select(Producto).order_by(Producto.nombre, Producto.id)
         )
-        return [self._serializar(producto) for producto in productos]
+        return [producto.to_dict() for producto in productos]
 
     def obtener(self, producto_id):
-        producto = self.db.sesion.get(ProductoORM, producto_id)
+        producto = self.db.sesion.get(Producto, producto_id)
         if producto is None:
             raise NoEncontradoError(f"No existe el producto {producto_id}")
-        return self._serializar(producto)
+        return producto.to_dict()
 
     def crear(self, datos):
         valores = self._validar_datos(datos)
         self._validar_referencias(valores)
         self._validar_codigo(valores["codigo"])
 
-        producto = ProductoORM(**valores)
+        producto = Producto(**valores)
         try:
             with self.db.transaccion() as sesion:
                 sesion.add(producto)
@@ -63,7 +60,7 @@ class ProductosService:
 
         try:
             with self.db.transaccion() as sesion:
-                producto = sesion.get(ProductoORM, producto_id)
+                producto = sesion.get(Producto, producto_id)
                 for campo, valor in valores.items():
                     setattr(producto, campo, valor)
         except IntegrityError as error:
@@ -73,10 +70,10 @@ class ProductosService:
     def eliminar(self, producto_id):
         self._obtener_modelo(producto_id)
         referencias = (
-            (StockORM.producto_id, "stock"),
-            (MovimientoStockORM.producto_id, "movimientos de stock"),
-            (DetalleOrdenORM.producto_id, "órdenes de reposición"),
-            (DetalleContenedorORM.producto_id, "contenedores"),
+            (Stock.producto_id, "stock"),
+            (MovimientoStock.producto_id, "movimientos de stock"),
+            (DetalleOrden.producto_id, "órdenes de reposición"),
+            (DetalleContenedor.producto_id, "contenedores"),
         )
         for columna, descripcion in referencias:
             if self.db.sesion.scalar(select(columna).where(columna == producto_id).limit(1)):
@@ -86,7 +83,7 @@ class ProductosService:
 
         try:
             with self.db.transaccion() as sesion:
-                sesion.delete(sesion.get(ProductoORM, producto_id))
+                sesion.delete(sesion.get(Producto, producto_id))
         except IntegrityError as error:
             raise ReglaNegocioError(
                 "No se puede eliminar el producto porque tiene registros asociados"
@@ -94,7 +91,7 @@ class ProductosService:
         return {"mensaje": f"Producto {producto_id} eliminado"}
 
     def _obtener_modelo(self, producto_id):
-        producto = self.db.sesion.get(ProductoORM, producto_id)
+        producto = self.db.sesion.get(Producto, producto_id)
         if producto is None:
             raise NoEncontradoError(f"No existe el producto {producto_id}")
         return producto
@@ -159,28 +156,15 @@ class ProductosService:
         return float(valor)
 
     def _validar_referencias(self, valores):
-        if self.db.sesion.get(CategoriaORM, valores["categoria_id"]) is None:
+        if self.db.sesion.get(Categoria, valores["categoria_id"]) is None:
             raise NoEncontradoError(f"No existe la categoría {valores['categoria_id']}")
         proveedor_id = valores["proveedor_id"]
-        if proveedor_id is not None and self.db.sesion.get(ProveedorORM, proveedor_id) is None:
+        if proveedor_id is not None and self.db.sesion.get(Proveedor, proveedor_id) is None:
             raise NoEncontradoError(f"No existe el proveedor {proveedor_id}")
 
     def _validar_codigo(self, codigo, excluir_id=None):
-        consulta = select(ProductoORM.id).where(ProductoORM.codigo == codigo)
+        consulta = select(Producto.id).where(Producto.codigo == codigo)
         if excluir_id is not None:
-            consulta = consulta.where(ProductoORM.id != excluir_id)
+            consulta = consulta.where(Producto.id != excluir_id)
         if self.db.sesion.scalar(consulta.limit(1)) is not None:
             raise ReglaNegocioError(f"Ya existe un producto con el código '{codigo}'")
-
-    @staticmethod
-    def _serializar(producto):
-        return {
-            "id": producto.id,
-            "codigo": producto.codigo,
-            "nombre": producto.nombre,
-            "categoria_id": producto.categoria_id,
-            "proveedor_id": producto.proveedor_id,
-            "precio_costo": producto.precio_costo,
-            "precio_venta": producto.precio_venta,
-            "stock_minimo": producto.stock_minimo,
-        }

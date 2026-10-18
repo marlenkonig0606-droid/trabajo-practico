@@ -3,15 +3,10 @@ La consigna pide AL MENOS 4 reportes no triviales.
 Hay 2 hechos (ambos de logística). Te quedan los de ventas/stock (ver README, paso 6).
 """
 from database.conexion import BaseDeDatos
-from models.contenedor import Contenedor
-from models.orm import (
-    DetalleContenedorORM,
-    HistorialContenedorORM,
-    OrdenReposicionORM,
-    ProductoORM,
-    RemitoORM,
-    SucursalORM,
-)
+from models.contenedor import Contenedor, DetalleContenedor, HistorialContenedor
+from models.orden_reposicion import OrdenReposicion, Remito
+from models.producto import Producto
+from models.sucursal import Sucursal
 from sqlalchemy import func, select
 
 
@@ -22,12 +17,12 @@ class ReportesService:
     # ✅ HECHO: contenedores rechazados y merma valorizada por rotura de precinto
     def contenedores_rechazados(self, desde=None, hasta=None):
         motivo = (
-            select(HistorialContenedorORM.observacion)
+            select(HistorialContenedor.observacion)
             .where(
-                HistorialContenedorORM.contenedor_id == Contenedor.id,
-                HistorialContenedorORM.estado == "RECHAZADO",
+                HistorialContenedor.contenedor_id == Contenedor.id,
+                HistorialContenedor.estado == "RECHAZADO",
             )
-            .order_by(HistorialContenedorORM.id)
+            .order_by(HistorialContenedor.id)
             .limit(1)
             .scalar_subquery()
         )
@@ -41,20 +36,20 @@ class ReportesService:
             select(
                 Contenedor.id.label("contenedor_id"),
                 Contenedor.precinto,
-                RemitoORM.numero.label("remito"),
-                SucursalORM.nombre.label("destino"),
+                Remito.numero.label("remito"),
+                Sucursal.nombre.label("destino"),
                 Contenedor.fecha_recepcion,
                 motivo.label("motivo"),
-                func.sum(DetalleContenedorORM.cantidad).label("unidades"),
+                func.sum(DetalleContenedor.cantidad).label("unidades"),
                 func.round(
-                    func.sum(DetalleContenedorORM.cantidad * ProductoORM.precio_costo), 2
+                    func.sum(DetalleContenedor.cantidad * Producto.precio_costo), 2
                 ).label("merma_valorizada"),
             )
-            .join(RemitoORM, RemitoORM.id == Contenedor.remito_id)
-            .join(OrdenReposicionORM, OrdenReposicionORM.id == RemitoORM.orden_id)
-            .join(SucursalORM, SucursalORM.id == OrdenReposicionORM.destino_id)
-            .join(DetalleContenedorORM, DetalleContenedorORM.contenedor_id == Contenedor.id)
-            .join(ProductoORM, ProductoORM.id == DetalleContenedorORM.producto_id)
+            .join(Remito, Remito.id == Contenedor.remito_id)
+            .join(OrdenReposicion, OrdenReposicion.id == Remito.orden_id)
+            .join(Sucursal, Sucursal.id == OrdenReposicion.destino_id)
+            .join(DetalleContenedor, DetalleContenedor.contenedor_id == Contenedor.id)
+            .join(Producto, Producto.id == DetalleContenedor.producto_id)
             .where(*filtros)
             .group_by(Contenedor.id)
             .order_by(Contenedor.fecha_recepcion.desc())
@@ -65,7 +60,7 @@ class ReportesService:
     def tiempo_promedio_transito(self):
         filas = self.db.sesion.execute(
             select(
-                SucursalORM.nombre.label("local"),
+                Sucursal.nombre.label("local"),
                 func.count().label("contenedores"),
                 func.round(
                     func.avg(
@@ -78,14 +73,14 @@ class ReportesService:
                     2,
                 ).label("horas_promedio"),
             )
-            .join(OrdenReposicionORM, OrdenReposicionORM.destino_id == SucursalORM.id)
-            .join(RemitoORM, RemitoORM.orden_id == OrdenReposicionORM.id)
-            .join(Contenedor, Contenedor.remito_id == RemitoORM.id)
+            .join(OrdenReposicion, OrdenReposicion.destino_id == Sucursal.id)
+            .join(Remito, Remito.orden_id == OrdenReposicion.id)
+            .join(Contenedor, Contenedor.remito_id == Remito.id)
             .where(
                 Contenedor.fecha_despacho.is_not(None),
                 Contenedor.fecha_recepcion.is_not(None),
             )
-            .group_by(SucursalORM.id)
+            .group_by(Sucursal.id)
             .order_by(func.round(
                 func.avg(
                     (

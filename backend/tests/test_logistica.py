@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
 from models.contenedor import Contenedor
-from models.orm import HistorialContenedorORM
+from models.contenedor import HistorialContenedor
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.excepciones import ReglaNegocioError
@@ -42,8 +42,11 @@ def test_flujo_feliz_suma_stock_solo_al_verificar(svc):
 
     svc.recibir(contenedor["id"], "P-1", precinto_intacto=True)
     assert stock.disponible(LOCAL, AGUA) == 10
-    estados = [h["estado"] for h in svc.historial(contenedor["id"])]
+    historial = svc.historial(contenedor["id"])
+    estados = [h["estado"] for h in historial]
     assert estados == ["PREPARADO", "PRECINTADO", "EN_TRANSITO", "RECIBIDO", "VERIFICADO"]
+    assert all(h["fecha"] for h in historial)
+    assert all(len(h["fecha"]) == 19 for h in historial)
 
 
 def test_precinto_roto_rechaza_y_no_habilita_venta(svc):
@@ -107,7 +110,7 @@ def test_historial_es_inmutable(svc):
     _, contenedor = armar_y_despachar(svc)
     with pytest.raises(IntegrityError):
         BaseDeDatos().sesion.execute(
-            delete(HistorialContenedorORM).where(HistorialContenedorORM.contenedor_id == contenedor["id"])
+            delete(HistorialContenedor).where(HistorialContenedor.contenedor_id == contenedor["id"])
         )
 
 

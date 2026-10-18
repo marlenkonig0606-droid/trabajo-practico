@@ -1,5 +1,6 @@
 from database.conexion import BaseDeDatos
-from models.orm import MovimientoStockORM, ProductoORM, StockORM
+from models.producto import Producto
+from models.stock import MovimientoStock, Stock
 from patrones.observer import Observador, Eventos
 from services.excepciones import ReglaNegocioError
 from sqlalchemy import func, select
@@ -13,24 +14,24 @@ class StockService:
         self.db = BaseDeDatos()
 
     def disponible(self, sucursal_id, producto_id):
-        stock = self.db.sesion.get(StockORM, (sucursal_id, producto_id))
+        stock = self.db.sesion.get(Stock, (sucursal_id, producto_id))
         return stock.disponible if stock else 0
 
     def sumar(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
-        insertar = sqlite_insert(StockORM).values(
+        insertar = sqlite_insert(Stock).values(
             sucursal_id=sucursal_id, producto_id=producto_id, disponible=cantidad
         )
         self.db.sesion.execute(
             insertar.on_conflict_do_update(
-                index_elements=[StockORM.sucursal_id, StockORM.producto_id],
-                set_={"disponible": StockORM.disponible + insertar.excluded.disponible},
+                index_elements=[Stock.sucursal_id, Stock.producto_id],
+                set_={"disponible": Stock.disponible + insertar.excluded.disponible},
             )
         )
         self._registrar_movimiento(sucursal_id, producto_id, cantidad, motivo, referencia)
 
     def restar(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
         """Valida que alcance ANTES de descontar. Lo vas a reusar en ventas."""
-        stock = self.db.sesion.get(StockORM, (sucursal_id, producto_id))
+        stock = self.db.sesion.get(Stock, (sucursal_id, producto_id))
         actual = stock.disponible if stock else 0
         if cantidad > actual:
             raise ReglaNegocioError(
@@ -41,7 +42,7 @@ class StockService:
 
     def _registrar_movimiento(self, sucursal_id, producto_id, cantidad, motivo, referencia):
         self.db.sesion.add(
-            MovimientoStockORM(
+            MovimientoStock(
                 sucursal_id=sucursal_id,
                 producto_id=producto_id,
                 cantidad=cantidad,
@@ -53,18 +54,18 @@ class StockService:
     def listar(self, sucursal_id):
         filas = self.db.sesion.execute(
             select(
-                ProductoORM.id.label("producto_id"),
-                ProductoORM.codigo,
-                ProductoORM.nombre,
-                ProductoORM.stock_minimo,
-                func.coalesce(StockORM.disponible, 0).label("disponible"),
+                Producto.id.label("producto_id"),
+                Producto.codigo,
+                Producto.nombre,
+                Producto.stock_minimo,
+                func.coalesce(Stock.disponible, 0).label("disponible"),
             )
             .outerjoin(
-                StockORM,
-                (StockORM.producto_id == ProductoORM.id)
-                & (StockORM.sucursal_id == sucursal_id),
+                Stock,
+                (Stock.producto_id == Producto.id)
+                & (Stock.sucursal_id == sucursal_id),
             )
-            .order_by(ProductoORM.nombre)
+            .order_by(Producto.nombre)
         ).mappings()
         return [dict(fila) for fila in filas]
 

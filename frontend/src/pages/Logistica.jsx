@@ -130,6 +130,11 @@ function FilaContenedor({ contenedor, nombreProducto, accion }) {
   const verHistorial = async () =>
     setHistorial(historial ? null : await api.historial(contenedor.id))
 
+  const fechaHora = (valor) => {
+    const fecha = new Date(valor.replace(' ', 'T'))
+    return Number.isNaN(fecha.getTime()) ? valor : fecha.toLocaleString('es-AR')
+  }
+
   return (
     <div className="contenedor">
       <span>Contenedor #{contenedor.id}</span>
@@ -154,7 +159,11 @@ function FilaContenedor({ contenedor, nombreProducto, accion }) {
       <button className="link" onClick={verHistorial}>{historial ? 'ocultar' : 'historial'}</button>
       {historial && (
         <ol className="historial">
-          {historial.map((h, i) => <li key={i}>{h.fecha} — <b>{h.estado}</b> {h.observacion}</li>)}
+          {historial.map((h, i) => (
+            <li key={i}>
+              {fechaHora(h.fecha)} — <b>{h.estado}</b> {h.observacion}
+            </li>
+          ))}
         </ol>
       )}
     </div>

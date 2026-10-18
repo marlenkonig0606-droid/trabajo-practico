@@ -1,24 +1,28 @@
 """Carga datos de prueba si la base está vacía.  Uso:  python -m database.datos_iniciales"""
 from database.conexion import BaseDeDatos
-from models.orm import CategoriaORM, ProductoORM, ProveedorORM, StockORM, SucursalORM
+from models.categoria import Categoria
+from models.producto import Producto
+from models.proveedor import Proveedor
+from models.stock import Stock
+from models.sucursal import CentroDistribucion, LocalVenta, Sucursal
 from sqlalchemy import select
 
 
 def cargar():
     db = BaseDeDatos()
     with db.transaccion() as sesion:
-        if sesion.scalar(select(SucursalORM.id).limit(1)):
+        if sesion.scalar(select(Sucursal.id).limit(1)):
             return  # ya hay datos
 
-        cd = SucursalORM(nombre="CD Central", direccion="Ruta 9 km 695", tipo="CD")
+        cd = CentroDistribucion(nombre="CD Central", direccion="Ruta 9 km 695")
         sesion.add_all([
             cd,
-            SucursalORM(nombre="Local Centro", direccion="27 de Abril 300", tipo="LOCAL"),
-            SucursalORM(nombre="Local Nueva Córdoba", direccion="Bv. Illia 500", tipo="LOCAL"),
+            LocalVenta(nombre="Local Centro", direccion="27 de Abril 300"),
+            LocalVenta(nombre="Local Nueva Córdoba", direccion="Bv. Illia 500"),
         ])
-        bebidas = CategoriaORM(nombre="Bebidas")
-        almacen = CategoriaORM(nombre="Almacén")
-        proveedor = ProveedorORM(cuit="30-12345678-9", razon_social="Distribuidora Norte SA")
+        bebidas = Categoria(nombre="Bebidas")
+        almacen = Categoria(nombre="Almacén")
+        proveedor = Proveedor(cuit="30-12345678-9", razon_social="Distribuidora Norte SA")
         sesion.add_all([bebidas, almacen, proveedor])
         sesion.flush()
 
@@ -29,7 +33,7 @@ def cargar():
             ("ALM-002", "Fideos 500g", almacen.id, 600, 1050, 25),
         ]
         for codigo, nombre, categoria_id, costo, venta, minimo in productos:
-            producto = ProductoORM(
+            producto = Producto(
                 codigo=codigo,
                 nombre=nombre,
                 categoria_id=categoria_id,
@@ -41,7 +45,7 @@ def cargar():
             sesion.add(producto)
             sesion.flush()
             # El stock inicial solo se carga en el CD.
-            sesion.add(StockORM(sucursal_id=cd.id, producto_id=producto.id, disponible=500))
+            sesion.add(Stock(sucursal_id=cd.id, producto_id=producto.id, disponible=500))
 
 
 if __name__ == "__main__":
