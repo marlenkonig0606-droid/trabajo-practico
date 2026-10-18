@@ -13,12 +13,12 @@ export default function Reportes() {
   return (
     <section>
       <div className="tarjeta">
-        <h2>Bultos rechazados / merma por precinto</h2>
-        <Tabla filas={rechazados} columnas={['bulto_id', 'remito', 'destino', 'motivo', 'unidades', 'merma_valorizada']} />
+        <h2>Contenedores rechazados / merma por precinto</h2>
+        <Tabla filas={rechazados} columnas={['contenedor_id', 'remito', 'destino', 'motivo', 'unidades', 'merma_valorizada']} />
       </div>
       <div className="tarjeta">
         <h2>Tiempo promedio de tránsito CD → local</h2>
-        <Tabla filas={transito} columnas={['local', 'bultos', 'horas_promedio']} />
+        <Tabla filas={transito} columnas={['local', 'contenedores', 'horas_promedio']} />
       </div>
       <p className="vacio">TODO: ventas por período/local/medio de pago, más vendidos con margen, stock mínimo.</p>
     </section>

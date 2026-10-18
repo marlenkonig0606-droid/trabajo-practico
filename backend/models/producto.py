@@ -1,6 +1,11 @@
 class Producto:
     def __init__(self, id, codigo, nombre, categoria_id, precio_costo, precio_venta,
                  stock_minimo=0, proveedor_id=None):
+        if not nombre:
+            raise ValueError("El nombre no puede estar vacío")
+        if precio_venta < precio_costo:
+            raise ValueError("El precio de venta no puede ser menor al de costo")
+
         self.id = id
         self.codigo = codigo
         self.nombre = nombre
@@ -22,4 +27,7 @@ class Producto:
     def to_dict(self):
         return {**self.__dict__, "margen_unitario": self.margen_unitario()}
 
-# TODO (vos): clases Categoria y Proveedor siguiendo el mismo estilo.
+    def __str__(self):
+        return f"Producto(id={self.id}, codigo={self.codigo}, nombre={self.nombre}, "
+
+

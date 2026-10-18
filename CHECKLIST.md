@@ -30,7 +30,7 @@
 - [ ] Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva
 
 ### Reportes (mínimo 4 — hay 2)
-- [x] Bultos rechazados / merma por precinto
+- [x] Contenedores rechazados / merma por precinto
 - [x] Tiempo promedio de tránsito CD → local
 - [ ] Ventas e ingresos por período, local y medio de pago
 - [ ] Productos más vendidos con margen estimado
@@ -44,8 +44,8 @@
 ## 🟡 Para mejorar (lo que ya está hecho)
 
 - [ ] Validar el JSON de entrada en `app.py`: hoy, si falta `destino_id`, da error 500 en lugar de 400
-- [ ] Orden pasa a DESPACHADA con el primer bulto aunque queden bultos sin despachar → ¿estado "DESPACHADA_PARCIAL"?
-- [ ] No hay forma de cancelar una orden ni anular un bulto antes de despachar
+- [ ] Orden pasa a DESPACHADA con el primer contenedor aunque queden contenedores sin despachar → ¿estado "DESPACHADA_PARCIAL"?
+- [ ] No hay forma de cancelar una orden ni anular un contenedor antes de despachar
 - [ ] El CD se toma como "el primero que encuentre" (`LIMIT 1`): si hubiera dos CD habría que elegirlo
 - [ ] Una sola conexión SQLite compartida entre hilos de Flask: alcanza para el TP, pero saber explicarlo en la defensa
 - [ ] Mostrar mensaje de éxito en el frontend (hoy solo muestra errores)
@@ -55,7 +55,7 @@
 - [ ] Gráfico de barras de ventas por mes (como el repo de referencia)
 - [ ] Login con roles (encargado de CD / vendedor de local)
 - [ ] Exportar reportes a PDF
-- [ ] Diagrama de clases y de estados del bulto para la presentación
+- [ ] Diagrama de clases y de estados del contenedor para la presentación
 - [ ] Subirlo a GitHub (el `.gitignore` ya está)
 
 ## 📚 Para vos (entender antes de seguir)
