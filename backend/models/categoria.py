@@ -1,6 +1,7 @@
+
 class Categoria:
-    def __init__(self, id, nombre):
-        self.id = id
+    def __init__(self, categoria_id, nombre):
+        self.id = categoria_id
         self.nombre = nombre
 
     @classmethod
