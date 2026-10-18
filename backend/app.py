@@ -12,7 +12,8 @@ from sqlalchemy import select
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar as cargar_datos_iniciales
-from models.orm import CategoriaORM, ProveedorORM, SucursalORM
+from models.orm import SucursalORM
+from services.catalogo_service import CatalogoService
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 from services.logistica_service import LogisticaService
 from services.productos_service import ProductosService
@@ -32,6 +33,7 @@ def crear_app():
     logistica.suscribir(StockObserver(stock))      # <- Observer conectado acá
     reportes = ReportesService()
     productos_service = ProductosService()
+    catalogo_service = CatalogoService()
 
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(NoEncontradoError)
@@ -88,27 +90,59 @@ def crear_app():
 
     @app.get("/api/categorias")
     def listar_categorias():
-        categorias = db.sesion.scalars(
-            select(CategoriaORM).order_by(CategoriaORM.nombre)
-        )
-        return jsonify([
-            {"id": categoria.id, "nombre": categoria.nombre}
-            for categoria in categorias
-        ])
+        return jsonify(catalogo_service.listar_categorias())
+
+    @app.get("/api/categorias/<int:categoria_id>")
+    def obtener_categoria(categoria_id):
+        return jsonify(catalogo_service.obtener_categoria(categoria_id))
+
+    @app.post("/api/categorias")
+    def crear_categoria():
+        return jsonify(catalogo_service.crear_categoria(request.get_json())), 201
+
+    @app.put("/api/categorias/<int:categoria_id>")
+    def actualizar_categoria(categoria_id):
+        return jsonify(catalogo_service.actualizar_categoria(
+            categoria_id, request.get_json()
+        ))
+
+    @app.patch("/api/categorias/<int:categoria_id>")
+    def actualizar_parcial_categoria(categoria_id):
+        return jsonify(catalogo_service.actualizar_categoria(
+            categoria_id, request.get_json(), parcial=True
+        ))
+
+    @app.delete("/api/categorias/<int:categoria_id>")
+    def eliminar_categoria(categoria_id):
+        return jsonify(catalogo_service.eliminar_categoria(categoria_id))
 
     @app.get("/api/proveedores")
     def listar_proveedores():
-        proveedores = db.sesion.scalars(
-            select(ProveedorORM).order_by(ProveedorORM.razon_social)
-        )
-        return jsonify([
-            {
-                "id": proveedor.id,
-                "cuit": proveedor.cuit,
-                "razon_social": proveedor.razon_social,
-            }
-            for proveedor in proveedores
-        ])
+        return jsonify(catalogo_service.listar_proveedores())
+
+    @app.get("/api/proveedores/<int:proveedor_id>")
+    def obtener_proveedor(proveedor_id):
+        return jsonify(catalogo_service.obtener_proveedor(proveedor_id))
+
+    @app.post("/api/proveedores")
+    def crear_proveedor():
+        return jsonify(catalogo_service.crear_proveedor(request.get_json())), 201
+
+    @app.put("/api/proveedores/<int:proveedor_id>")
+    def actualizar_proveedor(proveedor_id):
+        return jsonify(catalogo_service.actualizar_proveedor(
+            proveedor_id, request.get_json()
+        ))
+
+    @app.patch("/api/proveedores/<int:proveedor_id>")
+    def actualizar_parcial_proveedor(proveedor_id):
+        return jsonify(catalogo_service.actualizar_proveedor(
+            proveedor_id, request.get_json(), parcial=True
+        ))
+
+    @app.delete("/api/proveedores/<int:proveedor_id>")
+    def eliminar_proveedor(proveedor_id):
+        return jsonify(catalogo_service.eliminar_proveedor(proveedor_id))
 
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):

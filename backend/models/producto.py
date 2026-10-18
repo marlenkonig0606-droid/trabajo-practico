@@ -21,5 +21,3 @@ class Producto:
 
     def to_dict(self):
         return {**self.__dict__, "margen_unitario": self.margen_unitario()}
-
-# TODO (vos): clases Categoria y Proveedor siguiendo el mismo estilo.
