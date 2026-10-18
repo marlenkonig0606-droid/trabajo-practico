@@ -12,9 +12,10 @@ from sqlalchemy import select
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar as cargar_datos_iniciales
-from models.orm import ProductoORM, SucursalORM
+from models.orm import CategoriaORM, ProveedorORM, SucursalORM
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 from services.logistica_service import LogisticaService
+from services.productos_service import ProductosService
 from services.stock_service import StockService, StockObserver
 from services.reportes_service import ReportesService
 
@@ -30,6 +31,7 @@ def crear_app():
     logistica = LogisticaService()
     logistica.suscribir(StockObserver(stock))      # <- Observer conectado acá
     reportes = ReportesService()
+    productos_service = ProductosService()
 
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(NoEncontradoError)
@@ -42,7 +44,7 @@ def crear_app():
     def no_implementado(e):
         return jsonify({"error": f"Pendiente: {e}"}), 501
 
-    # ---------- catálogo (solo lectura por ahora) ----------
+    # ---------- catálogo ----------
     @app.get("/api/sucursales")
     def listar_sucursales():
         sucursales = db.sesion.scalars(
@@ -60,25 +62,53 @@ def crear_app():
 
     @app.get("/api/productos")
     def listar_productos():
-        productos = db.sesion.scalars(
-            select(ProductoORM).order_by(ProductoORM.nombre)
+        return jsonify(productos_service.listar())
+
+    @app.get("/api/productos/<int:producto_id>")
+    def obtener_producto(producto_id):
+        return jsonify(productos_service.obtener(producto_id))
+
+    @app.post("/api/productos")
+    def crear_producto():
+        return jsonify(productos_service.crear(request.get_json())), 201
+
+    @app.put("/api/productos/<int:producto_id>")
+    def actualizar_producto(producto_id):
+        return jsonify(productos_service.actualizar(producto_id, request.get_json()))
+
+    @app.patch("/api/productos/<int:producto_id>")
+    def actualizar_parcial_producto(producto_id):
+        return jsonify(productos_service.actualizar(
+            producto_id, request.get_json(), parcial=True
+        ))
+
+    @app.delete("/api/productos/<int:producto_id>")
+    def eliminar_producto(producto_id):
+        return jsonify(productos_service.eliminar(producto_id))
+
+    @app.get("/api/categorias")
+    def listar_categorias():
+        categorias = db.sesion.scalars(
+            select(CategoriaORM).order_by(CategoriaORM.nombre)
+        )
+        return jsonify([
+            {"id": categoria.id, "nombre": categoria.nombre}
+            for categoria in categorias
+        ])
+
+    @app.get("/api/proveedores")
+    def listar_proveedores():
+        proveedores = db.sesion.scalars(
+            select(ProveedorORM).order_by(ProveedorORM.razon_social)
         )
         return jsonify([
             {
-                "id": producto.id,
-                "codigo": producto.codigo,
-                "nombre": producto.nombre,
-                "categoria_id": producto.categoria_id,
-                "proveedor_id": producto.proveedor_id,
-                "precio_costo": producto.precio_costo,
-                "precio_venta": producto.precio_venta,
-                "stock_minimo": producto.stock_minimo,
+                "id": proveedor.id,
+                "cuit": proveedor.cuit,
+                "razon_social": proveedor.razon_social,
             }
-            for producto in productos
+            for proveedor in proveedores
         ])
-
-    # TODO (vos): POST/PUT/DELETE de sucursales, productos, categorías y proveedores
-    #   (procesos 1 y 2). Validar duplicados por codigo / cuit -> ReglaNegocioError.
 
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):

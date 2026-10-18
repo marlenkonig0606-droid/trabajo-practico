@@ -13,6 +13,12 @@ async function pedir(metodo, url, cuerpo) {
 export const api = {
   sucursales: () => pedir('GET', '/sucursales'),
   productos: () => pedir('GET', '/productos'),
+  producto: (id) => pedir('GET', `/productos/${id}`),
+  crearProducto: (datos) => pedir('POST', '/productos', datos),
+  actualizarProducto: (id, datos) => pedir('PUT', `/productos/${id}`, datos),
+  eliminarProducto: (id) => pedir('DELETE', `/productos/${id}`),
+  categorias: () => pedir('GET', '/categorias'),
+  proveedores: () => pedir('GET', '/proveedores'),
   stock: (sucursalId) => pedir('GET', `/stock/${sucursalId}`),
 
   ordenes: () => pedir('GET', '/ordenes'),
@@ -25,5 +31,5 @@ export const api = {
 
   reporteRechazados: () => pedir('GET', '/reportes/bultos-rechazados'),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
-  // TODO (vos): ventas, devoluciones, ABM, resto de reportes
+  // TODO (vos): ventas, devoluciones y resto de reportes
 }

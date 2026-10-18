@@ -6,8 +6,17 @@ export default function Stock() {
   const [sucursal, setSucursal] = useState('')
   const [filas, setFilas] = useState([])
 
-  useEffect(() => { api.sucursales().then((s) => { setSucursales(s); setSucursal(s[0]?.id ?? '') }) }, [])
-  useEffect(() => { if (sucursal) api.stock(sucursal).then(setFilas) }, [sucursal])
+  useEffect(() => { 
+    api.sucursales().then((s) => {
+       setSucursales(s); 
+       setSucursal(s[0]?.id ?? '') 
+      }) 
+  }, [])
+
+
+  useEffect(() => { 
+    if (sucursal) api.stock(sucursal).then(setFilas)
+     }, [sucursal] )
 
   return (
     <section className="tarjeta">
