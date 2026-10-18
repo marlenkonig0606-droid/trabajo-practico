@@ -83,10 +83,11 @@ Abrí `logistica_service.py` y respondete:
 - ¿Qué pasaría si `StockObserver` sumara stock en `BULTO_DESPACHADO` en lugar de en `REMITO_VERIFICADO`?
 - ¿Quién llama a `StockObserver.actualizar`? (no es `app.py` directamente)
 
-### Paso 2 — ABM de catálogo (procesos 1 y 2)
-Clases `Categoria` y `Proveedor`; endpoints POST/PUT/DELETE. Validar duplicados por `codigo`
-(producto) y `cuit` (proveedor) **en el service** con `ReglaNegocioError`, no solo confiando en
-el `UNIQUE` de la base. ¿Por qué conviene hacer las dos cosas?
+### Paso 2 — ABM de catálogo (procesos 1 y 2) ✅
+Clases `Categoria` y `Proveedor`, endpoints GET/POST/PUT/PATCH/DELETE y validación de duplicados
+en los services (`codigo` de producto, `cuit` de proveedor y nombre de categoría), además del
+`UNIQUE` de la base.
+-----------------------------HECHO-------------------------------------------------------
 
 ### Paso 3 — Consolidar necesidades (proceso 3, segunda mitad)
 Hoy la orden se crea a mano. Agregá `LogisticaService.sugerir_orden(local_id)` que arme los ítems
