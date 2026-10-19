@@ -1,65 +1,79 @@
-# Checklist TP Integrador — CD a Locales
+# Checklist TP Integrador — Tema 3: CD a Locales
+_Actualizado según la consigna (tema3.pdf) y el estado de `main` al 19/10._
 
-## 🔴 Obligatorio (pide la consigna)
+## 📋 Procesos obligatorios
 
-### Proceso 1 y 2 — ABM de catálogo
-- [ ] Clases `Categoria` y `Proveedor` en `models/`
-- [ ] `services/catalogo_service.py` con alta / modificación / baja
-- [ ] Endpoints POST / PUT / DELETE para sucursales, categorías, proveedores y productos
-- [ ] Validar producto duplicado por `codigo` → `ReglaNegocioError`
-- [ ] Validar proveedor duplicado por `cuit` → `ReglaNegocioError`
-- [ ] Decidir qué pasa al borrar algo que ya se usó (¿baja lógica con `activo = 0`?)
-- [ ] Validar precios y stock mínimo >= 0, precio_venta >= precio_costo (o justificar si no)
+### 1. Sucursales y Centro de Distribución
+- [x] Listar sucursales (`GET /api/sucursales`)
+- [ ] Alta / modificación / baja de sucursales (`POST` / `PUT` / `DELETE /api/sucursales`)
+- [ ] Validar nombre duplicado y que siempre exista al menos un CD
+- [ ] Pantalla para administrarlas (sumar a `Catalogo.jsx`)
 
-### Proceso 3 — Consolidar necesidades
-- [ ] `LogisticaService.sugerir_orden(local_id)`: productos bajo `stock_minimo`
-- [ ] Botón "Sugerir" en la pantalla de Logística
+### 2. Productos, categorías, precios, mínimos y proveedores
+- [x] ABM de productos, categorías y proveedores (backend + `Catalogo.jsx`)
+- [x] Sin duplicados por código de producto / CUIT de proveedor
+- [x] Tests (`test_catalogo.py`, `test_productos.py`)
 
-### Patrón Factory
-- [ ] `TarjetaCredito` (recargo por cuotas), `TarjetaDebito`, `Transferencia`
-- [ ] Completar `MedioPagoFactory.crear`
-- [ ] Test: tipo de pago inexistente lanza error
+### 3. Consolidar necesidades en orden de reposición
+- [x] Crear orden CD → local con origen y destino
+- [ ] **Consolidar necesidades**: sugerir la orden con los productos bajo `stock_minimo` del local
+- [ ] Botón "Sugerir orden" en Logística
 
-### Proceso 7 — Ventas y devoluciones
-- [ ] Tablas: `venta`, `detalle_venta` (precio del momento), `pago`, `comprobante`, `devolucion`, `detalle_devolucion`
-- [ ] `registrar_venta`: solo en LOCAL, no vender más del stock disponible
-- [ ] Generar comprobante
-- [ ] `registrar_devolucion`: la venta tiene que existir, no devolver más de lo vendido (contando devoluciones anteriores)
-- [ ] Devolución repone stock y registra egreso de caja
-- [ ] Endpoints `/api/ventas` y `/api/devoluciones`
-- [ ] Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva
+### 4. Empaquetar en contenedores con remito y precinto
+- [x] Contenedores, remito y precinto (no se repite)
+- [ ] Reservar stock del CD al empaquetar + bloqueo entre usuarios
+      (hecho en la rama `mar-bloqueo-observer`, falta pasarlo a SQLAlchemy)
 
-### Reportes (mínimo 4 — hay 2)
+### 5. Despacho · 6. Recepción con verificación de precinto
+- [x] Despacho, recepción, Verificado / Rechazado
+- [x] Stock entra al local solo cuando el remito está verificado
+
+### 7. Ventas, cobros, comprobante y devoluciones  ⚠ lo más grande que falta
+- [ ] Modelos: `Venta`, `DetalleVenta` (con precio del momento), `Pago`, `Comprobante`, `Devolucion`, `DetalleDevolucion`
+- [ ] `registrar_venta`: uno o más productos, solo en LOCAL, no más del stock disponible
+- [ ] Cobro con medio de pago (usa la Factory)
+- [ ] Emisión de comprobante (número correlativo)
+- [ ] `registrar_devolucion` con impacto en stock y caja
+- [ ] Endpoints `/api/ventas`, `/api/ventas/<id>`, `/api/devoluciones`
+- [ ] Pantalla Ventas y devoluciones (hoy es `Pendiente.jsx`)
+- [ ] Tests
+
+## ✅ Validaciones de negocio
+- [x] Stock disponible en destino solo con remito + contenedor Verificado; precinto roto → Rechazado
+- [x] Trazabilidad inmutable de estados (triggers en `conexion.py`)
+- [ ] No vender más que el stock disponible y verificado (depende de Ventas)
+- [x] Sin productos ni proveedores duplicados
+- [ ] No aceptar devoluciones sin venta registrada ni por más de lo vendido (depende de Ventas)
+
+## 🧩 Patrones de diseño (mínimo 2)
+- [x] **Singleton**: conexión a la base
+- [~] **Observer**: `StockObserver` funciona; falta pasar de `mar-bloqueo-observer` las alertas de stock mínimo y la auditoría
+- [ ] **Factory**: completar `TarjetaCredito`, `TarjetaDebito`, `Transferencia` y `MedioPagoFactory.crear` (+ test)
+
+## 📊 Reportes (mínimo 4 no triviales — hay 2)
 - [x] Contenedores rechazados / merma por precinto
 - [x] Tiempo promedio de tránsito CD → local
-- [ ] Ventas e ingresos por período, local y medio de pago
-- [ ] Productos más vendidos con margen estimado
-- [ ] Existencias y productos en stock mínimo
+- [ ] Ventas e ingresos por período, local y medio de pago (depende de Ventas)
+- [ ] Productos más vendidos y margen de ganancia/pérdida (depende de Ventas)
+- [ ] Existencias actuales y productos en stock mínimo (**se puede hacer ya**)
+- [ ] Movimientos y valorización del inventario (**se puede hacer ya**: tabla de movimientos × precio de costo)
+- [ ] Filtro de fechas en la pantalla de Reportes
 
-### Frontend
-- [ ] Pantalla Catálogo (ABM)
-- [ ] Pantalla Ventas y devoluciones
-- [ ] Agregar los reportes nuevos (con filtro de fechas)
+## 📝 Consideraciones de la consigna
+- [ ] Diagrama de clases (entidades, atributos, relaciones)
+- [ ] Diagrama de estados del contenedor (lo evalúan "críticamente")
+- [ ] Documentar reglas adicionales que definió el grupo (ej.: no se borra un producto con stock)
 
-## 🟡 Para mejorar (lo que ya está hecho)
+## 🟡 Mejoras / prolijidad
+- [ ] Validar el JSON de entrada (si falta un campo → 400, no 500)
+- [ ] Anular contenedor antes de despachar (libera la reserva)
+- [ ] Orden "despachada parcial" si quedan contenedores sin despachar
+- [ ] Mensajes de éxito en el frontend
+- [ ] Sacar del repo `__pycache__` y `.pytest_cache` si se subieron por error
 
-- [ ] Validar el JSON de entrada en `app.py`: hoy, si falta `destino_id`, da error 500 en lugar de 400
-- [ ] Orden pasa a DESPACHADA con el primer contenedor aunque queden contenedores sin despachar → ¿estado "DESPACHADA_PARCIAL"?
-- [ ] No hay forma de cancelar una orden ni anular un contenedor antes de despachar
-- [ ] El CD se toma como "el primero que encuentre" (`LIMIT 1`): si hubiera dos CD habría que elegirlo
-- [ ] Una sola conexión SQLite compartida entre hilos de Flask: alcanza para el TP, pero saber explicarlo en la defensa
-- [ ] Mostrar mensaje de éxito en el frontend (hoy solo muestra errores)
-- [ ] Segundo Observer: `AlertaStockMinimoObserver` (suma puntos por usar el patrón de verdad)
-
-## 🟢 Opcional / suma en la defensa
-- [ ] Gráfico de barras de ventas por mes (como el repo de referencia)
-- [ ] Login con roles (encargado de CD / vendedor de local)
-- [ ] Exportar reportes a PDF
-- [ ] Diagrama de clases y de estados del contenedor para la presentación
-- [ ] Subirlo a GitHub (el `.gitignore` ya está)
-
-## 📚 Para vos (entender antes de seguir)
-- [ ] Responder las 3 preguntas del Paso 1 del README
-- [ ] Responder las 3 preguntas del ABM
-- [ ] Poder explicar Singleton, Observer y Factory con TU código
-- [ ] Borrar `Documentos\tp-cd-locales.zip`
+## 🟢 Opcionales (suman, no son obligatorios)
+- [ ] Órdenes de compra sugeridas por faltantes
+- [ ] Promociones, descuentos y listas de precios
+- [ ] Lotes, números de serie o vencimientos
+- [ ] Clientes frecuentes / cuenta corriente
+- [ ] Inventario físico y conciliación
