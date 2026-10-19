@@ -15,6 +15,7 @@ VERIFICADO y RECHAZADO son estados FINALES: desde ahí no se puede ir a ningún 
 """
 
 
+
 class EstadoBulto:
     PREPARADO = "PREPARADO"
     PRECINTADO = "PRECINTADO"
@@ -22,18 +23,19 @@ class EstadoBulto:
     RECIBIDO = "RECIBIDO"
     VERIFICADO = "VERIFICADO"
     RECHAZADO = "RECHAZADO"
+    ANULADO = "ANULADO"                   
 
-    # Tabla de transiciones válidas: estado actual -> estados a los que puede pasar
     TRANSICIONES = {
-        PREPARADO: {PRECINTADO},
-        PRECINTADO: {EN_TRANSITO},
+        PREPARADO: {PRECINTADO, ANULADO},    
+        PRECINTADO: {EN_TRANSITO, ANULADO},  
         EN_TRANSITO: {RECIBIDO},
         RECIBIDO: {VERIFICADO, RECHAZADO},
         VERIFICADO: set(),
         RECHAZADO: set(),
+        ANULADO: set(),                  
     }
 
-    FINALES = {VERIFICADO, RECHAZADO}
+    FINALES = {VERIFICADO, RECHAZADO, ANULADO}
 
     @classmethod
     def puede_pasar(cls, desde, hacia):

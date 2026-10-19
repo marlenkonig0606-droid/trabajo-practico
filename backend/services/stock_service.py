@@ -61,6 +61,17 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
         self._registrar_movimiento(sucursal_id, producto_id, -cantidad, motivo, referencia)
         self._avisar_cambio(sucursal_id, producto_id)
 
+    def liberar_reserva(self, sucursal_id, producto_id, cantidad):
+        """Al anular un bulto: las unidades vuelven a estar libres en el CD."""
+        filas = self.db.ejecutar_contando(
+            """UPDATE stock SET reservado = reservado - ?
+               WHERE sucursal_id=? AND producto_id=? AND reservado >= ?""",
+            (cantidad, sucursal_id, producto_id, cantidad))
+        if filas == 0:
+            raise ReglaNegocioError(
+                f"No hay una reserva de {cantidad} unidades del producto {producto_id}")
+        self._avisar_cambio(sucursal_id, producto_id)
+
     def sumar(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
         self.db.ejecutar(
             """INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (?, ?, ?)
