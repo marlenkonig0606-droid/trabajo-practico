@@ -4,7 +4,7 @@ stock_service.py). Ninguno de estos conoce a LogisticaService ni a StockService:
 solo reciben (evento, datos) y deciden qué hacer.
 """
 from database.conexion import BaseDeDatos
-from patrones.observer import Observador, Eventos
+from models.observer import Observador, Eventos
 
 
 class AlertaStockMinimoObserver(Observador):

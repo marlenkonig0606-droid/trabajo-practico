@@ -40,6 +40,7 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 - ❌ Un bulto con **precinto roto o que no coincide** se rechaza y no habilita la venta.
 - 📉 No se puede **vender más** que el stock disponible y verificado.
 - 🧾 No se aceptan **devoluciones** de ventas inexistentes ni por más unidades de las vendidas.
+-
 
 ---
 
@@ -59,7 +60,7 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 |--------|-----------------|----------|
 | 🔂 **Singleton** | `BaseDeDatos` | Una única conexión compartida por toda la aplicación |
 | 👀 **Observer** | `LogisticaService` → `StockObserver` | Al verificar un remito, el stock se actualiza sin acoplar logística con inventario |
-| 🏭 **Factory** | `MedioPagoFactory` | Crear el medio de pago correcto (efectivo, tarjeta, transferencia) sin `if/elif` en ventas |
+| 💳 **Creación delegada** | `CreadorMedioDePago` y sus creadores concretos | Cada creador construye un medio concreto y ventas trabaja con `IMedioDePago` |
 
 ---
 
@@ -83,8 +84,8 @@ tp-cd-locales/
 │   ├── app.py          → rutas de la API
 │   ├── database/       → conexión (Singleton), esquema y datos iniciales
 │   ├── models/         → clases del dominio
-│   ├── patrones/       → Observer y Factory
-│   ├── services/       → reglas de negocio
+│   ├── patrones/       → Observer
+│   ├── services/       → reglas de negocio y creadores de medios de pago
 │   └── tests/          → pruebas automáticas
 ├── frontend/           → interfaz en React
 └── documentacion/      → este archivo

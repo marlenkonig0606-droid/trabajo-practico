@@ -144,6 +144,53 @@ CREATE TABLE IF NOT EXISTS evento_log (
     fecha    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
--- ---------- 7. Ventas (TODO: completar vos) ----------
--- Pensá: venta (cabecera), detalle_venta, pago (medio de pago), comprobante,
--- devolucion (+ detalle). Mirá la guía en README.md.
+-- ---------- Ventas, cobros y devoluciones ----------
+CREATE TABLE IF NOT EXISTS venta (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    sucursal_id  INTEGER NOT NULL REFERENCES sucursal(id),
+    fecha        TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    subtotal     REAL NOT NULL CHECK (subtotal >= 0),
+    total        REAL NOT NULL CHECK (total >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS detalle_venta (
+    venta_id        INTEGER NOT NULL REFERENCES venta(id),
+    producto_id     INTEGER NOT NULL REFERENCES producto(id),
+    cantidad        INTEGER NOT NULL CHECK (cantidad > 0),
+    precio_unitario REAL NOT NULL CHECK (precio_unitario >= 0),
+    PRIMARY KEY (venta_id, producto_id)
+);
+
+CREATE TABLE IF NOT EXISTS pago (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    venta_id     INTEGER NOT NULL UNIQUE REFERENCES venta(id),
+    medio_pago   TEXT NOT NULL CHECK (
+                     medio_pago IN ('EFECTIVO', 'TARJETA_CREDITO', 'TARJETA_DEBITO', 'TRANSFERENCIA')
+                 ),
+    importe      REAL NOT NULL CHECK (importe >= 0),
+    cuotas       INTEGER NOT NULL DEFAULT 1 CHECK (cuotas > 0),
+    referencia   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS comprobante (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    venta_id  INTEGER NOT NULL UNIQUE REFERENCES venta(id),
+    numero    INTEGER NOT NULL UNIQUE CHECK (numero > 0),
+    fecha     TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS devolucion (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    venta_id    INTEGER NOT NULL REFERENCES venta(id),
+    fecha       TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    motivo      TEXT NOT NULL,
+    total       REAL NOT NULL CHECK (total >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS detalle_devolucion (
+    devolucion_id   INTEGER NOT NULL REFERENCES devolucion(id),
+    producto_id     INTEGER NOT NULL REFERENCES producto(id),
+    cantidad        INTEGER NOT NULL CHECK (cantidad > 0),
+    precio_unitario REAL NOT NULL CHECK (precio_unitario >= 0),
+    PRIMARY KEY (devolucion_id, producto_id)
+);

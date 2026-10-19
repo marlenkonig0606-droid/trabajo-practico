@@ -3,7 +3,7 @@ import pytest
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
-from patrones.observer import Observador, Sujeto, Eventos
+from models.observer import Observador, Sujeto, Eventos
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService

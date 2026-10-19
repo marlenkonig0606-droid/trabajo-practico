@@ -14,8 +14,6 @@ Ciclo de vida del bulto (lo que la cátedra va a evaluar "críticamente").
 VERIFICADO y RECHAZADO son estados FINALES: desde ahí no se puede ir a ningún lado.
 """
 
-
-
 class EstadoBulto:
     PREPARADO = "PREPARADO"
     PRECINTADO = "PRECINTADO"

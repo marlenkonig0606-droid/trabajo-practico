@@ -1,5 +1,5 @@
 from database.conexion import BaseDeDatos
-from patrones.observer import Observador, Sujeto, Eventos
+from models.observer import Observador, Sujeto, Eventos
 from services.excepciones import ReglaNegocioError
 
 

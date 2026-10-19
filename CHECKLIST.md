@@ -36,11 +36,11 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [ ] Pantalla **Catálogo** (reemplazar `Pendiente.jsx`) con productos, categorías, proveedores y sucursales
 - [ ] Tests del ABM (duplicados, borrar algo usado, datos inválidos)
 
-### 🟣 Lucía — rama `lucia` · Ventas, devoluciones y Factory (proceso 7)
-- [ ] Tablas en `schema.sql`: `venta`, `detalle_venta` (precio del momento), `pago`, `comprobante`, `devolucion`, `detalle_devolucion` + sus clases en `models/`
-- [ ] **Factory** (`patrones/factory_medio_pago.py`): `TarjetaCredito` (recargo por cuotas), `TarjetaDebito`, `Transferencia` + completar `MedioPagoFactory.crear` + test de tipo inexistente
+### 🟣 Lucía — rama `lucia` · Ventas, devoluciones y medios de pago (proceso 7)
+- [x] Tablas en `schema.sql`: `venta`, `detalle_venta` (precio del momento), `pago`, `comprobante`, `devolucion`, `detalle_devolucion` + sus clases en `models/`
+- [x] Creación delegada de medios de pago con `CreadorMedioDePago`, creadores concretos e `IMedioDePago`; integrado en `VentasService` y probado
 - [ ] `VentasService.registrar_venta`: uno o más productos, solo en LOCAL, no más del stock disponible y verificado (`StockService.restar`)
-- [ ] Cobro con medio de pago (usando la Factory) y comprobante con número correlativo
+- [ ] Cobro con medio de pago (usando creadores concretos) y comprobante con número correlativo
 - [ ] `registrar_devolucion`: la venta tiene que existir, no más de lo vendido (sumando devoluciones anteriores), repone stock y registra egreso de caja
 - [ ] `VentasService` recibe el **mismo** `StockService` que `app.py` (para el Observer)
 - [ ] Endpoints `/api/ventas`, `/api/ventas/<id>`, `/api/devoluciones`
@@ -67,7 +67,7 @@ _El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `ma
 - [ ] Validar el JSON de entrada en `app.py` (campo faltante → 400, no 500)
 - [ ] Probar el circuito completo: catálogo → orden → bulto → despacho → recepción → venta → devolución → reportes
 - [ ] Que no se suban `__pycache__`, `.pytest_cache` ni `*.db`
-- [ ] Preparar la defensa: cada uno explica su parte y los 3 patrones (Singleton, Observer, Factory)
+- [ ] Preparar la defensa: cada uno explica su parte y los patrones (Singleton, Observer y creación delegada)
 
 ---
 
@@ -93,7 +93,7 @@ _El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `ma
 **Patrones (mínimo 2)**
 - [x] Singleton: `BaseDeDatos` en `database/conexion.py`
 - [x] Observer: 2 sujetos (`LogisticaService`, `StockService`) y 3 observadores (`StockObserver`, `AlertaStockMinimoObserver`, `AuditoriaObserver`)
-- [ ] Factory: medios de pago → Lucía
+- [ ] Creación delegada de medios de pago → Lucía
 
 **Reportes (mínimo 4 no triviales — hay 2)**
 - [x] Bultos rechazados y merma
