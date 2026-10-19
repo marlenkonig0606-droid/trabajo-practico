@@ -40,7 +40,29 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 - ❌ Un bulto con **precinto roto o que no coincide** se rechaza y no habilita la venta.
 - 📉 No se puede **vender más** que el stock disponible y verificado.
 - 🧾 No se aceptan **devoluciones** de ventas inexistentes ni por más unidades de las vendidas.
--
+
+### 🛒 Ventas
+
+- Las ventas al público se registran **solo en sucursales de tipo `LOCAL`**. El `CD` abastece a los locales y no vende al público.
+- Cada venta debe incluir al menos un producto existente; cada producto puede aparecer una sola vez en la solicitud y su cantidad debe ser un entero positivo.
+- El precio de venta vigente se copia al detalle al registrar la venta. Ese precio histórico se usa para calcular devoluciones aunque luego cambie el precio del catálogo.
+- El stock se descuenta del local dentro de la misma transacción que registra los detalles, el pago y el comprobante. Si una validación falla, la venta completa se revierte.
+- El comprobante recibe un número correlativo. Cada venta registra un único pago; **no se admiten pagos divididos entre varios medios** en esta versión.
+
+### 💳 Medios de pago
+
+- **Efectivo:** aplica un descuento del 10% sobre el subtotal.
+- **Tarjeta de crédito:** aplica un recargo del 5% por cada cuota. Si no se especifican cuotas, se toma una cuota; la cantidad debe ser un entero positivo.
+- **Tarjeta de débito y transferencia:** no aplican descuento ni recargo.
+- El tipo de medio de pago debe ser uno de los admitidos por el sistema; uno desconocido se rechaza.
+
+### ↩️ Devoluciones y caja
+
+- Una devolución debe referirse a una venta existente, incluir al menos un producto de esa venta y tener un motivo no vacío.
+- La suma de las cantidades devueltas en todas las devoluciones de una venta no puede superar las cantidades vendidas. Se permiten devoluciones parciales en varias operaciones.
+- Cada unidad devuelta se valora al precio unitario histórico de su venta.
+- El importe reintegrado se calcula **proporcionalmente al total efectivamente pagado**. Así se distribuyen entre los productos devueltos los descuentos de efectivo y los recargos de crédito. En devoluciones parciales, el redondeo se ajusta contra el importe acumulado previamente reintegrado, para que al devolver todo no se reintegre más ni menos que el pago original.
+- Al aceptar una devolución, las unidades regresan al stock del mismo local donde se registró la venta y se registra un movimiento de caja de tipo `EGRESO` por el importe reintegrado. El registro de devolución, el movimiento de caja y la reposición de stock forman una sola transacción.
 
 ---
 

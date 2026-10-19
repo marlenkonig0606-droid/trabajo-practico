@@ -101,8 +101,9 @@ El crédito aplica un recargo del 5% por cuota. Un tipo desconocido produce un e
 2. `VentasService.registrar_venta` siguiendo los comentarios. `StockService.restar` ya valida
    que no se venda más de lo disponible.
 3. `registrar_devolucion`: la venta debe existir y no se puede devolver más de lo vendido
-   (¿qué pasa con una segunda devolución parcial de la misma venta?). Devuelve stock
-   (`sumar(..., "DEVOLUCION")`) y registra el egreso de caja.
+   (también sumando devoluciones parciales anteriores). Repone stock (`sumar(..., "DEVOLUCION")`)
+   y registra el egreso en `movimiento_caja`. El reintegro es proporcional al total efectivamente
+   pagado para distribuir descuentos y recargos de la venta.
 4. Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva.
 
 ### Paso 6 — Reportes (mínimo 4 no triviales: ya hay 2)
