@@ -76,11 +76,11 @@ function Orden({ orden, nombreProducto, accion }) {
   const pendientes = orden.items.filter((i) => i.cantidad > i.empaquetado)
   const [aEmpaquetar, setAEmpaquetar] = useState({})
 
-  const armarBulto = () => {
+  const armarContenedor = () => {
     const items = Object.entries(aEmpaquetar)
       .filter(([, c]) => Number(c) > 0)
       .map(([id, c]) => ({ producto_id: Number(id), cantidad: Number(c) }))
-    accion(() => api.crearBulto(orden.id, items))
+    accion(() => api.crearContenedor(orden.id, items))
     setAEmpaquetar({})
   }
 
@@ -104,57 +104,66 @@ function Orden({ orden, nombreProducto, accion }) {
 
       {pendientes.length > 0 && (orden.remito_estado ?? 'ABIERTO') === 'ABIERTO' && (
         <div className="armar">
-          <em>Armar bulto:</em>
+          <em>Armar contenedor:</em>
           {pendientes.map((i) => (
             <label key={i.producto_id}>{i.nombre} (máx {i.cantidad - i.empaquetado})
               <input type="number" min="0" value={aEmpaquetar[i.producto_id] ?? ''}
                      onChange={(e) => setAEmpaquetar({ ...aEmpaquetar, [i.producto_id]: e.target.value })} />
             </label>
           ))}
-          <button onClick={armarBulto}>Empaquetar</button>
+          <button onClick={armarContenedor}>Empaquetar</button>
         </div>
       )}
 
-      {orden.bultos.map((b) => (
-        <FilaBulto key={b.id} bulto={b} nombreProducto={nombreProducto} accion={accion} />
+      {orden.contenedores.map((b) => (
+        <FilaContenedor key={b.id} contenedor={b} nombreProducto={nombreProducto} accion={accion} />
       ))}
     </div>
   )
 }
 
-function FilaBulto({ bulto, nombreProducto, accion }) {
+function FilaContenedor({ contenedor, nombreProducto, accion }) {
   const [precinto, setPrecinto] = useState('')
   const [intacto, setIntacto] = useState(true)
   const [historial, setHistorial] = useState(null)
 
   const verHistorial = async () =>
-    setHistorial(historial ? null : await api.historial(bulto.id))
+    setHistorial(historial ? null : await api.historial(contenedor.id))
+
+  const fechaHora = (valor) => {
+    const fecha = new Date(valor.replace(' ', 'T'))
+    return Number.isNaN(fecha.getTime()) ? valor : fecha.toLocaleString('es-AR')
+  }
 
   return (
-    <div className="bulto">
-      <span>Bulto #{bulto.id}</span>
-      <span className={`estado ${bulto.estado}`}>{bulto.estado}</span>
+    <div className="contenedor">
+      <span>Contenedor #{contenedor.id}</span>
+      <span className={`estado ${contenedor.estado}`}>{contenedor.estado}</span>
       <span className="items">
-        {bulto.items.map((i) => `${i.cantidad} × ${nombreProducto(i.producto_id)}`).join(', ')}
+        {contenedor.items.map((i) => `${i.cantidad} × ${nombreProducto(i.producto_id)}`).join(', ')}
       </span>
-      {bulto.precinto && <span>🔒 {bulto.precinto}</span>}
+      {contenedor.precinto && <span>🔒 {contenedor.precinto}</span>}
 
-      {bulto.estado === 'PREPARADO' && <>
+      {contenedor.estado === 'PREPARADO' && <>
         <input placeholder="N° precinto" value={precinto} onChange={(e) => setPrecinto(e.target.value)} />
-        <button onClick={() => accion(() => api.precintar(bulto.id, precinto))}>Precintar</button>
+        <button onClick={() => accion(() => api.precintar(contenedor.id, precinto))}>Precintar</button>
       </>}
-      {bulto.estado === 'PRECINTADO' &&
-        <button onClick={() => accion(() => api.despachar(bulto.id))}>Despachar</button>}
-      {bulto.estado === 'EN_TRANSITO' && <>
+      {contenedor.estado === 'PRECINTADO' &&
+        <button onClick={() => accion(() => api.despachar(contenedor.id))}>Despachar</button>}
+      {contenedor.estado === 'EN_TRANSITO' && <>
         <input placeholder="Precinto leído" value={precinto} onChange={(e) => setPrecinto(e.target.value)} />
         <label><input type="checkbox" checked={intacto} onChange={(e) => setIntacto(e.target.checked)} /> intacto</label>
-        <button onClick={() => accion(() => api.recibir(bulto.id, precinto, intacto))}>Recibir</button>
+        <button onClick={() => accion(() => api.recibir(contenedor.id, precinto, intacto))}>Recibir</button>
       </>}
 
       <button className="link" onClick={verHistorial}>{historial ? 'ocultar' : 'historial'}</button>
       {historial && (
         <ol className="historial">
-          {historial.map((h, i) => <li key={i}>{h.fecha} — <b>{h.estado}</b> {h.observacion}</li>)}
+          {historial.map((h, i) => (
+            <li key={i}>
+              {fechaHora(h.fecha)} — <b>{h.estado}</b> {h.observacion}
+            </li>
+          ))}
         </ol>
       )}
     </div>

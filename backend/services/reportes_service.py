@@ -3,49 +3,96 @@ La consigna pide AL MENOS 4 reportes no triviales.
 Hay 2 hechos (ambos de logística). Te quedan los de ventas/stock (ver README, paso 6).
 """
 from database.conexion import BaseDeDatos
+from models.contenedor import Contenedor, DetalleContenedor, HistorialContenedor
+from models.orden_reposicion import OrdenReposicion, Remito
+from models.producto import Producto
+from models.sucursal import Sucursal
+from sqlalchemy import func, select
 
 
 class ReportesService:
     def __init__(self):
         self.db = BaseDeDatos()
 
-    # ✅ HECHO: bultos rechazados y merma valorizada por rotura de precinto
-    def bultos_rechazados(self, desde=None, hasta=None):
-        filtros, params = ["b.estado = 'RECHAZADO'"], []
+    # ✅ HECHO: contenedores rechazados y merma valorizada por rotura de precinto
+    def contenedores_rechazados(self, desde=None, hasta=None):
+        motivo = (
+            select(HistorialContenedor.observacion)
+            .where(
+                HistorialContenedor.contenedor_id == Contenedor.id,
+                HistorialContenedor.estado == "RECHAZADO",
+            )
+            .order_by(HistorialContenedor.id)
+            .limit(1)
+            .scalar_subquery()
+        )
+        filtros = [Contenedor.estado == "RECHAZADO"]
         if desde:
-            filtros.append("date(b.fecha_recepcion) >= date(?)"); params.append(desde)
+            filtros.append(func.date(Contenedor.fecha_recepcion) >= func.date(desde))
         if hasta:
-            filtros.append("date(b.fecha_recepcion) <= date(?)"); params.append(hasta)
+            filtros.append(func.date(Contenedor.fecha_recepcion) <= func.date(hasta))
 
-        return self.db.consultar(f"""
-            SELECT b.id AS bulto_id, b.precinto, r.numero AS remito, s.nombre AS destino,
-                   b.fecha_recepcion,
-                   (SELECT h.observacion FROM historial_bulto h
-                    WHERE h.bulto_id = b.id AND h.estado = 'RECHAZADO') AS motivo,
-                   SUM(db.cantidad) AS unidades,
-                   ROUND(SUM(db.cantidad * p.precio_costo), 2) AS merma_valorizada
-            FROM bulto b
-            JOIN remito r ON r.id = b.remito_id
-            JOIN orden_reposicion o ON o.id = r.orden_id
-            JOIN sucursal s ON s.id = o.destino_id
-            JOIN detalle_bulto db ON db.bulto_id = b.id
-            JOIN producto p ON p.id = db.producto_id
-            WHERE {' AND '.join(filtros)}
-            GROUP BY b.id
-            ORDER BY b.fecha_recepcion DESC""", tuple(params))
+        filas = self.db.sesion.execute(
+            select(
+                Contenedor.id.label("contenedor_id"),
+                Contenedor.precinto,
+                Remito.numero.label("remito"),
+                Sucursal.nombre.label("destino"),
+                Contenedor.fecha_recepcion,
+                motivo.label("motivo"),
+                func.sum(DetalleContenedor.cantidad).label("unidades"),
+                func.round(
+                    func.sum(DetalleContenedor.cantidad * Producto.precio_costo), 2
+                ).label("merma_valorizada"),
+            )
+            .join(Remito, Remito.id == Contenedor.remito_id)
+            .join(OrdenReposicion, OrdenReposicion.id == Remito.orden_id)
+            .join(Sucursal, Sucursal.id == OrdenReposicion.destino_id)
+            .join(DetalleContenedor, DetalleContenedor.contenedor_id == Contenedor.id)
+            .join(Producto, Producto.id == DetalleContenedor.producto_id)
+            .where(*filtros)
+            .group_by(Contenedor.id)
+            .order_by(Contenedor.fecha_recepcion.desc())
+        ).mappings()
+        return [dict(fila) for fila in filas]
 
     # ✅ HECHO: tiempo promedio de tránsito CD -> cada local (en horas)
     def tiempo_promedio_transito(self):
-        return self.db.consultar("""
-            SELECT s.nombre AS local, COUNT(*) AS bultos,
-                   ROUND(AVG((julianday(b.fecha_recepcion) - julianday(b.fecha_despacho)) * 24), 2)
-                       AS horas_promedio
-            FROM bulto b
-            JOIN remito r ON r.id = b.remito_id
-            JOIN orden_reposicion o ON o.id = r.orden_id
-            JOIN sucursal s ON s.id = o.destino_id
-            WHERE b.fecha_despacho IS NOT NULL AND b.fecha_recepcion IS NOT NULL
-            GROUP BY s.id ORDER BY horas_promedio DESC""")
+        filas = self.db.sesion.execute(
+            select(
+                Sucursal.nombre.label("local"),
+                func.count().label("contenedores"),
+                func.round(
+                    func.avg(
+                        (
+                            func.julianday(Contenedor.fecha_recepcion)
+                            - func.julianday(Contenedor.fecha_despacho)
+                        )
+                        * 24
+                    ),
+                    2,
+                ).label("horas_promedio"),
+            )
+            .join(OrdenReposicion, OrdenReposicion.destino_id == Sucursal.id)
+            .join(Remito, Remito.orden_id == OrdenReposicion.id)
+            .join(Contenedor, Contenedor.remito_id == Remito.id)
+            .where(
+                Contenedor.fecha_despacho.is_not(None),
+                Contenedor.fecha_recepcion.is_not(None),
+            )
+            .group_by(Sucursal.id)
+            .order_by(func.round(
+                func.avg(
+                    (
+                        func.julianday(Contenedor.fecha_recepcion)
+                        - func.julianday(Contenedor.fecha_despacho)
+                    )
+                    * 24
+                ),
+                2,
+            ).desc())
+        ).mappings()
+        return [dict(fila) for fila in filas]
 
     # TODO: ventas e ingresos por período, local y medio de pago
     # TODO: productos más vendidos + margen estimado (precio_venta - precio_costo)

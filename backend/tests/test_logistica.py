@@ -1,9 +1,12 @@
 """Correr desde backend/:   python -m pytest -v"""
-import sqlite3
 import pytest
+from sqlalchemy import delete, inspect
+from sqlalchemy.exc import IntegrityError
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
+from models.contenedor import Contenedor
+from models.contenedor import HistorialContenedor
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.excepciones import ReglaNegocioError
@@ -25,41 +28,44 @@ def svc(tmp_path):
 
 def armar_y_despachar(svc, cantidad=10, precinto="P-1"):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": cantidad}])
-    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": cantidad}])
-    svc.precintar(bulto["id"], precinto)
-    svc.despachar(bulto["id"])
-    return orden, bulto
+    contenedor = svc.crear_contenedor(orden["id"], [{"producto_id": AGUA, "cantidad": cantidad}])
+    svc.precintar(contenedor["id"], precinto)
+    svc.despachar(contenedor["id"])
+    return orden, contenedor
 
 
 def test_flujo_feliz_suma_stock_solo_al_verificar(svc):
     stock = StockService()
-    orden, bulto = armar_y_despachar(svc)
+    orden, contenedor = armar_y_despachar(svc)
     assert stock.disponible(CD, AGUA) == 490          # salió del CD
     assert stock.disponible(LOCAL, AGUA) == 0         # en tránsito: no vendible
 
-    svc.recibir(bulto["id"], "P-1", precinto_intacto=True)
+    svc.recibir(contenedor["id"], "P-1", precinto_intacto=True)
     assert stock.disponible(LOCAL, AGUA) == 10
-    estados = [h["estado"] for h in svc.historial(bulto["id"])]
+    historial = svc.historial(contenedor["id"])
+    estados = [h["estado"] for h in historial]
     assert estados == ["PREPARADO", "PRECINTADO", "EN_TRANSITO", "RECIBIDO", "VERIFICADO"]
+    assert all(h["fecha"] for h in historial)
+    assert all(len(h["fecha"]) == 19 for h in historial)
 
 
 def test_precinto_roto_rechaza_y_no_habilita_venta(svc):
-    _, bulto = armar_y_despachar(svc)
-    r = svc.recibir(bulto["id"], "P-1", precinto_intacto=False)
+    _, contenedor = armar_y_despachar(svc)
+    r = svc.recibir(contenedor["id"], "P-1", precinto_intacto=False)
     assert r["estado"] == "RECHAZADO"
     assert StockService().disponible(LOCAL, AGUA) == 0
 
 
 def test_precinto_que_no_coincide_rechaza(svc):
-    _, bulto = armar_y_despachar(svc)
-    assert svc.recibir(bulto["id"], "OTRO", precinto_intacto=True)["estado"] == "RECHAZADO"
+    _, contenedor = armar_y_despachar(svc)
+    assert svc.recibir(contenedor["id"], "OTRO", precinto_intacto=True)["estado"] == "RECHAZADO"
 
 
-def test_remito_con_dos_bultos_espera_a_ambos(svc):
+def test_remito_con_dos_contenedores_espera_a_ambos(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 5},
                                     {"producto_id": YERBA, "cantidad": 3}])
-    b1 = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 5}])
-    b2 = svc.crear_bulto(orden["id"], [{"producto_id": YERBA, "cantidad": 3}])
+    b1 = svc.crear_contenedor(orden["id"], [{"producto_id": AGUA, "cantidad": 5}])
+    b2 = svc.crear_contenedor(orden["id"], [{"producto_id": YERBA, "cantidad": 3}])
     for b, p in ((b1, "A"), (b2, "B")):
         svc.precintar(b["id"], p); svc.despachar(b["id"])
 
@@ -72,38 +78,53 @@ def test_remito_con_dos_bultos_espera_a_ambos(svc):
 
 def test_no_se_puede_saltear_estados(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
-    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
+    contenedor = svc.crear_contenedor(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
     with pytest.raises(ReglaNegocioError):
-        svc.despachar(bulto["id"])          # sin precintar
+        svc.despachar(contenedor["id"])          # sin precintar
 
 
 def test_no_empaquetar_mas_de_lo_pedido(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 3}])
     with pytest.raises(ReglaNegocioError):
-        svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 4}])
+        svc.crear_contenedor(orden["id"], [{"producto_id": AGUA, "cantidad": 4}])
 
 
 def test_precinto_duplicado(svc):
     armar_y_despachar(svc, precinto="X")
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
-    b = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
+    b = svc.crear_contenedor(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
     with pytest.raises(ReglaNegocioError):
         svc.precintar(b["id"], "X")
 
 
 def test_despacho_sin_stock_en_cd_hace_rollback(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 999}])
-    b = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 999}])
+    b = svc.crear_contenedor(orden["id"], [{"producto_id": AGUA, "cantidad": 999}])
     svc.precintar(b["id"], "Z")
     with pytest.raises(ReglaNegocioError):
         svc.despachar(b["id"])
-    assert svc.obtener_bulto(b["id"]).estado == "PRECINTADO"   # no quedó a medias
+    assert svc.obtener_contenedor(b["id"]).estado == "PRECINTADO"   # no quedó a medias
 
 
 def test_historial_es_inmutable(svc):
-    _, bulto = armar_y_despachar(svc)
-    with pytest.raises(sqlite3.DatabaseError):
-        BaseDeDatos().ejecutar("DELETE FROM historial_bulto WHERE bulto_id=?", (bulto["id"],))
+    _, contenedor = armar_y_despachar(svc)
+    with pytest.raises(IntegrityError):
+        BaseDeDatos().sesion.execute(
+            delete(HistorialContenedor).where(HistorialContenedor.contenedor_id == contenedor["id"])
+        )
+
+
+def test_esquema_usa_nombres_de_contenedor(svc):
+    db = BaseDeDatos()
+    tablas = set(inspect(db.engine).get_table_names())
+    assert {"contenedor", "detalle_contenedor", "historial_contenedor"} <= tablas
+    assert not {"bulto", "detalle_bulto", "historial_bulto"} & tablas
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
+    datos = svc.crear_contenedor(
+        orden["id"], [{"producto_id": AGUA, "cantidad": 1}]
+    )
+    assert isinstance(db.sesion.get(Contenedor, datos["id"]), Contenedor)
+    assert inspect(Contenedor).local_table.name == "contenedor"
 
 
 def test_orden_a_cd_no_permitida(svc):

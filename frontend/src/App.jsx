@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Logistica from './pages/Logistica.jsx'
 import Stock from './pages/Stock.jsx'
 import Reportes from './pages/Reportes.jsx'
+import Catalogo from './pages/Catalogo.jsx'
 import Pendiente from './pages/Pendiente.jsx'
 
 const SECCIONES = [
@@ -9,7 +10,7 @@ const SECCIONES = [
   { id: 'stock', titulo: 'Stock', componente: <Stock /> },
   { id: 'reportes', titulo: 'Reportes', componente: <Reportes /> },
   { id: 'ventas', titulo: 'Ventas', componente: <Pendiente nombre="Ventas y devoluciones" /> },
-  { id: 'abm', titulo: 'Catálogo', componente: <Pendiente nombre="ABM de productos, sucursales y proveedores" /> },
+  { id: 'abm', titulo: 'Catálogo', componente: <Catalogo /> },
 ]
 
 export default function App() {
@@ -17,7 +18,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>CD → Locales</h1>
+        <h1>Centro de distribucion MARLUFA</h1>
         <nav>
           {SECCIONES.map((s) => (
             <button key={s.id} className={actual === s.id ? 'activo' : ''}

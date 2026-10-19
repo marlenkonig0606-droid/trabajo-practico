@@ -1,29 +1,29 @@
-"""
-Herencia: Sucursal es la clase base; LocalVenta y CentroDistribucion la especializan.
-Ambas se guardan en la misma tabla `sucursal` diferenciadas por la columna `tipo`.
-"""
-from abc import ABC, abstractmethod
+from sqlalchemy import CheckConstraint, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from models.base import Base
 
 
-class Sucursal(ABC):
-    def __init__(self, id, nombre, direccion=None):
+class Sucursal(Base):
+    """Sucursal mapeada a la tabla compartida por locales y el centro de distribución."""
+
+    __tablename__ = "sucursal"
+    __table_args__ = (CheckConstraint("tipo IN ('CD', 'LOCAL')"),)
+    __mapper_args__ = {"polymorphic_on": "tipo", "polymorphic_abstract": True}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    direccion: Mapped[str | None] = mapped_column(String)
+    tipo: Mapped[str] = mapped_column(String, nullable=False)
+
+    def __init__(self, nombre, tipo, direccion=None, id=None):
         self.id = id
         self.nombre = nombre
         self.direccion = direccion
+        self.tipo = tipo
 
-    @property
-    @abstractmethod
-    def tipo(self):
-        ...
-
-    @abstractmethod
     def puede_vender(self):
-        """¿Se le puede vender al público desde esta sucursal?"""
-
-    @staticmethod
-    def desde_fila(fila):
-        clase = CentroDistribucion if fila["tipo"] == "CD" else LocalVenta
-        return clase(fila["id"], fila["nombre"], fila["direccion"])
+        return self.tipo == "LOCAL"
 
     def to_dict(self):
         return {"id": self.id, "nombre": self.nombre,
@@ -31,18 +31,14 @@ class Sucursal(ABC):
 
 
 class CentroDistribucion(Sucursal):
-    @property
-    def tipo(self):
-        return "CD"
+    __mapper_args__ = {"polymorphic_identity": "CD"}
 
-    def puede_vender(self):
-        return False
+    def __init__(self, nombre, direccion=None, id=None):
+        super().__init__(nombre=nombre, direccion=direccion, tipo="CD", id=id)
 
 
 class LocalVenta(Sucursal):
-    @property
-    def tipo(self):
-        return "LOCAL"
+    __mapper_args__ = {"polymorphic_identity": "LOCAL"}
 
-    def puede_vender(self):
-        return True
+    def __init__(self, nombre, direccion=None, id=None):
+        super().__init__(nombre=nombre, direccion=direccion, tipo="LOCAL", id=id)
