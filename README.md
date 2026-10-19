@@ -27,7 +27,7 @@ backend/
     conexion.py             ★ SINGLETON: una sola conexión para toda la app
     schema.sql              tablas + triggers que hacen inmutable el historial
     datos_iniciales.py      1 CD, 2 locales, 4 productos, stock solo en el CD
-  models/                   clases del dominio (Bulto, EstadoBulto, Sucursal, Producto)
+  models/                   clases del dominio (incluye Venta, Pago, Comprobante y Devolucion)
   patrones/
     observer.py             ★ OBSERVER: Sujeto / Observador / Eventos
     factory_medio_pago.py   ★ FACTORY: esqueleto para que completes
@@ -35,7 +35,7 @@ backend/
     logistica_service.py    ✅ procesos 3-6 completos (modelo a imitar)
     stock_service.py        ✅ stock + StockObserver
     reportes_service.py     ✅ 2 reportes · ⬜ faltan 2+
-    ventas_service.py       ⬜ proceso 7
+    ventas_service.py       ⬜ proceso 7 · tablas y modelos ya definidos
   tests/test_logistica.py   ✅
 frontend/src/pages/
   Logistica.jsx ✅  Stock.jsx ✅  Reportes.jsx ✅ (parcial)  Pendiente.jsx ⬜
@@ -93,8 +93,8 @@ con los productos por debajo de `stock_minimo` en ese local. Pista: `StockServic
 pruebe que un tipo inexistente lanza error.
 
 ### Paso 5 — Ventas y devoluciones (proceso 7)
-1. Tablas en `schema.sql`: `venta`, `detalle_venta` (guardá el precio del momento), `pago`,
-   `comprobante`, `devolucion`, `detalle_devolucion`.
+1. ✅ Tablas en `schema.sql` y modelos para `venta`, `detalle_venta` (precio del momento),
+   `pago`, `comprobante`, `devolucion` y `detalle_devolucion`.
 2. `VentasService.registrar_venta` siguiendo los comentarios. `StockService.restar` ya valida
    que no se venda más de lo disponible.
 3. `registrar_devolucion`: la venta debe existir y no se puede devolver más de lo vendido

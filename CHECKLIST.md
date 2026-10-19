@@ -37,7 +37,7 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [ ] Tests del ABM (duplicados, borrar algo usado, datos inválidos)
 
 ### 🟣 Lucía — rama `lucia` · Ventas, devoluciones y Factory (proceso 7)
-- [ ] Tablas en `schema.sql`: `venta`, `detalle_venta` (precio del momento), `pago`, `comprobante`, `devolucion`, `detalle_devolucion` + sus clases en `models/`
+- [x] Tablas en `schema.sql`: `venta`, `detalle_venta` (precio del momento), `pago`, `comprobante`, `devolucion`, `detalle_devolucion` + sus clases en `models/`
 - [ ] **Factory** (`patrones/factory_medio_pago.py`): `TarjetaCredito` (recargo por cuotas), `TarjetaDebito`, `Transferencia` + completar `MedioPagoFactory.crear` + test de tipo inexistente
 - [ ] `VentasService.registrar_venta`: uno o más productos, solo en LOCAL, no más del stock disponible y verificado (`StockService.restar`)
 - [ ] Cobro con medio de pago (usando la Factory) y comprobante con número correlativo

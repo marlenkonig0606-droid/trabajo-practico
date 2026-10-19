@@ -19,7 +19,7 @@ Preguntas para que pienses antes de escribir:
 from abc import ABC, abstractmethod
 
 
-class MedioPago(ABC):
+class MedioPago(ABC):  #IProducto
     @abstractmethod
     def calcular_total(self, importe: float) -> float:
         """Importe final a cobrar (con recargos/descuentos del medio)."""
