@@ -13,6 +13,11 @@ Ciclo de vida del bulto (lo que la cátedra va a evaluar "críticamente").
 
 VERIFICADO y RECHAZADO son estados FINALES: desde ahí no se puede ir a ningún lado.
 """
+# Nombres de eventos (constantes para no escribir strings sueltos)
+class Eventos:
+    BULTO_DESPACHADO = "BULTO_DESPACHADO"
+    REMITO_VERIFICADO = "REMITO_VERIFICADO"
+    BULTO_RECHAZADO = "BULTO_RECHAZADO"
 
 
 class EstadoBulto:

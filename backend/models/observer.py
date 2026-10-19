@@ -35,8 +35,3 @@ class Sujeto:
             observador.actualizar(evento, datos)
 
 
-# Nombres de eventos (constantes para no escribir strings sueltos)
-class Eventos:
-    BULTO_DESPACHADO = "BULTO_DESPACHADO"
-    REMITO_VERIFICADO = "REMITO_VERIFICADO"
-    BULTO_RECHAZADO = "BULTO_RECHAZADO"

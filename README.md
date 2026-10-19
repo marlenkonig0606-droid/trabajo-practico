@@ -27,11 +27,11 @@ backend/
     conexion.py             ★ SINGLETON: una sola conexión para toda la app
     schema.sql              tablas + triggers que hacen inmutable el historial
     datos_iniciales.py      1 CD, 2 locales, 4 productos, stock solo en el CD
-  models/                   clases del dominio (incluye Venta, Pago, Comprobante y Devolucion)
+  models/                   clases del dominio (incluye medios de pago)
   patrones/
     observer.py             ★ OBSERVER: Sujeto / Observador / Eventos
-    factory_medio_pago.py   ★ FACTORY: esqueleto para que completes
   services/                 reglas de negocio (acá viven las validaciones)
+    creadores_medio_pago.py creadores concretos de los medios de pago
     logistica_service.py    ✅ procesos 3-6 completos (modelo a imitar)
     stock_service.py        ✅ stock + StockObserver
     reportes_service.py     ✅ 2 reportes · ⬜ faltan 2+
@@ -64,7 +64,7 @@ se suma lo de los bultos verificados. Un bulto con precinto roto o con número d
 |---|---|---|
 | Singleton | `BaseDeDatos` | Todos los services comparten la misma conexión/transacción |
 | Observer | `LogisticaService` (sujeto) → `StockObserver` | Logística no conoce al stock; solo avisa "remito verificado" |
-| Factory | `MedioPagoFactory` (lo terminás vos) | Ventas no hace if/elif por medio de pago |
+| Creación de medios de pago | `CreadorMedioDePago` y creadores concretos | Cada creador decide qué medio de pago construir; VentasService usa el producto común |
 
 ---
 
@@ -88,9 +88,12 @@ el `UNIQUE` de la base. ¿Por qué conviene hacer las dos cosas?
 Hoy la orden se crea a mano. Agregá `LogisticaService.sugerir_orden(local_id)` que arme los ítems
 con los productos por debajo de `stock_minimo` en ese local. Pista: `StockService.listar()`.
 
-### Paso 4 — Terminar la Factory (`patrones/factory_medio_pago.py`)
-`TarjetaCredito` (recargo según cuotas), `TarjetaDebito`, `Transferencia`. Escribí un test que
-pruebe que un tipo inexistente lanza error.
+### Paso 4 — Creación de medios de pago
+Los productos de pago están en `models/medio_pago.py`. En `services/creadores_medio_pago.py`,
+`CreadorMedioDePago` declara el método de creación y cada creador
+concreto (`CreadorEfectivo`, `CreadorTarjetaCredito`, etc.) lo redefine para construir su medio.
+`VentasService` selecciona el creador según el tipo solicitado y trabaja con `IMedioDePago`.
+El crédito aplica un recargo del 5% por cuota. Un tipo desconocido produce un error de negocio.
 
 ### Paso 5 — Ventas y devoluciones (proceso 7)
 1. ✅ Tablas en `schema.sql` y modelos para `venta`, `detalle_venta` (precio del momento),
