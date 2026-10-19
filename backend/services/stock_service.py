@@ -1,5 +1,6 @@
 from database.conexion import BaseDeDatos
-from backend.models.observer import Observador, Eventos
+from models.observer import Observador
+from models.bulto import Eventos
 from services.excepciones import ReglaNegocioError
 
 

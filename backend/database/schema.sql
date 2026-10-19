@@ -168,3 +168,12 @@ CREATE TABLE IF NOT EXISTS detalle_devolucion (
     precio_unitario REAL NOT NULL CHECK (precio_unitario >= 0),
     PRIMARY KEY (devolucion_id, producto_id)
 );
+
+CREATE TABLE IF NOT EXISTS movimiento_caja (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    sucursal_id    INTEGER NOT NULL REFERENCES sucursal(id),
+    devolucion_id  INTEGER NOT NULL UNIQUE REFERENCES devolucion(id),
+    tipo           TEXT NOT NULL CHECK (tipo = 'EGRESO'),
+    importe        REAL NOT NULL CHECK (importe >= 0),
+    fecha          TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);

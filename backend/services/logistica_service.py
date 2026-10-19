@@ -10,7 +10,8 @@ Este módulo está COMPLETO: usalo como modelo para escribir ventas.
 from database.conexion import BaseDeDatos
 from models.bulto import Bulto, EstadoBulto
 from models.sucursal import Sucursal
-from backend.models.observer import Sujeto, Eventos
+from models.observer import Sujeto
+from models.bulto import Eventos
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 
 

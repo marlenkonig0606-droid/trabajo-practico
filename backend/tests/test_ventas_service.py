@@ -9,8 +9,8 @@ from models.medio_pago import (
     TarjetaDebito,
     Transferencia,
 )
-from services.excepciones import ReglaNegocioError
-from backend.services.medio_pago_service import (
+from services.excepciones import NoEncontradoError, ReglaNegocioError
+from services.medio_pago_service import (
     ICreadorMedioDePago,
     CREADORES_MEDIO_DE_PAGO,
     obtener_creador_medio_de_pago,
@@ -104,3 +104,51 @@ def test_venta_sin_stock_hace_rollback(svc):
     assert ventas.db.consultar_uno(
         "SELECT COUNT(*) AS total FROM comprobante")["total"] == 0
     assert stock.disponible(LOCAL, AGUA) == 0
+
+
+def test_devolucion_de_venta_inexistente_se_rechaza(svc):
+    ventas, _ = svc
+
+    with pytest.raises(NoEncontradoError, match="No existe la venta"):
+        ventas.registrar_devolucion(
+            999, [{"producto_id": AGUA, "cantidad": 1}], "Producto defectuoso")
+
+
+def test_devolucion_parcial_reintegra_proporcionalmente_y_repone_stock(svc):
+    ventas, stock = svc
+    stock.sumar(LOCAL, AGUA, 5, "TEST")
+    venta = ventas.registrar_venta(
+        LOCAL, [{"producto_id": AGUA, "cantidad": 2}], "EFECTIVO")
+    assert venta["total"] == 1260
+
+    devolucion = ventas.registrar_devolucion(
+        venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Producto defectuoso")
+
+    assert devolucion["total"] == 630
+    assert stock.disponible(LOCAL, AGUA) == 4
+    assert ventas.db.consultar_uno(
+        """SELECT tipo, importe FROM movimiento_caja
+           WHERE devolucion_id=?""",
+        (devolucion["id"],),
+    ) == {"tipo": "EGRESO", "importe": 630.0}
+
+
+def test_devoluciones_parciales_acumuladas_no_permiten_devolver_mas_de_lo_vendido(svc):
+    ventas, stock = svc
+    stock.sumar(LOCAL, AGUA, 5, "TEST")
+    venta = ventas.registrar_venta(
+        LOCAL, [{"producto_id": AGUA, "cantidad": 2}], "EFECTIVO")
+
+    primera = ventas.registrar_devolucion(
+        venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Primer artículo")
+    segunda = ventas.registrar_devolucion(
+        venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Segundo artículo")
+
+    assert primera["total"] + segunda["total"] == venta["total"]
+    assert ventas.db.consultar_uno(
+        "SELECT COUNT(*) AS cantidad FROM movimiento_caja WHERE tipo='EGRESO'"
+    )["cantidad"] == 2
+    with pytest.raises(ReglaNegocioError, match="quedan 0 por devolver"):
+        ventas.registrar_devolucion(
+            venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Devolución excesiva")
+    assert stock.disponible(LOCAL, AGUA) == 5
