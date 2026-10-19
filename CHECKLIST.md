@@ -1,6 +1,6 @@
 # Checklist TP Integrador — Tema 3: CD a Locales
 _Armado sobre lo que hay HOY en `main` de GitHub (commit `caed36e` de Facundo: versión con sqlite3 + DAOs, sin ORM) — 19/10._
-_Actualizado 19/10: arreglado el import roto y unificado todo a **`bulto`** (`models/bulto.py` con `Bulto` / `EstadoBulto`, igual que tablas, rutas y frontend). Backend levanta y tests pasan 10/10._
+_Actualizado 19/10: proceso 3 terminado (sugerir orden). Antes: arreglado el import roto y unificado todo a **`bulto`** (`models/bulto.py` con `Bulto` / `EstadoBulto`, igual que tablas, rutas y frontend). Backend levanta y tests pasan 10/10._
 
 > ⚠ La versión con ORM (SQLAlchemy), ABM y PRs #1–#3 **no está en `main`**, pero no se perdió:
 > está en la compu de Marlén (rama `main` local y rama `mar`). Si el grupo decide volver a ella, se restaura.
@@ -49,9 +49,11 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 
 ### 🟠 Marlén — rama `mar` · Logística, patrones, reportes y documentación
 _El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `mar-bloqueo-observer`: ya usan `bulto`, así que se pueden traer casi directo._
-- [ ] **Proceso 3**: `sugerir_orden(local_id)` con los productos bajo `stock_minimo` + botón "Sugerir orden" en Logística
-- [ ] **Bloqueo de stock** (2 usuarios a la vez): reservar stock del CD al empaquetar + `GestorBloqueos` + tests de concurrencia
-- [ ] **Observer completo**: `AlertaStockMinimoObserver` + `AuditoriaObserver` + `/api/alertas` y `/api/eventos` + avisos en Stock y Reportes
+- [x] **Proceso 3**: `sugerir_orden(local_id)` con los productos bajo `stock_minimo` + botón "Sugerir orden" en Logística
+      (`LogisticaService.sugerir_orden` + `GET /api/sucursales/<id>/sugerencia` + botón en `Logistica.jsx`)
+- [x] **Bloqueo de stock** (2 usuarios a la vez): reservar stock del CD al empaquetar + `GestorBloqueos` + tests de concurrencia
+      (`services/bloqueos.py` + columna `reservado` en `stock` + `StockService.reservar/consumir_reserva` + 4 tests nuevos → 13/13)
+- [x] **Observer completo**: `AlertaStockMinimoObserver` + `AuditoriaObserver` + `/api/alertas` y `/api/eventos` + avisos en Stock y Reportes
 - [ ] Anular bulto antes de despachar (libera la reserva)
 - [ ] **Reporte**: existencias actuales y productos en stock mínimo
 - [ ] **Reporte**: movimientos y valorización del inventario
@@ -75,8 +77,8 @@ _El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `ma
 |---|---|---|---|
 | 1 | Sucursales y CD | 🟡 solo listar | Facundo |
 | 2 | Productos, categorías, precios, mínimos, proveedores | 🟡 models y DAOs, sin conectar | Facundo |
-| 3 | Consolidar necesidades en orden de reposición | 🟡 orden manual, falta sugerir | Marlén |
-| 4 | Empaquetar en bultos con remito y precinto | 🟡 funciona, falta reserva de stock | Marlén |
+| 3 | Consolidar necesidades en orden de reposición | ✅ orden manual + sugerencia por stock mínimo | Marlén |
+| 4 | Empaquetar en bultos con remito y precinto | ✅ con reserva de stock y bloqueo entre usuarios | Marlén |
 | 5 | Despacho | ✅ funciona | Facundo |
 | 6 | Recepción con verificación de precinto | ✅ funciona | Facundo |
 | 7 | Ventas, cobros, comprobante, devoluciones | ❌ falta | Lucía |
@@ -90,7 +92,7 @@ _El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `ma
 
 **Patrones (mínimo 2)**
 - [x] Singleton: `BaseDeDatos` en `database/conexion.py`
-- [~] Observer: `StockObserver` funciona; faltan alertas y auditoría → Marlén
+- [x] Observer: 2 sujetos (`LogisticaService`, `StockService`) y 3 observadores (`StockObserver`, `AlertaStockMinimoObserver`, `AuditoriaObserver`)
 - [ ] Factory: medios de pago → Lucía
 
 **Reportes (mínimo 4 no triviales — hay 2)**

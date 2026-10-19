@@ -1,5 +1,6 @@
 """Correr desde backend/:   python -m pytest -v"""
 import sqlite3
+import threading
 import pytest
 
 from database.conexion import BaseDeDatos
@@ -7,6 +8,7 @@ from database.datos_iniciales import cargar
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.excepciones import ReglaNegocioError
+from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver
 
 CD, LOCAL = 1, 2
 AGUA, YERBA = 1, 3
@@ -17,8 +19,11 @@ def svc(tmp_path):
     BaseDeDatos.reiniciar()
     BaseDeDatos(str(tmp_path / "test.db"))
     cargar()
-    logistica = LogisticaService()
-    logistica.suscribir(StockObserver(StockService()))
+    stock = StockService()
+    stock.suscribir(AlertaStockMinimoObserver())
+    logistica = LogisticaService(stock)
+    logistica.suscribir(StockObserver(stock))
+    logistica.suscribir(AuditoriaObserver())
     yield logistica
     BaseDeDatos.reiniciar()
 
@@ -91,13 +96,72 @@ def test_precinto_duplicado(svc):
         svc.precintar(b["id"], "X")
 
 
-def test_despacho_sin_stock_en_cd_hace_rollback(svc):
+def test_armar_bulto_reserva_stock_del_cd(svc):
+    stock = StockService()
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 300}])
+    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 300}])
+    assert stock.disponible(CD, AGUA) == 500      # físicamente sigue en el CD
+    assert stock.reservado(CD, AGUA) == 300       # pero ya está comprometido
+    assert stock.libre(CD, AGUA) == 200
+
+    svc.precintar(bulto["id"], "R1")
+    svc.despachar(bulto["id"])
+    assert stock.disponible(CD, AGUA) == 200      # al despachar sale y se libera la reserva
+    assert stock.reservado(CD, AGUA) == 0
+
+
+def test_sin_stock_libre_no_se_arma_el_bulto(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 999}])
-    b = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 999}])
-    svc.precintar(b["id"], "Z")
     with pytest.raises(ReglaNegocioError):
-        svc.despachar(b["id"])
-    assert svc.obtener_bulto(b["id"]).estado == "PRECINTADO"   # no quedó a medias
+        svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 999}])
+    assert svc.obtener_orden(orden["id"])["bultos"] == []    # rollback: no quedó nada
+    assert StockService().reservado(CD, AGUA) == 0
+
+
+def test_dos_usuarios_a_la_vez_por_el_mismo_stock(svc):
+    """Hay 500 en el CD. Dos usuarios piden 300 cada uno EXACTAMENTE al mismo tiempo.
+    Solo uno puede quedarse con el stock; el otro recibe un error claro."""
+    o1 = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 300}])
+    o2 = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 300}])
+    largada = threading.Barrier(2)        # hace que los dos hilos arranquen juntos
+    resultados = []
+
+    def usuario(orden_id):
+        largada.wait()
+        try:
+            svc.crear_bulto(orden_id, [{"producto_id": AGUA, "cantidad": 300}])
+            resultados.append("ok")
+        except ReglaNegocioError:
+            resultados.append("rechazado")
+
+    hilos = [threading.Thread(target=usuario, args=(o["id"],)) for o in (o1, o2)]
+    for h in hilos: h.start()
+    for h in hilos: h.join()
+
+    assert sorted(resultados) == ["ok", "rechazado"]
+    assert StockService().reservado(CD, AGUA) == 300     # nunca 600
+
+
+def test_muchos_usuarios_nunca_sobrevenden(svc):
+    """20 usuarios piden 40 unidades a la vez (800 en total) sobre 500 -> entran 12."""
+    ordenes = [svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 40}]) for _ in range(20)]
+    largada = threading.Barrier(len(ordenes))
+    exitos = []
+
+    def usuario(orden_id):
+        largada.wait()
+        try:
+            svc.crear_bulto(orden_id, [{"producto_id": AGUA, "cantidad": 40}])
+            exitos.append(orden_id)
+        except ReglaNegocioError:
+            pass
+
+    hilos = [threading.Thread(target=usuario, args=(o["id"],)) for o in ordenes]
+    for h in hilos: h.start()
+    for h in hilos: h.join()
+
+    assert len(exitos) == 12                              # 12 * 40 = 480 <= 500
+    assert StockService().reservado(CD, AGUA) == 480
 
 
 def test_historial_es_inmutable(svc):

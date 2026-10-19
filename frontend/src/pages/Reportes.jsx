@@ -4,10 +4,12 @@ import { api } from '../api.js'
 export default function Reportes() {
   const [rechazados, setRechazados] = useState([])
   const [transito, setTransito] = useState([])
+  const [eventos, setEventos] = useState([])
 
   useEffect(() => {
     api.reporteRechazados().then(setRechazados)
     api.reporteTransito().then(setTransito)
+    api.eventos().then(setEventos)
   }, [])
 
   return (
@@ -19,6 +21,10 @@ export default function Reportes() {
       <div className="tarjeta">
         <h2>Tiempo promedio de tránsito CD → local</h2>
         <Tabla filas={transito} columnas={['local', 'bultos', 'horas_promedio']} />
+      </div>
+      <div className="tarjeta">
+        <h2>Registro de eventos logísticos</h2>
+        <Tabla filas={eventos} columnas={['fecha', 'evento', 'detalle']} />
       </div>
       <p className="vacio">TODO: ventas por período/local/medio de pago, más vendidos con margen, stock mínimo.</p>
     </section>

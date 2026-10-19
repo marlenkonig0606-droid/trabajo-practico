@@ -48,6 +48,8 @@ function NuevaOrden({ sucursales, productos, onCrear }) {
       .map(([id, c]) => ({ producto_id: Number(id), cantidad: Number(c) }))
     onCrear(Number(destino), items)
     setCantidades({})
+
+  
   }
 
   return (
@@ -67,6 +69,10 @@ function NuevaOrden({ sucursales, productos, onCrear }) {
           </label>
         ))}
       </div>
+      <button disabled={!destino} onClick={async () => {
+        const items = await api.sugerirOrden(destino)
+        setCantidades(Object.fromEntries(items.map((i) => [i.producto_id, i.cantidad])))
+      }}>Sugerir orden</button>
       <button disabled={!destino} onClick={crear}>Crear orden</button>
     </div>
   )
