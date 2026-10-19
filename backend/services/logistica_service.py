@@ -10,15 +10,20 @@ Este módulo está COMPLETO: usalo como modelo para escribir ventas.
 from database.conexion import BaseDeDatos
 from models.bulto import Bulto, EstadoBulto
 from models.sucursal import Sucursal
-from models.observer import Sujeto
-from models.bulto import Eventos
+from models.observer import Sujeto, Eventos
 from services.excepciones import ReglaNegocioError, NoEncontradoError
+from services.stock_service import StockService
+from services.bloqueos import GestorBloqueos
 
 
 class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
-    def __init__(self):
+    def __init__(self, stock: StockService| None = None):
         super().__init__()
         self.db = BaseDeDatos()
+        # Se recibe el MISMO StockService que usa el resto de la app, así sus
+        # observadores (alertas) se enteran también de las reservas que hace logística.
+        self.stock = stock or StockService()
+        self.bloqueos = GestorBloqueos()
 
     # ================================================================
     # 3. ORDEN DE REPOSICIÓN
@@ -73,10 +78,36 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         ids = self.db.consultar("SELECT id FROM orden_reposicion ORDER BY id DESC")
         return [self.obtener_orden(f["id"]) for f in ids]
 
+    def sugerir_orden(self, local_id):
+        """Devuelve los ítems que le faltan al local para llegar a su stock mínimo."""
+        local = self._obtener_sucursal(local_id)
+        if local.tipo !=  'LOCAL':
+            raise ReglaNegocioError("Solo se puede sugerir una orden para un local")
+
+        filas = StockService().listar( local_id )
+        sugerencia = []
+        for fila in filas:
+            if fila["disponible"] < fila["stock_minimo"]:
+                faltante =  fila["stock_minimo"]  - fila["disponible"]
+                sugerencia.append({"producto_id": fila["producto_id"],
+                                   "nombre": fila["nombre"],
+                                   "cantidad": faltante})
+        return sugerencia
+
     # ================================================================
     # 4. EMPAQUETAR (crear bulto) + asignar remito y precinto
     # ================================================================
     def crear_bulto(self, orden_id, items):
+        """Al hacer clic en "Empaquetar" el stock del CD queda RESERVADO para este bulto.
+        Si dos usuarios empaquetan el mismo producto a la vez, el bloqueo hace que
+        pasen de a uno: el segundo ve lo que dejó el primero."""
+        orden = self.obtener_orden(orden_id)   # solo para saber el CD (no cambia)
+        claves = [(orden["origen_id"], it["producto_id"]) for it in items or []]
+        with self.bloqueos.bloquear(claves):     # 1) candados de producto
+            return self._crear_bulto(orden_id, items)
+
+    def _crear_bulto(self, orden_id, items):
+        # Se vuelve a leer la orden ADENTRO del bloqueo: lo de afuera puede estar viejo
         orden = self.obtener_orden(orden_id)
         if orden["estado"] not in ("PENDIENTE", "EN_PREPARACION"):
             raise ReglaNegocioError("Solo se pueden armar bultos de órdenes pendientes")
@@ -96,7 +127,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                     f"Producto {it['producto_id']}: quedan {pendientes[it['producto_id']]} "
                     f"por empaquetar y se intentó empaquetar {it['cantidad']}")
 
-        with self.db.transaccion():
+        with self.db.transaccion():                # 2) recién ahora la transacción
             remito_id = orden["remito_id"] or self.db.ejecutar(
                 "INSERT INTO remito (numero, orden_id) VALUES (?, ?)",
                 (f"R-{orden_id:06d}", orden_id))
@@ -105,6 +136,9 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                 self.db.ejecutar(
                     "INSERT INTO detalle_bulto (bulto_id, producto_id, cantidad) VALUES (?, ?, ?)",
                     (bulto_id, it["producto_id"], it["cantidad"]))
+                # Si no alcanza, lanza error y la transacción deshace TODO el bulto
+                self.stock.reservar(orden["origen_id"], it["producto_id"], it["cantidad"],
+                                    f"bulto {bulto_id}")
             self._registrar_historial(bulto_id, EstadoBulto.PREPARADO, "Bulto armado en CD")
             self.db.ejecutar("UPDATE orden_reposicion SET estado='EN_PREPARACION' WHERE id=?",
                              (orden_id,))

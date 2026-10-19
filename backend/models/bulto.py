@@ -13,12 +13,6 @@ Ciclo de vida del bulto (lo que la cátedra va a evaluar "críticamente").
 
 VERIFICADO y RECHAZADO son estados FINALES: desde ahí no se puede ir a ningún lado.
 """
-# Nombres de eventos (constantes para no escribir strings sueltos)
-class Eventos:
-    BULTO_DESPACHADO = "BULTO_DESPACHADO"
-    REMITO_VERIFICADO = "REMITO_VERIFICADO"
-    BULTO_RECHAZADO = "BULTO_RECHAZADO"
-
 
 class EstadoBulto:
     PREPARADO = "PREPARADO"
@@ -27,18 +21,19 @@ class EstadoBulto:
     RECIBIDO = "RECIBIDO"
     VERIFICADO = "VERIFICADO"
     RECHAZADO = "RECHAZADO"
+    ANULADO = "ANULADO"                   
 
-    # Tabla de transiciones válidas: estado actual -> estados a los que puede pasar
     TRANSICIONES = {
-        PREPARADO: {PRECINTADO},
-        PRECINTADO: {EN_TRANSITO},
+        PREPARADO: {PRECINTADO, ANULADO},    
+        PRECINTADO: {EN_TRANSITO, ANULADO},  
         EN_TRANSITO: {RECIBIDO},
         RECIBIDO: {VERIFICADO, RECHAZADO},
         VERIFICADO: set(),
         RECHAZADO: set(),
+        ANULADO: set(),                  
     }
 
-    FINALES = {VERIFICADO, RECHAZADO}
+    FINALES = {VERIFICADO, RECHAZADO, ANULADO}
 
     @classmethod
     def puede_pasar(cls, desde, hacia):

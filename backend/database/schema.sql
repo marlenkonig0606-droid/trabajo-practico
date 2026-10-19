@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS stock (
     sucursal_id  INTEGER NOT NULL REFERENCES sucursal(id),
     producto_id  INTEGER NOT NULL REFERENCES producto(id),
     disponible   INTEGER NOT NULL DEFAULT 0 CHECK (disponible >= 0),
+    -- reservado = unidades ya comprometidas en bultos armados y todavía no despachados
+    -- libre     = disponible - reservado  -> lo único que se puede tomar
+    reservado    INTEGER NOT NULL DEFAULT 0 CHECK (reservado >= 0),
     PRIMARY KEY (sucursal_id, producto_id)
 );
 
@@ -117,6 +120,29 @@ BEFORE DELETE ON historial_bulto
 BEGIN
     SELECT RAISE(ABORT, 'El historial de bultos es inmutable');
 END;
+
+-- ---------- Observadores ----------
+-- Alertas de stock mínimo (AlertaStockMinimoObserver).
+-- Hay como máximo UNA alerta pendiente por sucursal+producto; se resuelve sola
+-- cuando el stock libre vuelve a llegar al mínimo.
+CREATE TABLE IF NOT EXISTS alerta_stock (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    sucursal_id       INTEGER NOT NULL REFERENCES sucursal(id),
+    producto_id       INTEGER NOT NULL REFERENCES producto(id),
+    libre             INTEGER NOT NULL,       -- stock libre al momento de la alerta
+    minimo            INTEGER NOT NULL,
+    fecha             TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    resuelta          INTEGER NOT NULL DEFAULT 0 CHECK (resuelta IN (0, 1)),
+    fecha_resolucion  TEXT
+);
+
+-- Registro de eventos logísticos (AuditoriaObserver)
+CREATE TABLE IF NOT EXISTS evento_log (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    evento   TEXT NOT NULL,
+    detalle  TEXT NOT NULL,                   -- descripción legible
+    fecha    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 
 -- ---------- Ventas, cobros y devoluciones ----------
 CREATE TABLE IF NOT EXISTS venta (

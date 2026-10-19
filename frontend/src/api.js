@@ -5,16 +5,26 @@ async function pedir(metodo, url, cuerpo) {
     headers: { 'Content-Type': 'application/json' },
     body: cuerpo ? JSON.stringify(cuerpo) : undefined,
   })
-  const datos = await resp.json()
-  if (!resp.ok) throw new Error(datos.error || 'Error inesperado')
+  const texto = await resp.text()
+  let datos = null
+  try {
+    datos = texto ? JSON.parse(texto) : null
+  } catch {
+    // la respuesta no era JSON (ej. página de error HTML)
+  }
+  if (!resp.ok) {
+    throw new Error(datos?.error || (texto ? `Error ${resp.status}` : `Sin respuesta del backend (${resp.status}). ¿Está corriendo python app.py?`))
+  }
   return datos
 }
+
 
 export const api = {
   sucursales: () => pedir('GET', '/sucursales'),
   productos: () => pedir('GET', '/productos'),
   stock: (sucursalId) => pedir('GET', `/stock/${sucursalId}`),
 
+  sugerirOrden: (localId) => pedir('GET', `/sucursales/${localId}/sugerencia`),
   ordenes: () => pedir('GET', '/ordenes'),
   crearOrden: (destino_id, items) => pedir('POST', '/ordenes', { destino_id, items }),
   crearBulto: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/bultos`, { items }),
@@ -22,6 +32,9 @@ export const api = {
   despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
   recibir: (id, precinto, intacto) => pedir('POST', `/bultos/${id}/recibir`, { precinto, intacto }),
   historial: (id) => pedir('GET', `/bultos/${id}/historial`),
+
+  alertas: () => pedir('GET', '/alertas'),
+  eventos: () => pedir('GET', '/eventos'),
 
   reporteRechazados: () => pedir('GET', '/reportes/bultos-rechazados'),
   reporteTransito: () => pedir('GET', '/reportes/transito'),

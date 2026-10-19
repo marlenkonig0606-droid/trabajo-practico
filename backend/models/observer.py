@@ -6,9 +6,20 @@ Problema: cuando un remito queda VERIFICADO tienen que pasar varias cosas
 Si LogisticaService hiciera todo eso directamente quedaría acoplado a todo.
 
 Solución:
-- El SUJETO (LogisticaService) mantiene una lista de observadores y les avisa.
+- El SUJETO mantiene una lista de observadores y les avisa.
 - Cada OBSERVADOR implementa `actualizar(evento, datos)` y decide qué hacer.
 - Agregar una reacción nueva = crear un observador y suscribirlo. No se toca el sujeto.
+
+En este sistema hay DOS sujetos y TRES observadores (se conectan en app.py):
+
+    LogisticaService ──┬──▶ StockObserver             mueve el stock al despachar / verificar
+       (sujeto)        └──▶ AuditoriaObserver         registra cada evento logístico
+                                    │
+    StockService ──────────▶ AlertaStockMinimoObserver   alerta si un producto queda
+       (sujeto)                                         por debajo del stock mínimo
+
+Fijate que StockObserver, al mover el stock, hace que StockService avise a su vez
+STOCK_MODIFICADO: los eventos se encadenan sin que ninguna clase conozca a las otras.
 """
 from abc import ABC, abstractmethod
 
@@ -35,3 +46,11 @@ class Sujeto:
             observador.actualizar(evento, datos)
 
 
+# Nombres de eventos (constantes para no escribir strings sueltos)
+class Eventos:
+    # los notifica LogisticaService
+    BULTO_DESPACHADO = "BULTO_DESPACHADO"
+    REMITO_VERIFICADO = "REMITO_VERIFICADO"
+    BULTO_RECHAZADO = "BULTO_RECHAZADO"
+    # lo notifica StockService cada vez que cambia el stock de un producto en una sucursal
+    STOCK_MODIFICADO = "STOCK_MODIFICADO"

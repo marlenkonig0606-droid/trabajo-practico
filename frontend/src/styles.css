@@ -35,3 +35,8 @@ tr.bajo td { color: var(--error); font-weight: 600; }
 .historial { width: 100%; margin: 4px 0 0; font-size: .82rem; color: var(--suave); }
 .error { background: #f9dedc; color: var(--error); padding: 10px; border-radius: 6px; margin-bottom: 12px; cursor: pointer; }
 .vacio { color: var(--suave); font-style: italic; }
+
+.alertas { border-color: #f0c36d; background: #fffaf0; }
+.alertas ul { margin: 0; padding-left: 18px; }
+.alertas li { margin: 4px 0; }
+.alertas .fecha { color: var(--suave); font-size: .82rem; }

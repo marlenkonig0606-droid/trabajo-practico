@@ -15,6 +15,7 @@ from services.excepciones import ReglaNegocioError, NoEncontradoError
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.reportes_service import ReportesService
+from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService
 
 
 def crear_app():
@@ -24,10 +25,16 @@ def crear_app():
     db = BaseDeDatos()
     cargar_datos_iniciales()
 
-    stock = StockService()
-    logistica = LogisticaService()
-    logistica.suscribir(StockObserver(stock))      # <- Observer conectado acá
+    # ---------- Patrón Observer: acá se conectan sujetos y observadores ----------
+    stock = StockService()                            # sujeto 1
+    stock.suscribir(AlertaStockMinimoObserver())
+
+    logistica = LogisticaService(stock)               # sujeto 2 (comparte el mismo stock)
+    logistica.suscribir(StockObserver(stock))
+    logistica.suscribir(AuditoriaObserver())
+
     reportes = ReportesService()
+    alertas = AlertasService()
 
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(ReglaNegocioError)
@@ -63,6 +70,11 @@ def crear_app():
     def listar_ordenes():
         return jsonify(logistica.listar_ordenes())
 
+    @app.get("/api/sucursales/<int:local_id>/sugerencia")
+    def sugerir_orden(local_id):
+        return jsonify(logistica.sugerir_orden(local_id))
+
+
     @app.post("/api/ordenes")
     def crear_orden():
         d = request.get_json()
@@ -88,6 +100,15 @@ def crear_app():
     @app.get("/api/bultos/<int:bulto_id>/historial")
     def historial(bulto_id):
         return jsonify(logistica.historial(bulto_id))
+
+    # ---------- lo que registran los observadores ----------
+    @app.get("/api/alertas")
+    def listar_alertas():
+        return jsonify(alertas.alertas(solo_pendientes=request.args.get("todas") is None))
+
+    @app.get("/api/eventos")
+    def listar_eventos():
+        return jsonify(alertas.eventos())
 
     # ---------- ventas (TODO) ----------
     # @app.post("/api/ventas") ...  usar VentasService
