@@ -1,5 +1,6 @@
 # Checklist TP Integrador — Tema 3: CD a Locales
 _Armado sobre lo que hay HOY en `main` de GitHub (commit `caed36e` de Facundo: versión con sqlite3 + DAOs, sin ORM) — 19/10._
+_Actualizado 19/10: arreglado el import roto y unificado todo a **`bulto`** (`models/bulto.py` con `Bulto` / `EstadoBulto`, igual que tablas, rutas y frontend). Backend levanta y tests pasan 10/10._
 
 > ⚠ La versión con ORM (SQLAlchemy), ABM y PRs #1–#3 **no está en `main`**, pero no se perdió:
 > está en la compu de Marlén (rama `main` local y rama `mar`). Si el grupo decide volver a ella, se restaura.
@@ -11,14 +12,15 @@ _Armado sobre lo que hay HOY en `main` de GitHub (commit `caed36e` de Facundo: v
 
 ---
 
-### 🔴 PRIMERO (bloquea a todos) — Facundo
-**Hoy `main` no arranca: el backend y los tests fallan al iniciar.**
-- [ ] `services/logistica_service.py` importa `models.bulto`, pero el archivo ahora es `models/contenedor.py`
-      → cambiar a `from models.contenedor import Contenedor, EstadoContenedor` y renombrar `Bulto`/`EstadoBulto` en el service
-- [ ] Mismo cambio en `tests/test_logistica.py`
-- [ ] `models/categoria.py` tiene `from contenedor import Contenedor`: sobra y además rompe → borrar esa línea
-- [ ] Decidir si las rutas/tablas siguen llamándose `bulto` o pasan a `contenedor` (API, `schema.sql`, frontend) y dejarlo parejo
-- [ ] Verificar: `python app.py` levanta y `python -m pytest` pasa → recién ahí avisar al grupo
+### ✅ PRIMERO (bloquea a todos) — resuelto por Marlén en la rama `mar`
+**`main` no arrancaba: el backend y los tests fallaban al iniciar.**
+- [x] `services/logistica_service.py` importaba `models.bulto`, pero el archivo se llamaba `models/contenedor.py`
+      → se renombró el model a `models/bulto.py` (`Bulto` / `EstadoBulto`) y el service quedó igual
+- [x] `tests/test_logistica.py` → no hacía falta tocarlo: no importa el model, solo el service
+- [x] `models/categoria.py` tenía `from contenedor import Contenedor`: sobraba y además rompía → borrada
+- [x] Nombre unificado: todo se llama **`bulto`** (model, service, tablas `bulto`/`detalle_bulto`/`historial_bulto`, rutas `/api/bultos/...`, frontend)
+- [x] Verificar: la app levanta (endpoints GET responden 200) y `python -m pytest` pasa (10/10)
+- [ ] **Subir a `main`** con PR desde `mar` → avisar al grupo para que hagan `git pull origin main`
 
 ---
 
@@ -28,7 +30,7 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [ ] **Alinear DAOs con `schema.sql`**: `CategoriaDAO` usa `descripcion` y `ProveedorDAO` usa `nombre`, `telefono`, `mail`, `direccion`, que no existen en las tablas → agregar columnas o sacarlas
 - [ ] `services/catalogo_service.py`: alta / modificación / baja de **productos, categorías y proveedores**
 - [ ] Validar duplicados: producto por `codigo`, proveedor por `cuit` (consigna) → `ReglaNegocioError`
-- [ ] No permitir borrar algo ya usado (con stock, órdenes o contenedores)
+- [ ] No permitir borrar algo ya usado (con stock, órdenes o bultos)
 - [ ] **Proceso 1**: alta / modificación / baja de **sucursales** (no duplicar nombre, siempre al menos un CD)
 - [ ] Endpoints `POST` / `PUT` / `DELETE` de todo lo anterior en `app.py`
 - [ ] Pantalla **Catálogo** (reemplazar `Pendiente.jsx`) con productos, categorías, proveedores y sucursales
@@ -46,22 +48,22 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [ ] Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva
 
 ### 🟠 Marlén — rama `mar` · Logística, patrones, reportes y documentación
-_El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `mar-bloqueo-observer`: solo hay que adaptarlos a `contenedor`._
+_El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `mar-bloqueo-observer`: ya usan `bulto`, así que se pueden traer casi directo._
 - [ ] **Proceso 3**: `sugerir_orden(local_id)` con los productos bajo `stock_minimo` + botón "Sugerir orden" en Logística
 - [ ] **Bloqueo de stock** (2 usuarios a la vez): reservar stock del CD al empaquetar + `GestorBloqueos` + tests de concurrencia
 - [ ] **Observer completo**: `AlertaStockMinimoObserver` + `AuditoriaObserver` + `/api/alertas` y `/api/eventos` + avisos en Stock y Reportes
-- [ ] Anular contenedor antes de despachar (libera la reserva)
+- [ ] Anular bulto antes de despachar (libera la reserva)
 - [ ] **Reporte**: existencias actuales y productos en stock mínimo
 - [ ] **Reporte**: movimientos y valorización del inventario
 - [ ] **Reporte** (cuando Lucía termine): ventas e ingresos por período, local y medio de pago
 - [ ] **Reporte** (cuando Lucía termine): productos más vendidos y margen de ganancia/pérdida
 - [ ] Filtro de fechas en la pantalla de Reportes
-- [ ] **Diagrama de clases** y **diagrama de estados del contenedor** en `documentacion/`
+- [ ] **Diagrama de clases** y **diagrama de estados del bulto** en `documentacion/`
 - [ ] Documentar las reglas que definió el grupo + actualizar `documentacion/README.md`
 
 ### 🤝 Entre los tres (al final)
 - [ ] Validar el JSON de entrada en `app.py` (campo faltante → 400, no 500)
-- [ ] Probar el circuito completo: catálogo → orden → contenedor → despacho → recepción → venta → devolución → reportes
+- [ ] Probar el circuito completo: catálogo → orden → bulto → despacho → recepción → venta → devolución → reportes
 - [ ] Que no se suban `__pycache__`, `.pytest_cache` ni `*.db`
 - [ ] Preparar la defensa: cada uno explica su parte y los 3 patrones (Singleton, Observer, Factory)
 
@@ -74,13 +76,13 @@ _El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `ma
 | 1 | Sucursales y CD | 🟡 solo listar | Facundo |
 | 2 | Productos, categorías, precios, mínimos, proveedores | 🟡 models y DAOs, sin conectar | Facundo |
 | 3 | Consolidar necesidades en orden de reposición | 🟡 orden manual, falta sugerir | Marlén |
-| 4 | Empaquetar en contenedores con remito y precinto | 🟡 hecho, pero roto por el import + falta reserva | Facundo / Marlén |
-| 5 | Despacho | 🟡 hecho, roto por el import | Facundo |
-| 6 | Recepción con verificación de precinto | 🟡 hecho, roto por el import | Facundo |
+| 4 | Empaquetar en bultos con remito y precinto | 🟡 funciona, falta reserva de stock | Marlén |
+| 5 | Despacho | ✅ funciona | Facundo |
+| 6 | Recepción con verificación de precinto | ✅ funciona | Facundo |
 | 7 | Ventas, cobros, comprobante, devoluciones | ❌ falta | Lucía |
 
 **Validaciones de negocio**
-- [x] Stock disponible en destino solo con remito + contenedor Verificado; precinto roto → Rechazado
+- [x] Stock disponible en destino solo con remito + bulto Verificado; precinto roto → Rechazado
 - [x] Trazabilidad inmutable (triggers en `schema.sql`)
 - [ ] No vender más que el stock disponible y verificado → Lucía
 - [ ] Sin productos ni proveedores duplicados (los DAOs lo intentan, falta conectarlos) → Facundo
@@ -92,7 +94,7 @@ _El bloqueo y el Observer completo ya están hechos sobre sqlite3 en la rama `ma
 - [ ] Factory: medios de pago → Lucía
 
 **Reportes (mínimo 4 no triviales — hay 2)**
-- [x] Bultos/contenedores rechazados y merma
+- [x] Bultos rechazados y merma
 - [x] Tiempo promedio de tránsito CD → local
 - [ ] Existencias y stock mínimo → Marlén
 - [ ] Movimientos y valorización → Marlén

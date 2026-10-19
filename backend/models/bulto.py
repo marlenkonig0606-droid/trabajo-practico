@@ -15,7 +15,7 @@ VERIFICADO y RECHAZADO son estados FINALES: desde ahí no se puede ir a ningún 
 """
 
 
-class EstadoContenedor:
+class EstadoBulto:
     PREPARADO = "PREPARADO"
     PRECINTADO = "PRECINTADO"
     EN_TRANSITO = "EN_TRANSITO"
@@ -40,8 +40,8 @@ class EstadoContenedor:
         return hacia in cls.TRANSICIONES.get(desde, set())
 
 
-class Contenedor:
-    def __init__(self, id, remito_id, estado=EstadoContenedor.PREPARADO, precinto=None,
+class Bulto:
+    def __init__(self, id, remito_id, estado=EstadoBulto.PREPARADO, precinto=None,
                  fecha_despacho=None, fecha_recepcion=None, items=None):
         self.id = id
         self.remito_id = remito_id
@@ -53,14 +53,14 @@ class Contenedor:
 
     def cambiar_estado(self, nuevo_estado):
         """El objeto se protege a sí mismo: no acepta transiciones inválidas."""
-        if not EstadoContenedor.puede_pasar(self.estado, nuevo_estado):
+        if not EstadoBulto.puede_pasar(self.estado, nuevo_estado):
             raise ValueError(
                 f"El bulto {self.id} no puede pasar de {self.estado} a {nuevo_estado}"
             )
         self.estado = nuevo_estado
 
     def esta_finalizado(self):
-        return self.estado in EstadoContenedor.FINALES
+        return self.estado in EstadoBulto.FINALES
 
     @classmethod
     def desde_fila(cls, fila, items=None):
