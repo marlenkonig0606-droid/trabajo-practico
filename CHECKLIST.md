@@ -1,6 +1,6 @@
 # Checklist TP Integrador — Tema 3: CD a Locales
-_Versión con sqlite3 + DAOs, sin ORM. Actualizado 19/10 sobre `main` = `b03cfd0` (ya incluye lo de Marlén y lo de Lucía)._
-_Hoy: Proceso 3, bloqueo de stock y Observer completo en `main`; merge con ventas y medios de pago de Lucía. Tests: **35/35** ✅ (incluye anular bulto y devoluciones)._
+_Versión con sqlite3 + DAOs, sin ORM. Actualizado 19/10 sobre `main` (incluye lo de Marlén y lo de Lucía)._
+_Hoy: Proceso 3, bloqueo de stock y Observer completo en `main`; Lucía: ventas, devoluciones, API y pantalla de Ventas. Tests: **41/41** ✅ (incluye anular bulto, devoluciones y API de ventas)._
 
 > 🔄 **Todos: hacer `git pull origin main` en su rama antes de seguir.**
 > - `observer.py` ahora está en **`models/observer.py`** (lo movió Lucía) y tiene la única clase `Eventos`.
@@ -47,9 +47,9 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [x] `VentasService.registrar_venta`: uno o más productos, solo en LOCAL, no más del stock disponible y verificado (`StockService.restar`)
 - [x] Cobro con medio de pago (usando creadores concretos) y comprobante con número correlativo
 - [x] `registrar_devolucion`: la venta tiene que existir, no más de lo vendido (sumando devoluciones anteriores), repone stock y registra egreso de caja
-- [ ] `VentasService` recibe el **mismo** `StockService` que `app.py` (para el Observer)
-- [ ] Endpoints `/api/ventas`, `/api/ventas/<id>`, `/api/devoluciones`
-- [ ] Pantalla **Ventas y devoluciones**
+- [x] `VentasService` recibe el **mismo** `StockService` que `app.py` (para el Observer)
+- [x] Endpoints `/api/ventas`, `/api/ventas/<id>`, `/api/devoluciones`
+- [x] Pantalla **Ventas y devoluciones**
 - [x] Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva
 
 ### 🟠 Marlén — rama `mar` · Logística, patrones, reportes y documentación
@@ -93,14 +93,14 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 | 4 | Empaquetar en bultos con remito y precinto | ✅ con reserva de stock y bloqueo entre usuarios | Marlén |
 | 5 | Despacho | ✅ funciona | Facundo |
 | 6 | Recepción con verificación de precinto | ✅ funciona | Facundo |
-| 7 | Ventas, cobros, comprobante, devoluciones | 🟡 venta + cobro + comprobante; faltan devoluciones, endpoints y pantalla | Lucía |
+| 7 | Ventas, cobros, comprobante, devoluciones | ✅ | Lucía |
 
 **Validaciones de negocio**
 - [x] Stock disponible en destino solo con remito + bulto Verificado; precinto roto → Rechazado
 - [x] Trazabilidad inmutable (triggers en `schema.sql`)
 - [x] No vender más que el stock disponible y verificado (`StockService.restar` atómico + test) → Lucía
 - [ ] Sin productos ni proveedores duplicados (los DAOs lo intentan, falta conectarlos) → Facundo
-- [ ] No aceptar devoluciones inválidas → Lucía
+- [x] No aceptar devoluciones inválidas → Lucía
 
 **Patrones (mínimo 2)**
 - [x] Singleton: `BaseDeDatos` en `database/conexion.py`

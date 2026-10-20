@@ -10,7 +10,7 @@ referencia (`alquilerDeAutos`), pero con las capas separadas en carpetas.
 cd backend
 pip install -r requirements.txt
 python app.py                # http://localhost:5000 (crea la base y carga datos de prueba)
-python -m pytest -v          # 10 tests de logística
+python -m pytest -v          # suite completa del backend
 
 # Terminal 2 — frontend
 cd frontend
@@ -35,10 +35,10 @@ backend/
     logistica_service.py    ✅ procesos 3-6 completos (modelo a imitar)
     stock_service.py        ✅ stock + StockObserver
     reportes_service.py     ✅ 2 reportes · ⬜ faltan 2+
-    ventas_service.py       ⬜ proceso 7 · tablas y modelos ya definidos
+    ventas_service.py       ✅ proceso 7 · ventas, cobros y devoluciones
   tests/test_logistica.py   ✅
 frontend/src/pages/
-  Logistica.jsx ✅  Stock.jsx ✅  Reportes.jsx ✅ (parcial)  Pendiente.jsx ⬜
+  Logistica.jsx ✅  Stock.jsx ✅  Reportes.jsx ✅ (parcial)  Ventas.jsx ✅
 ```
 
 ## Qué ya está resuelto (y cómo defenderlo)

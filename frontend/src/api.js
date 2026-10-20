@@ -39,5 +39,8 @@ export const api = {
 
   reporteRechazados: () => pedir('GET', '/reportes/bultos-rechazados'),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
-  // TODO (vos): ventas, devoluciones, ABM, resto de reportes
+  ventas: () => pedir('GET', '/ventas'),
+  venta: (id) => pedir('GET', `/ventas/${id}`),
+  registrarVenta: (datos) => pedir('POST', '/ventas', datos),
+  registrarDevolucion: (datos) => pedir('POST', '/devoluciones', datos),
 }
