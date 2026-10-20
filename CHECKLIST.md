@@ -69,9 +69,12 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
   - [x] Test: anular libera la reserva / no se puede anular un bulto despachado (+ motivo obligatorio → 3 tests nuevos)
 - [x] **Reporte**: existencias actuales y productos en stock mínimo (`/api/reportes/existencias`, filas bajo mínimo en rojo)
 - [x] **Reporte**: movimientos y valorización del inventario (`/api/reportes/movimientos`: entradas, salidas y valor a costo por sucursal y motivo)
-- [ ] **Reporte** (cuando Lucía termine): ventas e ingresos por período, local y medio de pago
-- [ ] **Reporte** (cuando Lucía termine): productos más vendidos y margen de ganancia/pérdida
-- [ ] Filtro de fechas en la pantalla de Reportes
+- [x] **Reporte**: ventas e ingresos por período, local y medio de pago (`/api/reportes/ventas`)
+- [x] **Reporte**: productos más vendidos y margen de ganancia/pérdida, descontando devoluciones (`/api/reportes/mas-vendidos`)
+- [x] Filtro de fechas en la pantalla de Reportes (desde/hasta → ventas, más vendidos y rechazados)
+
+
+----------------------------------------------------
 - [ ] **Diagrama de clases** y **diagrama de estados del bulto** en `documentacion/`
 - [ ] Documentar las reglas que definió el grupo + actualizar `documentacion/README.md`
 
@@ -107,12 +110,12 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [x] Observer: 2 sujetos (`LogisticaService`, `StockService`) y 3 observadores (`StockObserver`, `AlertaStockMinimoObserver`, `AuditoriaObserver`)
 - [x] Creación delegada de medios de pago (`CreadorMedioDePago` + `IMedioDePago`) → Lucía
 
-**Reportes (mínimo 4 no triviales — hay 4 ✅)**
+**Reportes (mínimo 4 no triviales — hay 6 ✅)**
 - [x] Bultos rechazados y merma
 - [x] Tiempo promedio de tránsito CD → local
 - [x] Existencias y stock mínimo → Marlén
 - [x] Movimientos y valorización → Marlén
-- [ ] Ventas por período, local y medio de pago → Marlén (después de Lucía)
-- [ ] Más vendidos y margen → Marlén (después de Lucía)
+- [x] Ventas por período, local y medio de pago → Marlén
+- [x] Más vendidos y margen → Marlén
 
 **Opcionales (suman):** órdenes de compra sugeridas · promociones y listas de precios · lotes/vencimientos · clientes frecuentes · inventario físico

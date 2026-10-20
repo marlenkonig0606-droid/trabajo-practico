@@ -41,3 +41,5 @@ tr.bajo td { color: var(--error); font-weight: 600; }
 .alertas ul { margin: 0; padding-left: 18px; }
 .alertas li { margin: 4px 0; }
 .alertas .fecha { color: var(--suave); font-size: .82rem; }
+.filtro-fechas { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.filtro-fechas h2 { width: 100%; }

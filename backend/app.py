@@ -185,6 +185,14 @@ def crear_app():
     def rep_movimientos():
         return jsonify(reportes.movimientos())
 
+    @app.get("/api/reportes/ventas")
+    def rep_ventas():
+        return jsonify(reportes.ventas(request.args.get("desde"), request.args.get("hasta")))
+
+    @app.get("/api/reportes/mas-vendidos")
+    def rep_mas_vendidos():
+        return jsonify(reportes.mas_vendidos(request.args.get("desde"), request.args.get("hasta")))
+
     return app
 
 
