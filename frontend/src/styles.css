@@ -62,3 +62,24 @@ tr.bajo td { color: var(--error); font-weight: 600; }
 .alertas .fecha { color: var(--suave); font-size: .82rem; }
 .filtro-fechas { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .filtro-fechas h2 { width: 100%; }
+
+.catalogo { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 8px; padding: 14px; }
+.catalogo-cabecera, .catalogo-formulario-titulo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.catalogo-cabecera .vacio { margin: 0; }
+.catalogo-tabs { display: flex; gap: 4px; overflow-x: auto; margin: 14px 0; border-bottom: 1px solid var(--borde); }
+.catalogo-tabs button { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; background: none; color: var(--suave); border-radius: 0; border-bottom: 2px solid transparent; }
+.catalogo-tabs button.activo { color: var(--acento); border-bottom-color: var(--acento); }
+.catalogo-tabs span { color: var(--suave); font-size: .78rem; }
+.catalogo-formulario { padding: 14px 0; border-bottom: 1px solid var(--borde); margin-bottom: 12px; }
+.catalogo-formulario h3 { margin: 0; font-size: 1rem; }
+.catalogo-tabla { overflow-x: auto; }
+.catalogo-tabla table { min-width: 620px; }
+.catalogo-acciones { white-space: nowrap; }
+.catalogo-acciones button + button { margin-left: 12px; }
+button.peligro { color: var(--error); }
+
+@media (max-width: 560px) {
+  .catalogo { padding: 10px; }
+  .catalogo-cabecera { align-items: flex-start; }
+  .catalogo-cabecera > button { width: 100%; }
+}
