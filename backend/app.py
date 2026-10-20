@@ -16,6 +16,7 @@ from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.reportes_service import ReportesService
 from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService
+from services.ventas_service import VentasService
 
 
 def crear_app():
@@ -35,6 +36,18 @@ def crear_app():
 
     reportes = ReportesService()
     alertas = AlertasService()
+    ventas = VentasService(stock)
+
+    def cuerpo_json():
+        datos = request.get_json(silent=True)
+        if not isinstance(datos, dict):
+            raise ReglaNegocioError("El cuerpo de la solicitud debe ser un objeto JSON")
+        return datos
+
+    def entero_positivo(valor, campo):
+        if isinstance(valor, bool) or not isinstance(valor, int) or valor <= 0:
+            raise ReglaNegocioError(f"{campo} debe ser un entero positivo")
+        return valor
 
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(ReglaNegocioError)
@@ -110,8 +123,44 @@ def crear_app():
     def listar_eventos():
         return jsonify(alertas.eventos())
 
-    # ---------- ventas (TODO) ----------
-    # @app.post("/api/ventas") ...  usar VentasService
+    # ---------- ventas y devoluciones ----------
+    @app.get("/api/ventas")
+    def listar_ventas():
+        return jsonify(ventas.listar_ventas())
+
+    @app.get("/api/ventas/<int:venta_id>")
+    def obtener_venta(venta_id):
+        return jsonify(ventas.obtener_venta(venta_id))
+
+    @app.post("/api/ventas")
+    def registrar_venta():
+        datos = cuerpo_json()
+        sucursal_id = entero_positivo(datos.get("sucursal_id"), "sucursal_id")
+        items = datos.get("items")
+        if not isinstance(items, list):
+            raise ReglaNegocioError("items debe ser una lista")
+        medio_pago = datos.get("medio_pago")
+        if not isinstance(medio_pago, str) or not medio_pago.strip():
+            raise ReglaNegocioError("medio_pago es obligatorio")
+        datos_pago = {
+            clave: datos[clave]
+            for clave in ("cuotas", "referencia")
+            if clave in datos
+        }
+        return jsonify(
+            ventas.registrar_venta(sucursal_id, items, medio_pago, **datos_pago)
+        ), 201
+
+    @app.post("/api/devoluciones")
+    def registrar_devolucion():
+        datos = cuerpo_json()
+        venta_id = entero_positivo(datos.get("venta_id"), "venta_id")
+        items = datos.get("items")
+        if not isinstance(items, list):
+            raise ReglaNegocioError("items debe ser una lista")
+        return jsonify(
+            ventas.registrar_devolucion(venta_id, items, datos.get("motivo"))
+        ), 201
 
     # ---------- reportes ----------
     @app.get("/api/reportes/bultos-rechazados")
