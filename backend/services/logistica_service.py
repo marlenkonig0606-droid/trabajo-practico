@@ -17,7 +17,7 @@ from services.bloqueos import GestorBloqueos
 
 
 class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
-    def __init__(self, stock: StockService = None):
+    def __init__(self, stock: StockService| None = None):
         super().__init__()
         self.db = BaseDeDatos()
         # Se recibe el MISMO StockService que usa el resto de la app, así sus

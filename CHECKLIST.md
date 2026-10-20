@@ -1,6 +1,6 @@
 # Checklist TP Integrador — Tema 3: CD a Locales
 _Versión con sqlite3 + DAOs, sin ORM. Actualizado 19/10 sobre `main` = `b03cfd0` (ya incluye lo de Marlén y lo de Lucía)._
-_Hoy: Proceso 3, bloqueo de stock y Observer completo en `main`; merge con ventas y medios de pago de Lucía. Tests: **28/29** (falla 1 de Lucía por redondeo)._
+_Hoy: Proceso 3, bloqueo de stock y Observer completo en `main`; merge con ventas y medios de pago de Lucía. Tests: **35/35** ✅ (incluye anular bulto y devoluciones)._
 
 > 🔄 **Todos: hacer `git pull origin main` en su rama antes de seguir.**
 > - `observer.py` ahora está en **`models/observer.py`** (lo movió Lucía) y tiene la única clase `Eventos`.
@@ -43,14 +43,14 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 ### 🟣 Lucía — rama `lucia` · Ventas, devoluciones y medios de pago (proceso 7)
 - [x] Tablas en `schema.sql`: `venta`, `detalle_venta` (precio del momento), `pago`, `comprobante`, `devolucion`, `detalle_devolucion` + sus clases en `models/`
 - [x] Creación delegada de medios de pago con `CreadorMedioDePago`, creadores concretos e `IMedioDePago`; integrado en `VentasService` y probado
-- [ ] **Arreglar test que falla por redondeo**: `test_venta_usa_el_creador...` da `1540.0000000000002` en vez de `1540` → `round(total, 2)` o `pytest.approx`
+- [x] **Arreglar test que falla por redondeo**: `test_venta_usa_el_creador...` da `1540.0000000000002` en vez de `1540` → `round(total, 2)` o `pytest.approx`
 - [x] `VentasService.registrar_venta`: uno o más productos, solo en LOCAL, no más del stock disponible y verificado (`StockService.restar`)
 - [x] Cobro con medio de pago (usando creadores concretos) y comprobante con número correlativo
-- [ ] `registrar_devolucion`: la venta tiene que existir, no más de lo vendido (sumando devoluciones anteriores), repone stock y registra egreso de caja
+- [x] `registrar_devolucion`: la venta tiene que existir, no más de lo vendido (sumando devoluciones anteriores), repone stock y registra egreso de caja
 - [ ] `VentasService` recibe el **mismo** `StockService` que `app.py` (para el Observer)
 - [ ] Endpoints `/api/ventas`, `/api/ventas/<id>`, `/api/devoluciones`
 - [ ] Pantalla **Ventas y devoluciones**
-- [ ] Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva
+- [x] Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva
 
 ### 🟠 Marlén — rama `mar` · Logística, patrones, reportes y documentación
 - [x] **Proceso 3**: `sugerir_orden(local_id)` con los productos bajo `stock_minimo` + botón "Sugerir orden" en Logística
