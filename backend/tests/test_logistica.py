@@ -45,29 +45,18 @@ def test_flujo_feliz_suma_stock_solo_al_verificar(svc):
     recibido = svc.recibir(bulto["id"])
     assert recibido["estado"] == "RECIBIDO"
     assert stock.disponible(LOCAL, AGUA) == 0
-    svc.verificar_recepcion(
-        bulto["id"], f"R-{orden['id']:06d}", bulto["precinto"], precinto_intacto=True)
+    svc.verificar_recepcion(bulto["id"], True)
     assert stock.disponible(LOCAL, AGUA) == 10
     estados = [h["estado"] for h in svc.historial(bulto["id"])]
     assert estados == ["PREPARADO", "PRECINTADO", "EN_TRANSITO", "RECIBIDO", "VERIFICADO"]
 
 
-def test_precinto_roto_rechaza_y_no_habilita_venta(svc):
+def test_local_puede_rechazar_bulto_y_no_habilita_venta(svc):
     _, bulto = armar_y_despachar(svc)
     svc.recibir(bulto["id"])
-    r = svc.verificar_recepcion(
-        bulto["id"], f"R-{bulto['remito_id']:06d}", bulto["precinto"],
-        precinto_intacto=False)
+    r = svc.verificar_recepcion(bulto["id"], False)
     assert r["estado"] == "RECHAZADO"
     assert StockService().disponible(LOCAL, AGUA) == 0
-
-
-def test_precinto_que_no_coincide_rechaza(svc):
-    _, bulto = armar_y_despachar(svc)
-    svc.recibir(bulto["id"])
-    assert svc.verificar_recepcion(
-        bulto["id"], f"R-{bulto['remito_id']:06d}", "OTRO",
-        precinto_intacto=True)["estado"] == "RECHAZADO"
 
 
 def test_remito_con_dos_bultos_espera_a_ambos(svc):
@@ -81,10 +70,10 @@ def test_remito_con_dos_bultos_espera_a_ambos(svc):
         svc.despachar(b["id"])
 
     svc.recibir(b1["id"])
-    svc.verificar_recepcion(b1["id"], f"R-{orden['id']:06d}", b1["precinto"], True)
+    svc.verificar_recepcion(b1["id"], True)
     assert StockService().disponible(LOCAL, AGUA) == 0   # remito todavía no verificado
     svc.recibir(b2["id"])
-    svc.verificar_recepcion(b2["id"], f"R-{orden['id']:06d}", b2["precinto"], False)
+    svc.verificar_recepcion(b2["id"], False)
     assert StockService().disponible(LOCAL, AGUA) == 5    # entra solo lo verificado
     assert StockService().disponible(LOCAL, YERBA) == 0
 
@@ -100,7 +89,7 @@ def test_no_se_puede_verificar_antes_de_recibir(svc):
     _, bulto = armar_y_despachar(svc)
     with pytest.raises(ReglaNegocioError):
         svc.verificar_recepcion(
-            bulto["id"], f"R-{bulto['remito_id']:06d}", bulto["precinto"], True)
+            bulto["id"], True)
     assert StockService().disponible(LOCAL, AGUA) == 0
 
 

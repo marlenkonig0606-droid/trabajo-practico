@@ -81,6 +81,37 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
         self._registrar_movimiento(sucursal_id, producto_id, cantidad, motivo, referencia)
         self._avisar_cambio(sucursal_id, producto_id)
 
+    def ajustar_disponible(self, sucursal_id, producto_id, disponible, referencia=None):
+        if (isinstance(disponible, bool) or not isinstance(disponible, int)
+                or disponible < 0):
+            raise ReglaNegocioError("El stock disponible debe ser un entero no negativo")
+        producto = self.db.consultar_uno(
+            "SELECT id FROM producto WHERE id=?", (producto_id,))
+        if producto is None:
+            raise ReglaNegocioError(f"No existe el producto {producto_id}")
+
+        with self.db.transaccion():
+            fila = self.db.consultar_uno(
+                """SELECT disponible, reservado FROM stock
+                   WHERE sucursal_id=? AND producto_id=?""",
+                (sucursal_id, producto_id))
+            anterior = fila["disponible"] if fila else 0
+            reservado = fila["reservado"] if fila else 0
+            if disponible < reservado:
+                raise ReglaNegocioError(
+                    f"El stock no puede quedar por debajo de las {reservado} unidades reservadas")
+            self.db.ejecutar(
+                """INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (?, ?, ?)
+                   ON CONFLICT(sucursal_id, producto_id)
+                   DO UPDATE SET disponible=excluded.disponible""",
+                (sucursal_id, producto_id, disponible))
+            diferencia = disponible - anterior
+            if diferencia:
+                self._registrar_movimiento(
+                    sucursal_id, producto_id, diferencia, "AJUSTE", referencia)
+                self._avisar_cambio(sucursal_id, producto_id)
+        return self.disponible(sucursal_id, producto_id)
+
     def restar(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
         """Descuenta stock LIBRE en una sola sentencia atómica. Lo van a reusar en ventas:
         igual que en crear_bulto, bloquear los productos con GestorBloqueos antes de

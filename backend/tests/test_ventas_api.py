@@ -169,7 +169,7 @@ def test_api_local_puede_listar_sucursales_para_solicitar_reposicion(cliente_api
     assert [s["tipo"] for s in sucursales] == ["CD", "LOCAL", "LOCAL"]
 
 
-def test_local_solicita_reposicion_a_cualquier_local_y_ve_sus_ordenes(cliente_api):
+def test_local_solo_solicita_para_su_sucursal_y_ve_sus_ordenes(cliente_api):
     solicitud = cliente_api.post(
         "/api/ordenes",
         json={
@@ -193,7 +193,7 @@ def test_local_solicita_reposicion_a_cualquier_local_y_ve_sus_ordenes(cliente_ap
             "sucursal_id": 3,
         },
     ).status_code == 201
-    orden_forzada = otra_sucursal.post(
+    destino_ajeno = otra_sucursal.post(
         "/api/ordenes",
         json={
             "origen_id": 1,
@@ -201,13 +201,20 @@ def test_local_solicita_reposicion_a_cualquier_local_y_ve_sus_ordenes(cliente_ap
             "items": [{"producto_id": 1, "cantidad": 1}],
         },
     )
-    assert orden_forzada.status_code == 201
+    assert destino_ajeno.status_code == 403
+    propia_solicitud = otra_sucursal.post(
+        "/api/ordenes",
+        json={
+            "origen_id": 1,
+            "destino_id": 3,
+            "items": [{"producto_id": 1, "cantidad": 1}],
+        },
+    )
+    assert propia_solicitud.status_code == 201
     ordenes_local_3 = otra_sucursal.get("/api/ordenes").get_json()
-    assert [o["id"] for o in ordenes_local_3] == [orden_forzada.get_json()["id"]]
+    assert [o["id"] for o in ordenes_local_3] == [propia_solicitud.get_json()["id"]]
     ordenes_local_2 = cliente_api.get("/api/ordenes").get_json()
-    assert {o["id"] for o in ordenes_local_2} == {
-        orden["id"], orden_forzada.get_json()["id"],
-    }
+    assert [o["id"] for o in ordenes_local_2] == [orden["id"]]
 
 
 def test_local_solicita_a_cualquier_cd_y_cd_no_puede_crear_orden(cliente_api, monkeypatch):
@@ -215,20 +222,18 @@ def test_local_solicita_a_cualquier_cd_y_cd_no_puede_crear_orden(cliente_api, mo
     with db.transaccion():
         segundo_cd = db.ejecutar(
             "INSERT INTO sucursal (nombre, tipo) VALUES ('CD Secundario', 'CD')")
-        segundo_local = db.ejecutar(
-            "INSERT INTO sucursal (nombre, tipo) VALUES ('Local Norte', 'LOCAL')")
 
     solicitud = cliente_api.post(
         "/api/ordenes",
         json={
             "origen_id": segundo_cd,
-            "destino_id": segundo_local,
+            "destino_id": 2,
             "items": [{"producto_id": 1, "cantidad": 2}],
         },
     )
     assert solicitud.status_code == 201
     assert solicitud.get_json()["origen_id"] == segundo_cd
-    assert solicitud.get_json()["destino_id"] == segundo_local
+    assert solicitud.get_json()["destino_id"] == 2
 
     monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
     cd = crear_app().test_client()
@@ -250,6 +255,71 @@ def test_local_solicita_a_cualquier_cd_y_cd_no_puede_crear_orden(cliente_api, mo
         },
     )
     assert respuesta_cd.status_code == 403
+
+
+def test_cd_ajusta_solo_el_stock_de_su_centro_y_respeta_reservas(
+    cliente_api, monkeypatch
+):
+    monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
+    cd = crear_app().test_client()
+    assert cd.post(
+        "/api/auth/register",
+        json={
+            "email": "cd-stock@example.com",
+            "password": "contraseña-segura",
+            "sucursal_id": 1,
+            "codigo_cd": "marlufa",
+        },
+    ).status_code == 201
+
+    ajuste = cd.put("/api/stock/1/1", json={"disponible": 620})
+    assert ajuste.status_code == 200
+    assert next(f for f in ajuste.get_json() if f["producto_id"] == 1)["disponible"] == 620
+    assert cd.put("/api/stock/2/1", json={"disponible": 20}).status_code == 403
+    assert cliente_api.put("/api/stock/2/1", json={"disponible": 20}).status_code == 403
+
+    BaseDeDatos().ejecutar(
+        "UPDATE stock SET reservado=2 WHERE sucursal_id=1 AND producto_id=1")
+    no_disponible = cd.put("/api/stock/1/1", json={"disponible": 1})
+    assert no_disponible.status_code == 400
+    invalido = cd.put("/api/stock/1/1", json={"disponible": -1})
+    assert invalido.status_code == 400
+
+
+def test_reporte_movimientos_filtra_y_valoriza_ventas_devoluciones_y_recepciones(
+    cliente_api
+):
+    venta = cliente_api.post(
+        "/api/ventas",
+        json={
+            "sucursal_id": 2,
+            "items": [{"producto_id": 1, "cantidad": 1}],
+            "medio_pago": "EFECTIVO",
+        },
+    ).get_json()
+    devolucion = cliente_api.post(
+        "/api/devoluciones",
+        json={
+            "venta_id": venta["id"],
+            "items": [{"producto_id": 1, "cantidad": 1}],
+            "motivo": "Cambio",
+        },
+    )
+    assert devolucion.status_code == 201
+    BaseDeDatos().ejecutar(
+        """INSERT INTO movimiento_stock
+           (sucursal_id, producto_id, cantidad, motivo, referencia)
+           VALUES (2, 1, 4, 'RECEPCION', 'remito R-000123')""")
+
+    respuesta = cliente_api.get(
+        "/api/reportes/movimientos?tipo=VENTA&tipo=DEVOLUCION&tipo=RECEPCION")
+    assert respuesta.status_code == 200
+    filas = {fila["tipo"]: fila for fila in respuesta.get_json()}
+    assert filas["VENTA"]["valor"] == 700
+    assert filas["DEVOLUCION"]["valor"] == -700
+    assert filas["RECEPCION"]["valor"] is None
+    solo_ventas = cliente_api.get("/api/reportes/movimientos?tipo=VENTA")
+    assert {f["tipo"] for f in solo_ventas.get_json()} == {"VENTA"}
 
 
 def test_flujo_api_cd_despacha_local_verifica_y_actualiza_stock(cliente_api, monkeypatch):
@@ -298,11 +368,7 @@ def test_flujo_api_cd_despacha_local_verifica_y_actualiza_stock(cliente_api, mon
 
     verificacion_anticipada = cliente_api.post(
         f"/api/bultos/{bulto['id']}/verificar",
-        json={
-            "remito": f"R-{orden['id']:06d}",
-            "precinto": precinto,
-            "intacto": True,
-        },
+        json={"aprobado": True},
     )
     assert verificacion_anticipada.status_code == 400
     assert cliente_api.get("/api/stock/2").get_json()[0]["disponible"] == 5
@@ -314,11 +380,7 @@ def test_flujo_api_cd_despacha_local_verifica_y_actualiza_stock(cliente_api, mon
     assert recepcion_desde_cd.status_code == 403
     verificacion_desde_cd = cd.post(
         f"/api/bultos/{bulto['id']}/verificar",
-        json={
-            "remito": f"R-{orden['id']:06d}",
-            "precinto": precinto,
-            "intacto": True,
-        },
+        json={"aprobado": True},
     )
     assert verificacion_desde_cd.status_code == 403
     assert cliente_api.get("/api/stock/2").get_json()[0]["disponible"] == 5
@@ -332,11 +394,7 @@ def test_flujo_api_cd_despacha_local_verifica_y_actualiza_stock(cliente_api, mon
     assert cliente_api.get("/api/stock/2").get_json()[0]["disponible"] == 5
     verificacion = cliente_api.post(
         f"/api/bultos/{bulto['id']}/verificar",
-        json={
-            "remito": f"R-{orden['id']:06d}",
-            "precinto": precinto,
-            "intacto": True,
-        },
+        json={"aprobado": True},
     )
     assert verificacion.status_code == 200
     assert verificacion.get_json()["estado"] == "VERIFICADO"
@@ -383,11 +441,7 @@ def test_local_rechaza_bulto_si_precinto_roto_sin_sumar_stock(cliente_api, monke
     assert recepcion.get_json()["estado"] == "RECIBIDO"
     verificacion = cliente_api.post(
         f"/api/bultos/{bulto['id']}/verificar",
-        json={
-            "remito": f"R-{orden['id']:06d}",
-            "precinto": precinto,
-            "intacto": False,
-        },
+        json={"aprobado": False},
     )
 
     assert verificacion.status_code == 200
@@ -395,7 +449,7 @@ def test_local_rechaza_bulto_si_precinto_roto_sin_sumar_stock(cliente_api, monke
     assert cliente_api.get("/api/stock/2").get_json()[0]["disponible"] == 5
 
 
-def test_local_rechaza_remito_incorrecto_y_no_suma_stock(cliente_api, monkeypatch):
+def test_local_rechaza_manualmente_bulto_y_no_suma_stock(cliente_api, monkeypatch):
     monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
     cd = crear_app().test_client()
     assert cd.post(
@@ -430,11 +484,7 @@ def test_local_rechaza_remito_incorrecto_y_no_suma_stock(cliente_api, monkeypatc
     assert recepcion.status_code == 200
     verificacion = cliente_api.post(
         f"/api/bultos/{bulto['id']}/verificar",
-        json={
-            "remito": "R-INCORRECTO",
-            "precinto": precinto,
-            "intacto": True,
-        },
+        json={"aprobado": False},
     )
 
     assert verificacion.status_code == 200

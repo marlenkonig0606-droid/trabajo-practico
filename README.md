@@ -53,16 +53,21 @@ El registro desde la pantalla de inicio de sesión crea cuentas para la sucursal
 Para el CD, exige el código configurado en el servidor. Las contraseñas se guardan hasheadas.
 
 Las cuentas locales solo consultan su stock, ventas y reportes. Desde Reposición pueden crear
-solicitudes eligiendo cualquier CD de origen y local de destino; ven las órdenes dirigidas a
-su sucursal y las que solicitaron. La sugerencia automática usa únicamente el stock de su
+solicitudes para su propia sucursal y elegir cualquier CD como origen; ven las órdenes dirigidas
+a su sucursal y las que solicitaron. La sugerencia automática usa únicamente el stock de su
 propia sucursal. El CD puede consultar todas las órdenes y gestionar su preparación, armado y
-despacho, pero no crear solicitudes ni confirmar recepciones.
+despacho, y ajustar el stock disponible de su propio centro, pero no crear solicitudes ni
+confirmar recepciones.
 
-El local destinatario confirma primero la recepción física y luego verifica el remito y el
-precinto. El stock no cambia al confirmar la recepción: solo se actualiza cuando finaliza la
-verificación de todos los bultos del remito, incorporando únicamente los bultos verificados.
-Si el precinto no coincide o está roto, el bulto se rechaza y no se incorpora. La API valida
-los permisos en el servidor.
+El local destinatario confirma primero la recepción física. Luego inspecciona el remito y el
+precinto y elige **Verificar** o **Rechazar**. El stock no cambia al confirmar la recepción:
+solo se actualiza cuando finaliza la verificación de todos los bultos del remito, incorporando
+únicamente los bultos verificados. La API valida los permisos en el servidor.
+
+El reporte de movimientos permite filtrar ventas, devoluciones y recepciones. Las ventas
+muestran su valorización positiva a precio de venta, las devoluciones la valorización negativa
+y las recepciones no se valorizan. Ventas y devoluciones incluyen una ventana emergente con el
+detalle de productos y precios.
 
 En producción, configurá `FLASK_SECRET_KEY` con un valor secreto persistente y serví la
 aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo local, la app genera una

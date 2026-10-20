@@ -37,15 +37,25 @@ table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .9rem;
 th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--borde); }
 tr.bajo td { color: var(--error); font-weight: 600; }
 .fila-titulo, .bulto, .armar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.armar { margin: 8px 0; flex-direction: row; }
-.armar label { flex-direction: row; align-items: center; }
-.armar input { width: 70px; }
+.armar { margin: 12px 0; padding: 12px; flex-direction: column; align-items: stretch; gap: 12px; border: 1px solid var(--borde); border-radius: 8px; background: #fafbf9; }
+.armar-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.armar-cabecera span, .producto-empaquetar small { color: var(--suave); font-size: .82rem; }
+.armar-productos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px; }
+.producto-empaquetar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 12px; padding: 10px; border: 1px solid var(--borde); border-radius: 6px; background: var(--tarjeta); }
+.producto-empaquetar span { font-weight: 600; }
+.producto-empaquetar small { grid-column: 1; }
+.producto-empaquetar input { grid-column: 2; grid-row: 1 / span 2; width: 82px; }
+.armar > button { align-self: flex-start; }
 .bulto { border-top: 1px dashed var(--borde); padding: 8px 0; }
 .bulto label { flex-direction: row; align-items: center; }
 .recepcion-bulto { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; width: 100%; }
 .recepcion-bulto label:first-child { min-width: min(100%, 220px); }
 .recepcion-bulto .check-precinto { align-items: center; }
 .check-precinto input { width: auto; }
+.destino-propio { display: flex; flex-direction: column; justify-content: center; gap: 6px; font-size: .85rem; }
+.destino-propio strong { padding: 7px 9px; background: #f4f5f2; border: 1px solid var(--borde); border-radius: 6px; }
+.acciones-verificacion { display: flex; flex-wrap: wrap; gap: 10px; }
+.acciones-verificacion .peligro { background: #f9dedc; color: var(--error); }
 .items { color: var(--suave); font-size: .85rem; }
 .estado { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: #e8ebe8; }
 .estado.VERIFICADO, .estado.CERRADA { background: #d6f0e4; color: #1f6f5c; }
@@ -62,6 +72,15 @@ tr.bajo td { color: var(--error); font-weight: 600; }
 .alertas .fecha { color: var(--suave); font-size: .82rem; }
 .filtro-fechas { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .filtro-fechas h2 { width: 100%; }
+.filtros-movimientos { display: flex; flex-wrap: wrap; gap: 16px; margin: 10px 0; }
+.filtros-movimientos label { display: flex; flex-direction: row; align-items: center; gap: 6px; }
+.filtros-movimientos input { width: auto; }
+.tabla-movimientos { overflow-x: auto; }
+.tabla-movimientos table { min-width: 720px; }
+.modal-fondo { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 16px; background: rgb(20 28 24 / 55%); }
+.modal-detalle { width: min(100%, 680px); max-height: min(85vh, 760px); overflow: auto; padding: 18px; border-radius: 10px; background: var(--tarjeta); box-shadow: 0 12px 36px rgb(0 0 0 / 20%); }
+.modal-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.total-detalle { text-align: right; font-weight: 700; }
 
 .catalogo { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 8px; padding: 14px; }
 .catalogo-cabecera, .catalogo-formulario-titulo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }

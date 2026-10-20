@@ -51,6 +51,8 @@ export const api = {
   actualizarProveedor: (id, datos) => pedir('PUT', `/proveedores/${id}`, datos),
   eliminarProveedor: (id) => pedir('DELETE', `/proveedores/${id}`),
   stock: (sucursalId) => pedir('GET', `/stock/${sucursalId}`),
+  ajustarStock: (sucursalId, productoId, disponible) =>
+    pedir('PUT', `/stock/${sucursalId}/${productoId}`, { disponible }),
 
   sugerirOrden: (localId) => pedir('GET', `/sucursales/${localId}/sugerencia`),
   ordenes: () => pedir('GET', '/ordenes'),
@@ -62,8 +64,8 @@ export const api = {
   despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
   anular: (id, motivo) => pedir('POST', `/bultos/${id}/anular`, { motivo }),
   recibir: (id) => pedir('POST', `/bultos/${id}/recibir`, {}),
-  verificarRecepcion: (id, remito, precinto, intacto) =>
-    pedir('POST', `/bultos/${id}/verificar`, { remito, precinto, intacto }),
+  verificarRecepcion: (id, aprobado) =>
+    pedir('POST', `/bultos/${id}/verificar`, { aprobado }),
   historial: (id) => pedir('GET', `/bultos/${id}/historial`),
 
   alertas: () => pedir('GET', '/alertas'),
@@ -72,7 +74,12 @@ export const api = {
   reporteRechazados: (f = {}) => pedir('GET', `/reportes/bultos-rechazados${conFechas(f)}`),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
   reporteExistencias: () => pedir('GET', '/reportes/existencias'),
-  reporteMovimientos: () => pedir('GET', '/reportes/movimientos'),
+  reporteMovimientos: (tipos = []) => {
+    if (tipos.length === 0) return Promise.resolve([])
+    const q = new URLSearchParams()
+    tipos.forEach((tipo) => q.append('tipo', tipo))
+    return pedir('GET', `/reportes/movimientos${q.toString() ? `?${q}` : ''}`)
+  },
   reporteVentas: (f = {}) => pedir('GET', `/reportes/ventas${conFechas(f)}`),
   reporteMasVendidos: (f = {}) => pedir('GET', `/reportes/mas-vendidos${conFechas(f)}`),
   ventas: () => pedir('GET', '/ventas'),

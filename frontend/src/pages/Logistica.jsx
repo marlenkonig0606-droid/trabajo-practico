@@ -79,14 +79,27 @@ function Orden({ orden, nombreProducto, accion }) {
         && ['PENDIENTE', 'EN_PREPARACION'].includes(orden.estado)
         && (orden.remito_estado ?? 'ABIERTO') === 'ABIERTO' && (
         <div className="armar">
-          <em>Armar bulto:</em>
-          {pendientes.map((i) => (
-            <label key={i.producto_id}>
-              {i.nombre} (máx {Number(i.cantidad) - Number(i.empaquetado || 0)})
-              <input type="number" min="0" value={aEmpaquetar[i.producto_id] ?? ''}
-                     onChange={(e) => setAEmpaquetar({ ...aEmpaquetar, [i.producto_id]: e.target.value })} />
-            </label>
-          ))}
+          <div className="armar-cabecera">
+            <strong>Preparar bulto</strong>
+            <span>{pendientes.length} productos pendientes</span>
+          </div>
+          <div className="armar-productos">
+            {pendientes.map((i) => {
+              const maximo = Number(i.cantidad) - Number(i.empaquetado || 0)
+              return (
+                <label className="producto-empaquetar" key={i.producto_id}>
+                  <span>{i.nombre}</span>
+                  <small>Pedido {i.cantidad} · pendiente {maximo}</small>
+                  <input type="number" min="0" max={maximo} step="1"
+                         aria-label={`Cantidad a empaquetar de ${i.nombre}`}
+                         value={aEmpaquetar[i.producto_id] ?? ''}
+                         onChange={(e) => setAEmpaquetar({
+                           ...aEmpaquetar, [i.producto_id]: e.target.value,
+                         })} />
+                </label>
+              )
+            })}
+          </div>
           <button disabled={empaquetando
             || !Object.values(aEmpaquetar).some((cantidad) => Number(cantidad) > 0)}
             onClick={armarBulto}>
