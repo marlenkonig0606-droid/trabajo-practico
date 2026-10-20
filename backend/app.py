@@ -92,6 +92,11 @@ def crear_app():
     def despachar(bulto_id):
         return jsonify(logistica.despachar(bulto_id))
 
+    @app.post("/api/bultos/<int:bulto_id>/anular")
+    def anular(bulto_id):
+        motivo = request.get_json().get("motivo")
+        return jsonify(logistica.anular_bulto(bulto_id, motivo))
+
     @app.post("/api/bultos/<int:bulto_id>/recibir")
     def recibir(bulto_id):
         d = request.get_json()

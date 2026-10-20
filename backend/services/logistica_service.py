@@ -67,7 +67,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                       COALESCE((SELECT SUM(db.cantidad) FROM detalle_bulto db
                                 JOIN bulto b ON b.id = db.bulto_id
                                 JOIN remito r ON r.id = b.remito_id
-                                WHERE r.orden_id = d.orden_id AND db.producto_id = d.producto_id), 0)
+                                WHERE r.orden_id = d.orden_id AND db.producto_id = d.producto_id AND b.estado != 'ANULADO'), 0)
                       AS empaquetado
                FROM detalle_orden d JOIN producto p ON p.id = d.producto_id
                WHERE d.orden_id = ?""", (orden_id,))
@@ -160,6 +160,23 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
     # ================================================================
     # 5. DESPACHO
     # ================================================================
+    def anular_bulto(self, bulto_id, motivo):
+        """Solo antes de despachar: el bulto se cancela y su stock vuelve a estar libre en el CD."""
+        motivo = (motivo or "").strip()
+        if not motivo:
+            raise ReglaNegocioError("Debe indicar el motivo de la anulación")
+
+        bulto = self.obtener_bulto(bulto_id)
+        orden = self._orden_de_remito(bulto.remito_id)
+        claves = [(orden["origen_id"], it["producto_id"]) for it in bulto.items]
+
+        with self.bloqueos.bloquear(claves):
+            with self.db.transaccion():
+                self._transicionar(bulto, EstadoBulto.ANULADO, f"Anulado: {motivo}")
+                for item in bulto.items:
+                    self.stock.liberar_reserva(orden["origen_id"], item["producto_id"], item["cantidad"])
+        return self.obtener_bulto(bulto_id).to_dict()
+
     def despachar(self, bulto_id):
         bulto = self.obtener_bulto(bulto_id)
         orden = self._orden_de_remito(bulto.remito_id)

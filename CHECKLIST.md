@@ -62,9 +62,11 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [~] **Anular bulto** antes de despachar (libera la reserva)
   - [x] Estado `ANULADO` en `EstadoBulto` (desde PREPARADO o PRECINTADO; es estado final)
   - [x] `StockService.liberar_reserva`
-  - [ ] `LogisticaService.anular_bulto(bulto_id, motivo)`
-  - [ ] Que lo empaquetado de la orden no cuente los bultos anulados (para poder re-empaquetar)
-  - [ ] Endpoint `POST /api/bultos/<id>/anular` + botón "Anular" en Logística + test
+  - [x] `LogisticaService.anular_bulto(bulto_id, motivo)` (con bloqueo + transacción; solo desde PREPARADO/PRECINTADO)
+  - [x] Que lo empaquetado de la orden no cuente los bultos anulados (`AND b.estado != 'ANULADO'` en `obtener_orden`)
+  - [x] Endpoint `POST /api/bultos/<id>/anular` (body: `{"motivo": "..."}`)
+  - [ ] Botón "Anular" en Logística (`api.js` + `Logistica.jsx`)
+  - [ ] Test: anular libera la reserva / no se puede anular un bulto despachado
 - [ ] **Reporte**: existencias actuales y productos en stock mínimo
 - [ ] **Reporte**: movimientos y valorización del inventario
 - [ ] **Reporte** (cuando Lucía termine): ventas e ingresos por período, local y medio de pago
