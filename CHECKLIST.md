@@ -68,7 +68,7 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
   - [x] Botón "Anular" en Logística (`api.js` + `Logistica.jsx`; pide el motivo, solo en PREPARADO/PRECINTADO)
   - [x] Test: anular libera la reserva / no se puede anular un bulto despachado (+ motivo obligatorio → 3 tests nuevos)
 - [x] **Reporte**: existencias actuales y productos en stock mínimo (`/api/reportes/existencias`, filas bajo mínimo en rojo)
-- [ ] **Reporte**: movimientos y valorización del inventario
+- [x] **Reporte**: movimientos y valorización del inventario (`/api/reportes/movimientos`: entradas, salidas y valor a costo por sucursal y motivo)
 - [ ] **Reporte** (cuando Lucía termine): ventas e ingresos por período, local y medio de pago
 - [ ] **Reporte** (cuando Lucía termine): productos más vendidos y margen de ganancia/pérdida
 - [ ] Filtro de fechas en la pantalla de Reportes
@@ -107,11 +107,11 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [x] Observer: 2 sujetos (`LogisticaService`, `StockService`) y 3 observadores (`StockObserver`, `AlertaStockMinimoObserver`, `AuditoriaObserver`)
 - [x] Creación delegada de medios de pago (`CreadorMedioDePago` + `IMedioDePago`) → Lucía
 
-**Reportes (mínimo 4 no triviales — hay 3)**
+**Reportes (mínimo 4 no triviales — hay 4 ✅)**
 - [x] Bultos rechazados y merma
 - [x] Tiempo promedio de tránsito CD → local
 - [x] Existencias y stock mínimo → Marlén
-- [ ] Movimientos y valorización → Marlén
+- [x] Movimientos y valorización → Marlén
 - [ ] Ventas por período, local y medio de pago → Marlén (después de Lucía)
 - [ ] Más vendidos y margen → Marlén (después de Lucía)
 

@@ -65,3 +65,17 @@ class ReportesService:
             CROSS JOIN producto p
             LEFT JOIN stock st ON st.sucursal_id = s.id AND st.producto_id = p.id
             ORDER BY estado = 'OK', s.nombre, p.nombre""")
+
+    # Reporte: movimientos y valorización del inventario
+    def movimientos(self):
+        return self.db.consultar("""
+            SELECT s.nombre AS sucursal, m.motivo,
+                   COUNT(*) AS movimientos,
+                   SUM(CASE WHEN m.cantidad > 0 THEN m.cantidad ELSE 0 END) AS entradas,
+                   SUM(CASE WHEN m.cantidad < 0 THEN -m.cantidad ELSE 0 END) AS salidas,
+                   ROUND(SUM(m.cantidad * p.precio_costo), 2) AS valor_neto
+            FROM movimiento_stock m
+            JOIN sucursal s ON s.id = m.sucursal_id
+            JOIN producto p ON p.id = m.producto_id
+            GROUP BY s.id, m.motivo
+            ORDER BY s.nombre, m.motivo""")

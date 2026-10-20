@@ -40,6 +40,7 @@ export const api = {
   reporteRechazados: () => pedir('GET', '/reportes/bultos-rechazados'),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
   reporteExistencias: () => pedir('GET', '/reportes/existencias'),
+  reporteMovimientos: () => pedir('GET', '/reportes/movimientos'),
   ventas: () => pedir('GET', '/ventas'),
   venta: (id) => pedir('GET', `/ventas/${id}`),
   registrarVenta: (datos) => pedir('POST', '/ventas', datos),

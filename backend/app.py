@@ -181,6 +181,10 @@ def crear_app():
     def rep_existencias():
         return jsonify(reportes.existencias())
 
+    @app.get("/api/reportes/movimientos")
+    def rep_movimientos():
+        return jsonify(reportes.movimientos())
+
     return app
 
 
