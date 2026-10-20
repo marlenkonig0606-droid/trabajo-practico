@@ -17,8 +17,10 @@ def cargar():
 
         bebidas = db.ejecutar("INSERT INTO categoria (nombre) VALUES ('Bebidas')")
         almacen = db.ejecutar("INSERT INTO categoria (nombre) VALUES ('Almacén')")
-        prov = db.ejecutar("INSERT INTO proveedor (cuit, razon_social) VALUES (?,?)",
-                           ("30-12345678-9", "Distribuidora Norte SA"))
+        prov = db.ejecutar(
+            "INSERT INTO proveedor (cuit, razon_social, nombre) VALUES (?,?,?)",
+            ("30-12345678-9", "Distribuidora Norte SA", "Distribuidora Norte"),
+        )
 
         productos = [
             ("BEB-001", "Agua 1.5L", bebidas, 400, 700, 20),

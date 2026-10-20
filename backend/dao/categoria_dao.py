@@ -1,14 +1,15 @@
 import sqlite3
+from database.conexion import BaseDeDatos
 
 
 class CategoriaDAO:
-    def __init__(self, db_path='inventario.db'):
-        self.db_path = db_path
+    def __init__(self, db=None):
+        self.db = db if db is not None else BaseDeDatos()
 
     def _conn(self):
-        return sqlite3.connect(self.db_path)
+        return self.db.transaccion()
 
-    def crear(self, nombre, descripcion):
+    def crear(self, nombre, descripcion=None):
         try:
             with self._conn() as cx:
                 cur = cx.execute('''
@@ -16,33 +17,58 @@ class CategoriaDAO:
                     VALUES (?, ?)
                 ''', (nombre, descripcion))
                 return True, cur.lastrowid
-        except sqlite3.IntegrityError:
-            return False, "Ya existe una categoría con ese nombre"
-        except sqlite3.Error as e:
-            return False, f"Error de base de datos: {e}"
+        except sqlite3.IntegrityError as error:
+            if 'UNIQUE constraint failed: categoria.nombre' in str(error):
+                return False, 'Ya existe una categoría con ese nombre'
+            return False, f'Datos inválidos para la categoría: {error}'
+        except sqlite3.Error as error:
+            return False, f'Error de base de datos: {error}'
 
-    def obtener_por_id(self, id):
+    def obtener_por_id(self, categoria_id):
         with self._conn() as cx:
             cx.row_factory = sqlite3.Row
-            cur = cx.execute('SELECT * FROM categoria WHERE id = ?', (id,))
-            return cur.fetchone()
+            fila = cx.execute(
+                'SELECT * FROM categoria WHERE id = ?', (categoria_id,)
+            ).fetchone()
+            if fila is None:
+                return None
+            return dict(fila)
 
     def listar(self):
         with self._conn() as cx:
             cx.row_factory = sqlite3.Row
-            cur = cx.execute('SELECT * FROM categoria ORDER BY nombre')
-            return cur.fetchall()
+            filas = cx.execute(
+                'SELECT * FROM categoria ORDER BY nombre'
+            ).fetchall()
+            resultado = []
+            for fila in filas:
+                resultado.append(dict(fila))
+            return resultado
 
-    def actualizar(self, id, nombre, descripcion):
-        with self._conn() as cx:
-            cur = cx.execute('''
-                UPDATE categoria
-                SET nombre = ?, descripcion = ?
-                WHERE id = ?
-            ''', (nombre, descripcion, id))
-            return cur.rowcount
+    def actualizar(self, categoria_id, nombre, descripcion=None):
+        try:
+            with self._conn() as cx:
+                cur = cx.execute('''
+                    UPDATE categoria
+                    SET nombre = ?, descripcion = ?
+                    WHERE id = ?
+                ''', (nombre, descripcion, categoria_id))
+                return cur.rowcount
+        except sqlite3.IntegrityError as error:
+            if 'UNIQUE constraint failed: categoria.nombre' in str(error):
+                return False, 'Ya existe una categoría con ese nombre'
+            return False, f'Datos inválidos para la categoría: {error}'
+        except sqlite3.Error as error:
+            return False, f'Error de base de datos: {error}'
 
-    def eliminar(self, id):
-        with self._conn() as cx:
-            cur = cx.execute('DELETE FROM categoria WHERE id = ?', (id,))
-            return cur.rowcount
+    def eliminar(self, categoria_id):
+        try:
+            with self._conn() as cx:
+                cur = cx.execute(
+                    'DELETE FROM categoria WHERE id = ?', (categoria_id,)
+                )
+                return cur.rowcount
+        except sqlite3.IntegrityError:
+            return False, 'No se puede eliminar: la categoría tiene productos asociados'
+        except sqlite3.Error as error:
+            return False, f'Error de base de datos: {error}'
