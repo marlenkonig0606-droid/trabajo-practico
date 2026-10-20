@@ -30,6 +30,7 @@ export const api = {
   crearBulto: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/bultos`, { items }),
   precintar: (id, precinto) => pedir('POST', `/bultos/${id}/precintar`, { precinto }),
   despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
+  anular: (id, motivo) => pedir('POST', `/bultos/${id}/anular`, { motivo }),
   recibir: (id, precinto, intacto) => pedir('POST', `/bultos/${id}/recibir`, { precinto, intacto }),
   historial: (id) => pedir('GET', `/bultos/${id}/historial`),
 

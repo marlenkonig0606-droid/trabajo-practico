@@ -173,3 +173,36 @@ def test_historial_es_inmutable(svc):
 def test_orden_a_cd_no_permitida(svc):
     with pytest.raises(ReglaNegocioError):
         svc.crear_orden(CD, [{"producto_id": AGUA, "cantidad": 1}])
+
+
+def test_anular_bulto_libera_la_reserva(svc):
+    stock = StockService()
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 300}])
+    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 300}])
+    svc.precintar(bulto["id"], "AN-1")
+    assert stock.reservado(CD, AGUA) == 300
+
+    r = svc.anular_bulto(bulto["id"], "Se rompió una caja")
+    assert r["estado"] == "ANULADO"
+    assert stock.reservado(CD, AGUA) == 0         # la reserva vuelve a estar libre
+    assert stock.disponible(CD, AGUA) == 500      # y nunca salió del CD
+    # lo anulado no cuenta como empaquetado: se puede volver a armar el bulto
+    assert svc.obtener_orden(orden["id"])["items"][0]["empaquetado"] == 0
+    svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 300}])
+    assert stock.reservado(CD, AGUA) == 300
+
+
+def test_no_se_puede_anular_un_bulto_despachado(svc):
+    _, bulto = armar_y_despachar(svc)
+    with pytest.raises(ReglaNegocioError):
+        svc.anular_bulto(bulto["id"], "Tarde")
+    assert svc.obtener_bulto(bulto["id"]).estado == "EN_TRANSITO"
+    assert StockService().disponible(CD, AGUA) == 490   # el stock no se tocó
+
+
+def test_anular_sin_motivo(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
+    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
+    with pytest.raises(ReglaNegocioError):
+        svc.anular_bulto(bulto["id"], "  ")
+    assert StockService().reservado(CD, AGUA) == 1

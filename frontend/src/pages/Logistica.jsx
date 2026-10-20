@@ -136,6 +136,12 @@ function FilaBulto({ bulto, nombreProducto, accion }) {
   const verHistorial = async () =>
     setHistorial(historial ? null : await api.historial(bulto.id))
 
+  const anular = () => {
+    const motivo = window.prompt(`Motivo de la anulación del bulto #${bulto.id}`)
+    if (motivo === null) return          // canceló el diálogo
+    accion(() => api.anular(bulto.id, motivo))
+  }
+
   return (
     <div className="bulto">
       <span>Bulto #{bulto.id}</span>
@@ -151,6 +157,8 @@ function FilaBulto({ bulto, nombreProducto, accion }) {
       </>}
       {bulto.estado === 'PRECINTADO' &&
         <button onClick={() => accion(() => api.despachar(bulto.id))}>Despachar</button>}
+      {(bulto.estado === 'PREPARADO' || bulto.estado === 'PRECINTADO') &&
+        <button onClick={anular}>Anular</button>}
       {bulto.estado === 'EN_TRANSITO' && <>
         <input placeholder="Precinto leído" value={precinto} onChange={(e) => setPrecinto(e.target.value)} />
         <label><input type="checkbox" checked={intacto} onChange={(e) => setIntacto(e.target.checked)} /> intacto</label>

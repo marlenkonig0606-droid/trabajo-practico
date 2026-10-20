@@ -59,14 +59,14 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
       (`services/bloqueos.py` + columna `reservado` en `stock` + `StockService.reservar/consumir_reserva` + 4 tests nuevos → 13/13)
 - [x] **Observer completo**: `AlertaStockMinimoObserver` + `AuditoriaObserver` + `/api/alertas` y `/api/eventos` + avisos en Stock y Reportes
       (2 sujetos, 3 observadores, tablas `alerta_stock` y `evento_log`, 8 tests en `test_observer.py`)
-- [~] **Anular bulto** antes de despachar (libera la reserva)
+- [x] **Anular bulto** antes de despachar (libera la reserva)
   - [x] Estado `ANULADO` en `EstadoBulto` (desde PREPARADO o PRECINTADO; es estado final)
   - [x] `StockService.liberar_reserva`
   - [x] `LogisticaService.anular_bulto(bulto_id, motivo)` (con bloqueo + transacción; solo desde PREPARADO/PRECINTADO)
   - [x] Que lo empaquetado de la orden no cuente los bultos anulados (`AND b.estado != 'ANULADO'` en `obtener_orden`)
   - [x] Endpoint `POST /api/bultos/<id>/anular` (body: `{"motivo": "..."}`)
-  - [ ] Botón "Anular" en Logística (`api.js` + `Logistica.jsx`)
-  - [ ] Test: anular libera la reserva / no se puede anular un bulto despachado
+  - [x] Botón "Anular" en Logística (`api.js` + `Logistica.jsx`; pide el motivo, solo en PREPARADO/PRECINTADO)
+  - [x] Test: anular libera la reserva / no se puede anular un bulto despachado (+ motivo obligatorio → 3 tests nuevos)
 - [ ] **Reporte**: existencias actuales y productos en stock mínimo
 - [ ] **Reporte**: movimientos y valorización del inventario
 - [ ] **Reporte** (cuando Lucía termine): ventas e ingresos por período, local y medio de pago
