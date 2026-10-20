@@ -9,13 +9,13 @@ Capas (igual que el repo de referencia, pero separadas en carpetas):
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar as cargar_datos_iniciales
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.reportes_service import ReportesService
 from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService
+from services.ventas_service import VentasService
 from services.catalogo_service import CatalogoService
 
 
@@ -23,7 +23,6 @@ def crear_app():
     app = Flask(__name__)
     CORS(app)
 
-    db = BaseDeDatos()
     cargar_datos_iniciales()
 
     # ---------- Patrón Observer: acá se conectan sujetos y observadores ----------
@@ -36,8 +35,20 @@ def crear_app():
 
     reportes = ReportesService()
     alertas = AlertasService()
-
+    ventas = VentasService(stock)
     catalogo = CatalogoService()
+
+    def cuerpo_json():
+        datos = request.get_json(silent=True)
+        if not isinstance(datos, dict):
+            raise ReglaNegocioError("El cuerpo de la solicitud debe ser un objeto JSON")
+        return datos
+
+    def entero_positivo(valor, campo):
+        if isinstance(valor, bool) or not isinstance(valor, int) or valor <= 0:
+            raise ReglaNegocioError(f"{campo} debe ser un entero positivo")
+        return valor
+
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(ReglaNegocioError)
     def regla_negocio(e):
@@ -51,7 +62,7 @@ def crear_app():
     def no_implementado(e):
         return jsonify({"error": f"Pendiente: {e}"}), 501
 
-        # ---------- catálogo (procesos 1 y 2) ----------
+    # ---------- catálogo (procesos 1 y 2) ----------
     # Sucursales
     @app.get("/api/sucursales")
     def listar_sucursales():
@@ -163,6 +174,11 @@ def crear_app():
     def despachar(bulto_id):
         return jsonify(logistica.despachar(bulto_id))
 
+    @app.post("/api/bultos/<int:bulto_id>/anular")
+    def anular(bulto_id):
+        motivo = request.get_json().get("motivo")
+        return jsonify(logistica.anular_bulto(bulto_id, motivo))
+
     @app.post("/api/bultos/<int:bulto_id>/recibir")
     def recibir(bulto_id):
         d = request.get_json()
@@ -181,8 +197,44 @@ def crear_app():
     def listar_eventos():
         return jsonify(alertas.eventos())
 
-    # ---------- ventas (TODO) ----------
-    # @app.post("/api/ventas") ...  usar VentasService
+    # ---------- ventas y devoluciones ----------
+    @app.get("/api/ventas")
+    def listar_ventas():
+        return jsonify(ventas.listar_ventas())
+
+    @app.get("/api/ventas/<int:venta_id>")
+    def obtener_venta(venta_id):
+        return jsonify(ventas.obtener_venta(venta_id))
+
+    @app.post("/api/ventas")
+    def registrar_venta():
+        datos = cuerpo_json()
+        sucursal_id = entero_positivo(datos.get("sucursal_id"), "sucursal_id")
+        items = datos.get("items")
+        if not isinstance(items, list):
+            raise ReglaNegocioError("items debe ser una lista")
+        medio_pago = datos.get("medio_pago")
+        if not isinstance(medio_pago, str) or not medio_pago.strip():
+            raise ReglaNegocioError("medio_pago es obligatorio")
+        datos_pago = {
+            clave: datos[clave]
+            for clave in ("cuotas", "referencia")
+            if clave in datos
+        }
+        return jsonify(
+            ventas.registrar_venta(sucursal_id, items, medio_pago, **datos_pago)
+        ), 201
+
+    @app.post("/api/devoluciones")
+    def registrar_devolucion():
+        datos = cuerpo_json()
+        venta_id = entero_positivo(datos.get("venta_id"), "venta_id")
+        items = datos.get("items")
+        if not isinstance(items, list):
+            raise ReglaNegocioError("items debe ser una lista")
+        return jsonify(
+            ventas.registrar_devolucion(venta_id, items, datos.get("motivo"))
+        ), 201
 
     # ---------- reportes ----------
     @app.get("/api/reportes/bultos-rechazados")
@@ -193,6 +245,22 @@ def crear_app():
     @app.get("/api/reportes/transito")
     def rep_transito():
         return jsonify(reportes.tiempo_promedio_transito())
+
+    @app.get("/api/reportes/existencias")
+    def rep_existencias():
+        return jsonify(reportes.existencias())
+
+    @app.get("/api/reportes/movimientos")
+    def rep_movimientos():
+        return jsonify(reportes.movimientos())
+
+    @app.get("/api/reportes/ventas")
+    def rep_ventas():
+        return jsonify(reportes.ventas(request.args.get("desde"), request.args.get("hasta")))
+
+    @app.get("/api/reportes/mas-vendidos")
+    def rep_mas_vendidos():
+        return jsonify(reportes.mas_vendidos(request.args.get("desde"), request.args.get("hasta")))
 
     return app
 

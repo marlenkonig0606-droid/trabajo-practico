@@ -19,6 +19,14 @@ async function pedir(metodo, url, cuerpo) {
 }
 
 
+// Arma "?desde=...&hasta=..." solo con las fechas que estén cargadas
+function conFechas({ desde, hasta }) {
+  const q = new URLSearchParams()
+  if (desde) q.set('desde', desde)
+  if (hasta) q.set('hasta', hasta)
+  return q.toString() ? `?${q}` : ''
+}
+
 export const api = {
   sucursales: () => pedir('GET', '/sucursales'),
   productos: () => pedir('GET', '/productos'),
@@ -30,13 +38,21 @@ export const api = {
   crearBulto: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/bultos`, { items }),
   precintar: (id, precinto) => pedir('POST', `/bultos/${id}/precintar`, { precinto }),
   despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
+  anular: (id, motivo) => pedir('POST', `/bultos/${id}/anular`, { motivo }),
   recibir: (id, precinto, intacto) => pedir('POST', `/bultos/${id}/recibir`, { precinto, intacto }),
   historial: (id) => pedir('GET', `/bultos/${id}/historial`),
 
   alertas: () => pedir('GET', '/alertas'),
   eventos: () => pedir('GET', '/eventos'),
 
-  reporteRechazados: () => pedir('GET', '/reportes/bultos-rechazados'),
+  reporteRechazados: (f = {}) => pedir('GET', `/reportes/bultos-rechazados${conFechas(f)}`),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
-  // TODO (vos): ventas, devoluciones, ABM, resto de reportes
+  reporteExistencias: () => pedir('GET', '/reportes/existencias'),
+  reporteMovimientos: () => pedir('GET', '/reportes/movimientos'),
+  reporteVentas: (f = {}) => pedir('GET', `/reportes/ventas${conFechas(f)}`),
+  reporteMasVendidos: (f = {}) => pedir('GET', `/reportes/mas-vendidos${conFechas(f)}`),
+  ventas: () => pedir('GET', '/ventas'),
+  venta: (id) => pedir('GET', `/ventas/${id}`),
+  registrarVenta: (datos) => pedir('POST', '/ventas', datos),
+  registrarDevolucion: (datos) => pedir('POST', '/devoluciones', datos),
 }

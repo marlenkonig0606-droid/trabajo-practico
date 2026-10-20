@@ -9,6 +9,53 @@ class VentasService:
         self.db = BaseDeDatos()
         self.stock = stock_service if stock_service is not None else StockService()
 
+    def listar_ventas(self):
+        return self.db.consultar(
+            """SELECT v.id, v.sucursal_id, s.nombre AS sucursal, v.fecha,
+                      v.subtotal, v.total, p.medio_pago, p.importe AS importe_pagado,
+                      c.numero AS comprobante_numero
+               FROM venta v
+               JOIN sucursal s ON s.id = v.sucursal_id
+               JOIN pago p ON p.venta_id = v.id
+               JOIN comprobante c ON c.venta_id = v.id
+               ORDER BY v.id DESC"""
+        )
+
+    def obtener_venta(self, venta_id):
+        venta = self.db.consultar_uno(
+            """SELECT v.id, v.sucursal_id, s.nombre AS sucursal, v.fecha,
+                      v.subtotal, v.total, p.medio_pago, p.importe AS importe_pagado,
+                      p.cuotas, p.referencia, c.numero AS comprobante_numero
+               FROM venta v
+               JOIN sucursal s ON s.id = v.sucursal_id
+               JOIN pago p ON p.venta_id = v.id
+               JOIN comprobante c ON c.venta_id = v.id
+               WHERE v.id=?""",
+            (venta_id,),
+        )
+        if venta is None:
+            raise NoEncontradoError(f"No existe la venta {venta_id}")
+
+        venta["items"] = self.db.consultar(
+            """SELECT dv.producto_id, p.nombre, dv.cantidad, dv.precio_unitario
+               FROM detalle_venta dv
+               JOIN producto p ON p.id = dv.producto_id
+               WHERE dv.venta_id=?
+               ORDER BY p.nombre""",
+            (venta_id,),
+        )
+        venta["devoluciones"] = self.db.consultar(
+            """SELECT d.id, d.fecha, d.motivo, d.total,
+                      dd.producto_id, p.nombre, dd.cantidad, dd.precio_unitario
+               FROM devolucion d
+               JOIN detalle_devolucion dd ON dd.devolucion_id = d.id
+               JOIN producto p ON p.id = dd.producto_id
+               WHERE d.venta_id=?
+               ORDER BY d.id, p.nombre""",
+            (venta_id,),
+        )
+        return venta
+
     def registrar_venta(self, sucursal_id, items, medio_pago, **datos_pago):
         sucursal = self.db.consultar_uno(
             "SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))
@@ -211,10 +258,12 @@ class VentasService:
                     (devolucion_id, item["producto_id"], item["cantidad"],
                      item["precio_unitario"]),
                 )
+                #repone stock de productos devueltos
                 self.stock.sumar(
                     venta["sucursal_id"], item["producto_id"], item["cantidad"],
                     "DEVOLUCION", f"devolucion {devolucion_id}",
                 )
+                #registra la devolucion de dinero como EGRESO en movimiento_caja
             movimiento_caja_id = self.db.ejecutar(
                 """INSERT INTO movimiento_caja
                    (sucursal_id, devolucion_id, tipo, importe)
