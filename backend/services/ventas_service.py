@@ -211,10 +211,12 @@ class VentasService:
                     (devolucion_id, item["producto_id"], item["cantidad"],
                      item["precio_unitario"]),
                 )
+                #repone stock de productos devueltos
                 self.stock.sumar(
                     venta["sucursal_id"], item["producto_id"], item["cantidad"],
                     "DEVOLUCION", f"devolucion {devolucion_id}",
                 )
+                #registra la devolucion de dinero como EGRESO en movimiento_caja
             movimiento_caja_id = self.db.ejecutar(
                 """INSERT INTO movimiento_caja
                    (sucursal_id, devolucion_id, tipo, importe)
