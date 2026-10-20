@@ -5,39 +5,38 @@ async function pedir(metodo, url, cuerpo) {
     headers: { 'Content-Type': 'application/json' },
     body: cuerpo ? JSON.stringify(cuerpo) : undefined,
   })
-  const datos = await resp.json()
-  if (!resp.ok) throw new Error(datos.error || 'Error inesperado')
+  const texto = await resp.text()
+  let datos = null
+  try {
+    datos = texto ? JSON.parse(texto) : null
+  } catch {
+    // la respuesta no era JSON (ej. página de error HTML)
+  }
+  if (!resp.ok) {
+    throw new Error(datos?.error || (texto ? `Error ${resp.status}` : `Sin respuesta del backend (${resp.status}). ¿Está corriendo python app.py?`))
+  }
   return datos
 }
+
 
 export const api = {
   sucursales: () => pedir('GET', '/sucursales'),
   productos: () => pedir('GET', '/productos'),
-  producto: (id) => pedir('GET', `/productos/${id}`),
-  crearProducto: (datos) => pedir('POST', '/productos', datos),
-  actualizarProducto: (id, datos) => pedir('PUT', `/productos/${id}`, datos),
-  eliminarProducto: (id) => pedir('DELETE', `/productos/${id}`),
-  categorias: () => pedir('GET', '/categorias'),
-  categoria: (id) => pedir('GET', `/categorias/${id}`),
-  crearCategoria: (datos) => pedir('POST', '/categorias', datos),
-  actualizarCategoria: (id, datos) => pedir('PUT', `/categorias/${id}`, datos),
-  eliminarCategoria: (id) => pedir('DELETE', `/categorias/${id}`),
-  proveedores: () => pedir('GET', '/proveedores'),
-  proveedor: (id) => pedir('GET', `/proveedores/${id}`),
-  crearProveedor: (datos) => pedir('POST', '/proveedores', datos),
-  actualizarProveedor: (id, datos) => pedir('PUT', `/proveedores/${id}`, datos),
-  eliminarProveedor: (id) => pedir('DELETE', `/proveedores/${id}`),
   stock: (sucursalId) => pedir('GET', `/stock/${sucursalId}`),
 
+  sugerirOrden: (localId) => pedir('GET', `/sucursales/${localId}/sugerencia`),
   ordenes: () => pedir('GET', '/ordenes'),
   crearOrden: (destino_id, items) => pedir('POST', '/ordenes', { destino_id, items }),
-  crearContenedor: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/contenedores`, { items }),
-  precintar: (id, precinto) => pedir('POST', `/contenedores/${id}/precintar`, { precinto }),
-  despachar: (id) => pedir('POST', `/contenedores/${id}/despachar`),
-  recibir: (id, precinto, intacto) => pedir('POST', `/contenedores/${id}/recibir`, { precinto, intacto }),
-  historial: (id) => pedir('GET', `/contenedores/${id}/historial`),
+  crearBulto: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/bultos`, { items }),
+  precintar: (id, precinto) => pedir('POST', `/bultos/${id}/precintar`, { precinto }),
+  despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
+  recibir: (id, precinto, intacto) => pedir('POST', `/bultos/${id}/recibir`, { precinto, intacto }),
+  historial: (id) => pedir('GET', `/bultos/${id}/historial`),
 
-  reporteRechazados: () => pedir('GET', '/reportes/contenedores-rechazados'),
+  alertas: () => pedir('GET', '/alertas'),
+  eventos: () => pedir('GET', '/eventos'),
+
+  reporteRechazados: () => pedir('GET', '/reportes/bultos-rechazados'),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
-  // TODO (vos): ventas, devoluciones y resto de reportes
+  // TODO (vos): ventas, devoluciones, ABM, resto de reportes
 }

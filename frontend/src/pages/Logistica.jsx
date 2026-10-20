@@ -48,6 +48,8 @@ function NuevaOrden({ sucursales, productos, onCrear }) {
       .map(([id, c]) => ({ producto_id: Number(id), cantidad: Number(c) }))
     onCrear(Number(destino), items)
     setCantidades({})
+
+  
   }
 
   return (
@@ -67,6 +69,10 @@ function NuevaOrden({ sucursales, productos, onCrear }) {
           </label>
         ))}
       </div>
+      <button disabled={!destino} onClick={async () => {
+        const items = await api.sugerirOrden(destino)
+        setCantidades(Object.fromEntries(items.map((i) => [i.producto_id, i.cantidad])))
+      }}>Sugerir orden</button>
       <button disabled={!destino} onClick={crear}>Crear orden</button>
     </div>
   )
@@ -76,11 +82,11 @@ function Orden({ orden, nombreProducto, accion }) {
   const pendientes = orden.items.filter((i) => i.cantidad > i.empaquetado)
   const [aEmpaquetar, setAEmpaquetar] = useState({})
 
-  const armarContenedor = () => {
+  const armarBulto = () => {
     const items = Object.entries(aEmpaquetar)
       .filter(([, c]) => Number(c) > 0)
       .map(([id, c]) => ({ producto_id: Number(id), cantidad: Number(c) }))
-    accion(() => api.crearContenedor(orden.id, items))
+    accion(() => api.crearBulto(orden.id, items))
     setAEmpaquetar({})
   }
 
@@ -104,66 +110,57 @@ function Orden({ orden, nombreProducto, accion }) {
 
       {pendientes.length > 0 && (orden.remito_estado ?? 'ABIERTO') === 'ABIERTO' && (
         <div className="armar">
-          <em>Armar contenedor:</em>
+          <em>Armar bulto:</em>
           {pendientes.map((i) => (
             <label key={i.producto_id}>{i.nombre} (máx {i.cantidad - i.empaquetado})
               <input type="number" min="0" value={aEmpaquetar[i.producto_id] ?? ''}
                      onChange={(e) => setAEmpaquetar({ ...aEmpaquetar, [i.producto_id]: e.target.value })} />
             </label>
           ))}
-          <button onClick={armarContenedor}>Empaquetar</button>
+          <button onClick={armarBulto}>Empaquetar</button>
         </div>
       )}
 
-      {orden.contenedores.map((b) => (
-        <FilaContenedor key={b.id} contenedor={b} nombreProducto={nombreProducto} accion={accion} />
+      {orden.bultos.map((b) => (
+        <FilaBulto key={b.id} bulto={b} nombreProducto={nombreProducto} accion={accion} />
       ))}
     </div>
   )
 }
 
-function FilaContenedor({ contenedor, nombreProducto, accion }) {
+function FilaBulto({ bulto, nombreProducto, accion }) {
   const [precinto, setPrecinto] = useState('')
   const [intacto, setIntacto] = useState(true)
   const [historial, setHistorial] = useState(null)
 
   const verHistorial = async () =>
-    setHistorial(historial ? null : await api.historial(contenedor.id))
-
-  const fechaHora = (valor) => {
-    const fecha = new Date(valor.replace(' ', 'T'))
-    return Number.isNaN(fecha.getTime()) ? valor : fecha.toLocaleString('es-AR')
-  }
+    setHistorial(historial ? null : await api.historial(bulto.id))
 
   return (
-    <div className="contenedor">
-      <span>Contenedor #{contenedor.id}</span>
-      <span className={`estado ${contenedor.estado}`}>{contenedor.estado}</span>
+    <div className="bulto">
+      <span>Bulto #{bulto.id}</span>
+      <span className={`estado ${bulto.estado}`}>{bulto.estado}</span>
       <span className="items">
-        {contenedor.items.map((i) => `${i.cantidad} × ${nombreProducto(i.producto_id)}`).join(', ')}
+        {bulto.items.map((i) => `${i.cantidad} × ${nombreProducto(i.producto_id)}`).join(', ')}
       </span>
-      {contenedor.precinto && <span>🔒 {contenedor.precinto}</span>}
+      {bulto.precinto && <span>🔒 {bulto.precinto}</span>}
 
-      {contenedor.estado === 'PREPARADO' && <>
+      {bulto.estado === 'PREPARADO' && <>
         <input placeholder="N° precinto" value={precinto} onChange={(e) => setPrecinto(e.target.value)} />
-        <button onClick={() => accion(() => api.precintar(contenedor.id, precinto))}>Precintar</button>
+        <button onClick={() => accion(() => api.precintar(bulto.id, precinto))}>Precintar</button>
       </>}
-      {contenedor.estado === 'PRECINTADO' &&
-        <button onClick={() => accion(() => api.despachar(contenedor.id))}>Despachar</button>}
-      {contenedor.estado === 'EN_TRANSITO' && <>
+      {bulto.estado === 'PRECINTADO' &&
+        <button onClick={() => accion(() => api.despachar(bulto.id))}>Despachar</button>}
+      {bulto.estado === 'EN_TRANSITO' && <>
         <input placeholder="Precinto leído" value={precinto} onChange={(e) => setPrecinto(e.target.value)} />
         <label><input type="checkbox" checked={intacto} onChange={(e) => setIntacto(e.target.checked)} /> intacto</label>
-        <button onClick={() => accion(() => api.recibir(contenedor.id, precinto, intacto))}>Recibir</button>
+        <button onClick={() => accion(() => api.recibir(bulto.id, precinto, intacto))}>Recibir</button>
       </>}
 
       <button className="link" onClick={verHistorial}>{historial ? 'ocultar' : 'historial'}</button>
       {historial && (
         <ol className="historial">
-          {historial.map((h, i) => (
-            <li key={i}>
-              {fechaHora(h.fecha)} — <b>{h.estado}</b> {h.observacion}
-            </li>
-          ))}
+          {historial.map((h, i) => <li key={i}>{h.fecha} — <b>{h.estado}</b> {h.observacion}</li>)}
         </ol>
       )}
     </div>

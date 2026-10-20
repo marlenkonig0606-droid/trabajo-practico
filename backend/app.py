@@ -8,17 +8,14 @@ Capas (igual que el repo de referencia, pero separadas en carpetas):
 """
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from sqlalchemy import select
 
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar as cargar_datos_iniciales
-from models.sucursal import Sucursal
-from services.catalogo_service import CatalogoService
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 from services.logistica_service import LogisticaService
-from services.productos_service import ProductosService
 from services.stock_service import StockService, StockObserver
 from services.reportes_service import ReportesService
+from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService
 
 
 def crear_app():
@@ -28,121 +25,41 @@ def crear_app():
     db = BaseDeDatos()
     cargar_datos_iniciales()
 
-    stock = StockService()
-    logistica = LogisticaService()
-    logistica.suscribir(StockObserver(stock))      # <- Observer conectado acá
+    # ---------- Patrón Observer: acá se conectan sujetos y observadores ----------
+    stock = StockService()                            # sujeto 1
+    stock.suscribir(AlertaStockMinimoObserver())
+
+    logistica = LogisticaService(stock)               # sujeto 2 (comparte el mismo stock)
+    logistica.suscribir(StockObserver(stock))
+    logistica.suscribir(AuditoriaObserver())
+
     reportes = ReportesService()
-    productos_service = ProductosService()
-    catalogo_service = CatalogoService()
+    alertas = AlertasService()
 
     # ---------- manejo de errores centralizado ----------
-    @app.errorhandler(NoEncontradoError)
     @app.errorhandler(ReglaNegocioError)
     def regla_negocio(e):
-        return jsonify({"error": str(e), "solucion": e.mensaje_especial}), e.status_code
+        return jsonify({"error": str(e)}), 400
 
+    @app.errorhandler(NoEncontradoError)
+    def no_encontrado(e):
+        return jsonify({"error": str(e)}), 404
 
     @app.errorhandler(NotImplementedError)
     def no_implementado(e):
         return jsonify({"error": f"Pendiente: {e}"}), 501
 
-    # ---------- catálogo ----------
+    # ---------- catálogo (solo lectura por ahora) ----------
     @app.get("/api/sucursales")
     def listar_sucursales():
-        sucursales = db.sesion.scalars(
-            select(Sucursal).order_by(Sucursal.tipo, Sucursal.nombre)
-        )
-        return jsonify([
-            {
-                "id": sucursal.id,
-                "nombre": sucursal.nombre,
-                "direccion": sucursal.direccion,
-                "tipo": sucursal.tipo,
-            }
-            for sucursal in sucursales
-        ])
+        return jsonify(db.consultar("SELECT * FROM sucursal ORDER BY tipo, nombre"))
 
     @app.get("/api/productos")
     def listar_productos():
-        return jsonify(productos_service.listar())
+        return jsonify(db.consultar("SELECT * FROM producto ORDER BY nombre"))
 
-    @app.get("/api/productos/<int:producto_id>")
-    def obtener_producto(producto_id):
-        return jsonify(productos_service.obtener(producto_id))
-
-    @app.post("/api/productos")
-    def crear_producto():
-        return jsonify(productos_service.crear(request.get_json())), 201
-
-    @app.put("/api/productos/<int:producto_id>")
-    def actualizar_producto(producto_id):
-        return jsonify(productos_service.actualizar(producto_id, request.get_json()))
-
-    @app.patch("/api/productos/<int:producto_id>")
-    def actualizar_parcial_producto(producto_id):
-        return jsonify(productos_service.actualizar(
-            producto_id, request.get_json(), parcial=True
-        ))
-
-    @app.delete("/api/productos/<int:producto_id>")
-    def eliminar_producto(producto_id):
-        return jsonify(productos_service.eliminar(producto_id))
-
-    @app.get("/api/categorias")
-    def listar_categorias():
-        return jsonify(catalogo_service.listar_categorias())
-
-    @app.get("/api/categorias/<int:categoria_id>")
-    def obtener_categoria(categoria_id):
-        return jsonify(catalogo_service.obtener_categoria(categoria_id))
-
-    @app.post("/api/categorias")
-    def crear_categoria():
-        return jsonify(catalogo_service.crear_categoria(request.get_json())), 201
-
-    @app.put("/api/categorias/<int:categoria_id>")
-    def actualizar_categoria(categoria_id):
-        return jsonify(catalogo_service.actualizar_categoria(
-            categoria_id, request.get_json()
-        ))
-
-    @app.patch("/api/categorias/<int:categoria_id>")
-    def actualizar_parcial_categoria(categoria_id):
-        return jsonify(catalogo_service.actualizar_categoria(
-            categoria_id, request.get_json(), parcial=True
-        ))
-
-    @app.delete("/api/categorias/<int:categoria_id>")
-    def eliminar_categoria(categoria_id):
-        return jsonify(catalogo_service.eliminar_categoria(categoria_id))
-
-    @app.get("/api/proveedores")
-    def listar_proveedores():
-        return jsonify(catalogo_service.listar_proveedores())
-
-    @app.get("/api/proveedores/<int:proveedor_id>")
-    def obtener_proveedor(proveedor_id):
-        return jsonify(catalogo_service.obtener_proveedor(proveedor_id))
-
-    @app.post("/api/proveedores")
-    def crear_proveedor():
-        return jsonify(catalogo_service.crear_proveedor(request.get_json())), 201
-
-    @app.put("/api/proveedores/<int:proveedor_id>")
-    def actualizar_proveedor(proveedor_id):
-        return jsonify(catalogo_service.actualizar_proveedor(
-            proveedor_id, request.get_json()
-        ))
-
-    @app.patch("/api/proveedores/<int:proveedor_id>")
-    def actualizar_parcial_proveedor(proveedor_id):
-        return jsonify(catalogo_service.actualizar_proveedor(
-            proveedor_id, request.get_json(), parcial=True
-        ))
-
-    @app.delete("/api/proveedores/<int:proveedor_id>")
-    def eliminar_proveedor(proveedor_id):
-        return jsonify(catalogo_service.eliminar_proveedor(proveedor_id))
+    # TODO (vos): POST/PUT/DELETE de sucursales, productos, categorías y proveedores
+    #   (procesos 1 y 2). Validar duplicados por codigo / cuit -> ReglaNegocioError.
 
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):
@@ -153,48 +70,58 @@ def crear_app():
     def listar_ordenes():
         return jsonify(logistica.listar_ordenes())
 
+    @app.get("/api/sucursales/<int:local_id>/sugerencia")
+    def sugerir_orden(local_id):
+        return jsonify(logistica.sugerir_orden(local_id))
+
+
     @app.post("/api/ordenes")
     def crear_orden():
         d = request.get_json()
         return jsonify(logistica.crear_orden(d["destino_id"], d["items"])), 201
 
-    @app.post("/api/ordenes/<int:orden_id>/contenedores")
-    def crear_contenedor(orden_id):
-        return jsonify(logistica.crear_contenedor(orden_id, request.get_json()["items"])), 201
+    @app.post("/api/ordenes/<int:orden_id>/bultos")
+    def crear_bulto(orden_id):
+        return jsonify(logistica.crear_bulto(orden_id, request.get_json()["items"])), 201
 
-    @app.post("/api/contenedores/<int:contenedor_id>/precintar")
-    def precintar(contenedor_id):
-        return jsonify(logistica.precintar(contenedor_id, request.get_json().get("precinto")))
+    @app.post("/api/bultos/<int:bulto_id>/precintar")
+    def precintar(bulto_id):
+        return jsonify(logistica.precintar(bulto_id, request.get_json().get("precinto")))
 
-    @app.post("/api/contenedores/<int:contenedor_id>/despachar")
-    def despachar(contenedor_id):
-        return jsonify(logistica.despachar(contenedor_id))
+    @app.post("/api/bultos/<int:bulto_id>/despachar")
+    def despachar(bulto_id):
+        return jsonify(logistica.despachar(bulto_id))
 
-    @app.post("/api/contenedores/<int:contenedor_id>/recibir")
-    def recibir(contenedor_id):
+    @app.post("/api/bultos/<int:bulto_id>/recibir")
+    def recibir(bulto_id):
         d = request.get_json()
-        return jsonify(logistica.recibir(contenedor_id, d.get("precinto"), bool(d.get("intacto"))))
+        return jsonify(logistica.recibir(bulto_id, d.get("precinto"), bool(d.get("intacto"))))
 
-    @app.get("/api/contenedores/<int:contenedor_id>/historial")
-    def historial(contenedor_id):
-        return jsonify(logistica.historial(contenedor_id))
+    @app.get("/api/bultos/<int:bulto_id>/historial")
+    def historial(bulto_id):
+        return jsonify(logistica.historial(bulto_id))
+
+    # ---------- lo que registran los observadores ----------
+    @app.get("/api/alertas")
+    def listar_alertas():
+        return jsonify(alertas.alertas(solo_pendientes=request.args.get("todas") is None))
+
+    @app.get("/api/eventos")
+    def listar_eventos():
+        return jsonify(alertas.eventos())
 
     # ---------- ventas (TODO) ----------
     # @app.post("/api/ventas") ...  usar VentasService
 
     # ---------- reportes ----------
-    @app.get("/api/reportes/contenedores-rechazados")
+    @app.get("/api/reportes/bultos-rechazados")
     def rep_rechazados():
-        return jsonify(reportes.contenedores_rechazados(request.args.get("desde"),
+        return jsonify(reportes.bultos_rechazados(request.args.get("desde"),
                                                   request.args.get("hasta")))
 
     @app.get("/api/reportes/transito")
     def rep_transito():
         return jsonify(reportes.tiempo_promedio_transito())
-
-    @app.teardown_appcontext
-    def limpiar_sesion(_error=None):
-        db.limpiar_sesion()
 
     return app
 
