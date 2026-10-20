@@ -47,7 +47,7 @@ class ReportesService:
             GROUP BY s.id ORDER BY horas_promedio DESC""")
 
     # Reporte: existencias actuales y productos en stock mínimo
-    def existencias(self):
+    def existencias(self, sucursal_id=None):
         # CROSS JOIN = todas las combinaciones sucursal x producto.
         # LEFT JOIN stock = trae el stock si existe; si no hay fila, las columnas quedan NULL
         # y COALESCE las convierte en 0 (así aparecen los productos que el local NO tiene).
@@ -62,10 +62,12 @@ class ReportesService:
             FROM sucursal s
             CROSS JOIN producto p
             LEFT JOIN stock st ON st.sucursal_id = s.id AND st.producto_id = p.id
-            ORDER BY estado = 'OK', s.nombre, p.nombre""")
+            WHERE (? IS NULL OR s.id = ?)
+            ORDER BY estado = 'OK', s.nombre, p.nombre""",
+            (sucursal_id, sucursal_id))
 
     # Reporte: movimientos y valorización del inventario
-    def movimientos(self):
+    def movimientos(self, sucursal_id=None):
         return self.db.consultar("""
             SELECT s.nombre AS sucursal, m.motivo,
                    COUNT(*) AS movimientos,
@@ -75,8 +77,9 @@ class ReportesService:
             FROM movimiento_stock m
             JOIN sucursal s ON s.id = m.sucursal_id
             JOIN producto p ON p.id = m.producto_id
+            WHERE (? IS NULL OR s.id = ?)
             GROUP BY s.id, m.motivo
-            ORDER BY s.nombre, m.motivo""")
+            ORDER BY s.nombre, m.motivo""", (sucursal_id, sucursal_id))
 
     # Filtro de fechas reutilizable: arma "date(columna) >= ? AND date(columna) <= ?"
     @staticmethod
@@ -89,8 +92,11 @@ class ReportesService:
         return " AND ".join(filtros), tuple(params)
 
     # Reporte: ventas e ingresos por período, local y medio de pago
-    def ventas(self, desde=None, hasta=None):
+    def ventas(self, desde=None, hasta=None, sucursal_id=None):
         where, params = self._filtro_fechas("v.fecha", desde, hasta)
+        if sucursal_id is not None:
+            where += " AND v.sucursal_id = ?"
+            params += (sucursal_id,)
         return self.db.consultar(f"""
             SELECT date(v.fecha) AS dia, s.nombre AS local, pg.medio_pago,
                    COUNT(*) AS ventas,
@@ -104,10 +110,20 @@ class ReportesService:
             ORDER BY dia DESC, ingresos DESC""", params)
 
     # Reporte: productos más vendidos y margen de ganancia / pérdida
-    def mas_vendidos(self, desde=None, hasta=None):
+    def mas_vendidos(self, desde=None, hasta=None, sucursal_id=None):
         """Se descuentan las devoluciones. Ingresos al precio del momento de la venta,
         costo al precio de costo actual del producto."""
         where, params = self._filtro_fechas("v.fecha", desde, hasta)
+        where_vendido = where
+        params_vendido = params
+        if sucursal_id is not None:
+            where_vendido += " AND v.sucursal_id = ?"
+            params_vendido += (sucursal_id,)
+        where_devuelto = where
+        params_devuelto = params
+        if sucursal_id is not None:
+            where_devuelto += " AND v.sucursal_id = ?"
+            params_devuelto += (sucursal_id,)
         return self.db.consultar(f"""
             WITH vendido AS (
                 SELECT dv.producto_id,
@@ -115,7 +131,7 @@ class ReportesService:
                        SUM(dv.cantidad * dv.precio_unitario) AS ingresos
                 FROM detalle_venta dv
                 JOIN venta v ON v.id = dv.venta_id
-                WHERE {where}
+                WHERE {where_vendido}
                 GROUP BY dv.producto_id
             ),
             devuelto AS (
@@ -125,7 +141,7 @@ class ReportesService:
                 FROM detalle_devolucion dd
                 JOIN devolucion d ON d.id = dd.devolucion_id
                 JOIN venta v ON v.id = d.venta_id
-                WHERE {where}
+                WHERE {where_devuelto}
                 GROUP BY dd.producto_id
             )
             SELECT p.codigo, p.nombre AS producto,
@@ -140,4 +156,4 @@ class ReportesService:
             FROM vendido ve
             JOIN producto p ON p.id = ve.producto_id
             LEFT JOIN devuelto de ON de.producto_id = ve.producto_id
-            ORDER BY unidades DESC, margen DESC""", params * 2)
+            ORDER BY unidades DESC, margen DESC""", params_vendido + params_devuelto)

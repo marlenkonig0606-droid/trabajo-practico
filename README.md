@@ -9,14 +9,20 @@ referencia (`alquilerDeAutos`), pero con las capas separadas en carpetas.
 # Terminal 1 — backend
 cd backend
 pip install -r requirements.txt
+$env:CD_REGISTRATION_CODE = "marlufa"
 python app.py                # http://localhost:5000 (crea la base y carga datos de prueba)
-python -m pytest -v          # suite completa del backend
 
 # Terminal 2 — frontend
 cd frontend
 npm install
 npm run dev                  # http://localhost:5173
 ```
+
+La variable debe configurarse antes de iniciar Flask y en la misma terminal. Si el backend
+ya estaba ejecutándose cuando la configuraste, detenelo con Ctrl+C y volvé a iniciarlo. El
+registro permite crear cuentas locales y, con esa variable configurada, cuentas del CD.
+El código no se guarda en el repositorio. Para correr tests: `python -m pytest -v` desde
+`backend/`.
 
 ## Arquitectura
 
@@ -31,21 +37,41 @@ backend/
   patrones/
     observer.py             ★ OBSERVER: Sujeto / Observador / Eventos
   services/                 reglas de negocio (acá viven las validaciones)
-    creadores_medio_pago.py creadores concretos de los medios de pago
-    logistica_service.py    ✅ procesos 3-6 completos (modelo a imitar)
-    stock_service.py        ✅ stock + StockObserver
-    reportes_service.py     ✅ 2 reportes · ⬜ faltan 2+
-    ventas_service.py       ✅ proceso 7 · ventas, cobros y devoluciones
-  tests/test_logistica.py   ✅
+    auth_service.py         cuentas locales/CD y contraseñas hasheadas
+    logistica_service.py    procesos 3-6 completos
+    stock_service.py        stock + StockObserver
+    reportes_service.py     reportes de logística, ventas e inventario
+    ventas_service.py       ventas, cobros y devoluciones
+  tests/                    pruebas de servicios y API
 frontend/src/pages/
-  Logistica.jsx ✅  Stock.jsx ✅  Reportes.jsx ✅ (parcial)  Ventas.jsx ✅
+  Acceso.jsx ✅  Solicitudes.jsx ✅  Logistica.jsx ✅  Stock.jsx ✅  Reportes.jsx ✅  Ventas.jsx ✅
 ```
+
+## Acceso por sucursal
+
+El registro desde la pantalla de inicio de sesión crea cuentas para la sucursal seleccionada.
+Para el CD, exige el código configurado en el servidor. Las contraseñas se guardan hasheadas.
+
+Cada cuenta local solo puede consultar su stock, ventas y reportes. Puede solicitar una
+reposición eligiendo cualquier CD de origen y local de destino; ve las órdenes de su sucursal
+y las que solicitó. La sugerencia automática usa únicamente el stock de su propia sucursal.
+La recepción física se confirma primero; luego, el local destinatario verifica el remito y el
+precinto. Un bulto solo suma stock local
+cuando esa verificación finaliza; si el precinto no coincide o está roto, se rechaza y no se
+incorpora. La API valida estos permisos en el servidor. Las cuentas del CD tienen acceso a
+todas las sucursales y gestionan la preparación, armado y despacho, pero no crean solicitudes.
+
+En producción, configurá `FLASK_SECRET_KEY` con un valor secreto persistente y serví la
+aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo local, la app genera una
+clave temporal al iniciarse.
 
 ## Qué ya está resuelto (y cómo defenderlo)
 
 **Ciclo de vida del bulto** (`models/bulto.py`): `PREPARADO → PRECINTADO → EN_TRANSITO → RECIBIDO →
-VERIFICADO | RECHAZADO`. Las transiciones válidas están en una tabla (`TRANSICIONES`) y el propio
-objeto rechaza saltos (`cambiar_estado`). No se puede despachar sin precintar, ni recibir dos veces.
+VERIFICADO | RECHAZADO`. El local registra primero la recepción física (`RECIBIDO`) y realiza
+la verificación del remito y precinto en una segunda acción. Las transiciones válidas están en
+una tabla (`TRANSICIONES`) y el propio objeto rechaza saltos (`cambiar_estado`). No se puede
+despachar sin precintar, ni recibir dos veces.
 
 **Trazabilidad inmutable**: cada cambio inserta una fila en `historial_bulto`. Dos triggers SQL
 abortan cualquier `UPDATE` o `DELETE` sobre esa tabla → la inmutabilidad la garantiza la base,

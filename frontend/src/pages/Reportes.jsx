@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
 
-export default function Reportes() {
+export default function Reportes({ usuario }) {
   const [rechazados, setRechazados] = useState([])
   const [transito, setTransito] = useState([])
   const [eventos, setEventos] = useState([])
@@ -13,17 +13,19 @@ export default function Reportes() {
 
   // Reportes que dependen del período: se recargan cada vez que cambian las fechas
   useEffect(() => {
-    api.reporteRechazados(fechas).then(setRechazados)
     api.reporteVentas(fechas).then(setVentas)
     api.reporteMasVendidos(fechas).then(setMasVendidos)
   }, [fechas])
 
   useEffect(() => {
-    api.reporteTransito().then(setTransito)
-    api.eventos().then(setEventos)
     api.reporteExistencias().then(setExistencias)
     api.reporteMovimientos().then(setMovimientos)
-  }, [])
+    if (usuario.tipo === 'CD') {
+      api.reporteRechazados(fechas).then(setRechazados)
+      api.reporteTransito().then(setTransito)
+      api.eventos().then(setEventos)
+    }
+  }, [usuario.tipo, fechas])
 
   return (
     <section>
@@ -34,7 +36,9 @@ export default function Reportes() {
         <label>Hasta <input type="date" value={fechas.hasta}
           onChange={(e) => setFechas({ ...fechas, hasta: e.target.value })} /></label>
         <button className="link" onClick={() => setFechas({ desde: '', hasta: '' })}>Todo</button>
-        <span className="vacio">Aplica a ventas, más vendidos y bultos rechazados.</span>
+        <span className="vacio">
+          Aplica a ventas, más vendidos{usuario.tipo === 'CD' ? ' y bultos rechazados' : ''}.
+        </span>
       </div>
       <div className="tarjeta">
         <h2>Ventas e ingresos por día, local y medio de pago</h2>
@@ -57,18 +61,18 @@ export default function Reportes() {
         <Tabla filas={movimientos}
                columnas={['sucursal', 'motivo', 'movimientos', 'entradas', 'salidas', 'valor_neto']} />
       </div>
-      <div className="tarjeta">
+      {usuario.tipo === 'CD' && <div className="tarjeta">
         <h2>Bultos rechazados / merma por precinto</h2>
         <Tabla filas={rechazados} columnas={['bulto_id', 'remito', 'destino', 'motivo', 'unidades', 'merma_valorizada']} />
-      </div>
-      <div className="tarjeta">
+      </div>}
+      {usuario.tipo === 'CD' && <div className="tarjeta">
         <h2>Tiempo promedio de tránsito CD → local</h2>
         <Tabla filas={transito} columnas={['local', 'bultos', 'horas_promedio']} />
-      </div>
-      <div className="tarjeta">
+      </div>}
+      {usuario.tipo === 'CD' && <div className="tarjeta">
         <h2>Registro de eventos logísticos</h2>
         <Tabla filas={eventos} columnas={['fecha', 'evento', 'detalle']} />
-      </div>
+      </div>}
     </section>
   )
 }

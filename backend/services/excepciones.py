@@ -5,3 +5,7 @@ class ReglaNegocioError(Exception):
 
 class NoEncontradoError(Exception):
     """El recurso pedido no existe -> HTTP 404."""
+
+
+class AccesoDenegadoError(Exception):
+    """El usuario autenticado no tiene permiso para acceder al recurso -> HTTP 403."""

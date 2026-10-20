@@ -12,6 +12,14 @@ CREATE TABLE IF NOT EXISTS sucursal (
     tipo        TEXT NOT NULL CHECK (tipo IN ('CD', 'LOCAL'))
 );
 
+CREATE TABLE IF NOT EXISTS usuario (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash  TEXT NOT NULL,
+    sucursal_id    INTEGER NOT NULL REFERENCES sucursal(id),
+    fecha_alta     TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 -- ---------- 2. Catálogo ----------
 CREATE TABLE IF NOT EXISTS categoria (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,11 +70,12 @@ CREATE TABLE IF NOT EXISTS movimiento_stock (
 
 -- ---------- 3. Orden de reposición ----------
 CREATE TABLE IF NOT EXISTS orden_reposicion (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    origen_id   INTEGER NOT NULL REFERENCES sucursal(id),   -- el CD
-    destino_id  INTEGER NOT NULL REFERENCES sucursal(id),   -- un local
-    fecha       TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-    estado      TEXT NOT NULL DEFAULT 'PENDIENTE'
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    origen_id                 INTEGER NOT NULL REFERENCES sucursal(id),   -- el CD
+    destino_id                INTEGER NOT NULL REFERENCES sucursal(id),   -- un local
+    solicitado_por_usuario_id INTEGER REFERENCES usuario(id),
+    fecha                     TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    estado                    TEXT NOT NULL DEFAULT 'PENDIENTE'
                 CHECK (estado IN ('PENDIENTE', 'EN_PREPARACION', 'DESPACHADA', 'CERRADA'))
 );
 

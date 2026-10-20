@@ -26,12 +26,14 @@ def app_svc(tmp_path):
     BaseDeDatos.reiniciar()
 
 
-def enviar_y_recibir(logistica, cantidad, precinto, intacto=True):
+def enviar_y_recibir(logistica, cantidad, intacto=True):
     orden = logistica.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": cantidad}])
     bulto = logistica.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": cantidad}])
-    logistica.precintar(bulto["id"], precinto)
+    bulto = logistica.precintar(bulto["id"])
     logistica.despachar(bulto["id"])
-    logistica.recibir(bulto["id"], precinto, intacto)
+    logistica.recibir(bulto["id"])
+    logistica.verificar_recepcion(
+        bulto["id"], f"R-{orden['id']:06d}", bulto["precinto"], intacto)
     return bulto
 
 
@@ -68,7 +70,7 @@ def test_stock_service_notifica_cada_cambio(app_svc):
 # ---------- AlertaStockMinimoObserver ----------
 def test_alerta_cuando_el_local_queda_bajo_el_minimo(app_svc):
     logistica, _, alertas = app_svc
-    enviar_y_recibir(logistica, 10, "A1")          # llegan 10, mínimo 20
+    enviar_y_recibir(logistica, 10)          # llegan 10, mínimo 20
     pendientes = alertas.alertas()
     assert len(pendientes) == 1
     assert pendientes[0]["sucursal"] == "Local Centro"
@@ -77,12 +79,12 @@ def test_alerta_cuando_el_local_queda_bajo_el_minimo(app_svc):
 
 def test_no_duplica_alertas_y_se_resuelve_sola(app_svc):
     logistica, _, alertas = app_svc
-    enviar_y_recibir(logistica, 10, "A1")          # 10 < 20 -> alerta
-    enviar_y_recibir(logistica, 5, "A2")           # 15 < 20 -> misma alerta, actualizada
+    enviar_y_recibir(logistica, 10)          # 10 < 20 -> alerta
+    enviar_y_recibir(logistica, 5)           # 15 < 20 -> misma alerta, actualizada
     pendientes = alertas.alertas()
     assert len(pendientes) == 1 and pendientes[0]["libre"] == 15
 
-    enviar_y_recibir(logistica, 10, "A3")          # 25 >= 20 -> se resuelve
+    enviar_y_recibir(logistica, 10)          # 25 >= 20 -> se resuelve
     assert alertas.alertas() == []
     assert alertas.alertas(solo_pendientes=False)[0]["resuelta"] == 1
 
@@ -107,14 +109,14 @@ def test_si_la_operacion_falla_no_queda_alerta_colgada(app_svc):
 # ---------- AuditoriaObserver ----------
 def test_auditoria_registra_el_recorrido_del_bulto(app_svc):
     logistica, _, alertas = app_svc
-    enviar_y_recibir(logistica, 10, "A1")
+    enviar_y_recibir(logistica, 10)
     eventos = [e["evento"] for e in reversed(alertas.eventos())]
     assert eventos == [Eventos.BULTO_DESPACHADO, Eventos.REMITO_VERIFICADO]
 
 
 def test_auditoria_registra_rechazos_con_motivo(app_svc):
     logistica, _, alertas = app_svc
-    enviar_y_recibir(logistica, 10, "A1", intacto=False)
+    enviar_y_recibir(logistica, 10, intacto=False)
     ultimo = alertas.eventos()[0]
     assert ultimo["evento"] == Eventos.BULTO_RECHAZADO
     assert "Precinto roto" in ultimo["detalle"]

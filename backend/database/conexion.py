@@ -52,6 +52,14 @@ class BaseDeDatos:
             self._conexion.execute(
                 "ALTER TABLE stock ADD COLUMN reservado INTEGER NOT NULL DEFAULT 0")
             self._conexion.commit()
+        columnas_orden = [
+            c["name"] for c in self.consultar("PRAGMA table_info(orden_reposicion)")
+        ]
+        if "solicitado_por_usuario_id" not in columnas_orden:
+            self._conexion.execute(
+                """ALTER TABLE orden_reposicion
+                   ADD COLUMN solicitado_por_usuario_id INTEGER REFERENCES usuario(id)""")
+            self._conexion.commit()
 
     # ---------- helpers de consulta ----------
     
