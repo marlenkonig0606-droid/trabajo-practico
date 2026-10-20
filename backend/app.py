@@ -177,6 +177,10 @@ def crear_app():
     def rep_transito():
         return jsonify(reportes.tiempo_promedio_transito())
 
+    @app.get("/api/reportes/existencias")
+    def rep_existencias():
+        return jsonify(reportes.existencias())
+
     return app
 
 

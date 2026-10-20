@@ -9,7 +9,6 @@ class ReportesService:
     def __init__(self):
         self.db = BaseDeDatos()
 
-    # ✅ HECHO: bultos rechazados y merma valorizada por rotura de precinto
     def bultos_rechazados(self, desde=None, hasta=None):
         filtros, params = ["b.estado = 'RECHAZADO'"], []
         if desde:
@@ -49,5 +48,20 @@ class ReportesService:
 
     # TODO: ventas e ingresos por período, local y medio de pago
     # TODO: productos más vendidos + margen estimado (precio_venta - precio_costo)
-    # TODO: existencias actuales y productos en stock mínimo
-    #       Pista: StockService.listar() ya te trae disponible y stock_minimo por local.
+    # Reporte: existencias actuales y productos en stock mínimo
+    def existencias(self):
+        # CROSS JOIN = todas las combinaciones sucursal x producto.
+        # LEFT JOIN stock = trae el stock si existe; si no hay fila, las columnas quedan NULL
+        # y COALESCE las convierte en 0 (así aparecen los productos que el local NO tiene).
+        return self.db.consultar("""
+            SELECT s.nombre AS sucursal, p.codigo, p.nombre AS producto,
+                   COALESCE(st.disponible, 0) AS disponible,
+                   COALESCE(st.reservado, 0) AS reservado,
+                   COALESCE(st.disponible - st.reservado, 0) AS libre,
+                   p.stock_minimo,
+                   CASE WHEN COALESCE(st.disponible - st.reservado, 0) < p.stock_minimo
+                        THEN 'BAJO MÍNIMO' ELSE 'OK' END AS estado
+            FROM sucursal s
+            CROSS JOIN producto p
+            LEFT JOIN stock st ON st.sucursal_id = s.id AND st.producto_id = p.id
+            ORDER BY estado = 'OK', s.nombre, p.nombre""")
