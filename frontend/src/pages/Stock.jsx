@@ -32,11 +32,11 @@ export default function Stock() {
         {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre} ({s.tipo})</option>)}
       </select>
       <table>
-        <thead><tr><th>Código</th><th>Producto</th><th>Disponible</th><th>Reservado</th><th>Libre</th><th>Mínimo</th></tr></thead>
+        <thead><tr><th>Código</th><th>Producto</th><th>Precio de venta</th><th>Disponible</th><th>Reservado</th><th>Libre</th><th>Mínimo</th></tr></thead>
         <tbody>
           {filas.map((f) => (
             <tr key={f.producto_id} className={f.libre < f.stock_minimo ? 'bajo' : ''}>
-              <td>{f.codigo}</td><td>{f.nombre}</td><td>{f.disponible}</td><td>{f.reservado}</td><td><b>{f.libre}</b></td><td>{f.stock_minimo}</td>
+              <td>{f.codigo}</td><td>{f.nombre}</td><td>${Number(f.precio_venta).toFixed(2)}</td><td>{f.disponible}</td><td>{f.reservado}</td><td><b>{f.libre}</b></td><td>{f.stock_minimo}</td>
             </tr>
           ))}
         </tbody>

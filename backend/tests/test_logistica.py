@@ -7,7 +7,7 @@ from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
 from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
-from services.excepciones import ReglaNegocioError
+from services.excepciones import NoEncontradoError, ReglaNegocioError
 from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver
 
 CD, LOCAL = 1, 2
@@ -28,10 +28,10 @@ def svc(tmp_path):
     BaseDeDatos.reiniciar()
 
 
-def armar_y_despachar(svc, cantidad=10, precinto="P-1"):
+def armar_y_despachar(svc, cantidad=10):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": cantidad}])
     bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": cantidad}])
-    svc.precintar(bulto["id"], precinto)
+    bulto = svc.precintar(bulto["id"])
     svc.despachar(bulto["id"])
     return orden, bulto
 
@@ -42,7 +42,11 @@ def test_flujo_feliz_suma_stock_solo_al_verificar(svc):
     assert stock.disponible(CD, AGUA) == 490          # salió del CD
     assert stock.disponible(LOCAL, AGUA) == 0         # en tránsito: no vendible
 
-    svc.recibir(bulto["id"], "P-1", precinto_intacto=True)
+    recibido = svc.recibir(bulto["id"])
+    assert recibido["estado"] == "RECIBIDO"
+    assert stock.disponible(LOCAL, AGUA) == 0
+    svc.verificar_recepcion(
+        bulto["id"], f"R-{orden['id']:06d}", bulto["precinto"], precinto_intacto=True)
     assert stock.disponible(LOCAL, AGUA) == 10
     estados = [h["estado"] for h in svc.historial(bulto["id"])]
     assert estados == ["PREPARADO", "PRECINTADO", "EN_TRANSITO", "RECIBIDO", "VERIFICADO"]
@@ -50,14 +54,20 @@ def test_flujo_feliz_suma_stock_solo_al_verificar(svc):
 
 def test_precinto_roto_rechaza_y_no_habilita_venta(svc):
     _, bulto = armar_y_despachar(svc)
-    r = svc.recibir(bulto["id"], "P-1", precinto_intacto=False)
+    svc.recibir(bulto["id"])
+    r = svc.verificar_recepcion(
+        bulto["id"], f"R-{bulto['remito_id']:06d}", bulto["precinto"],
+        precinto_intacto=False)
     assert r["estado"] == "RECHAZADO"
     assert StockService().disponible(LOCAL, AGUA) == 0
 
 
 def test_precinto_que_no_coincide_rechaza(svc):
     _, bulto = armar_y_despachar(svc)
-    assert svc.recibir(bulto["id"], "OTRO", precinto_intacto=True)["estado"] == "RECHAZADO"
+    svc.recibir(bulto["id"])
+    assert svc.verificar_recepcion(
+        bulto["id"], f"R-{bulto['remito_id']:06d}", "OTRO",
+        precinto_intacto=True)["estado"] == "RECHAZADO"
 
 
 def test_remito_con_dos_bultos_espera_a_ambos(svc):
@@ -65,12 +75,16 @@ def test_remito_con_dos_bultos_espera_a_ambos(svc):
                                     {"producto_id": YERBA, "cantidad": 3}])
     b1 = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 5}])
     b2 = svc.crear_bulto(orden["id"], [{"producto_id": YERBA, "cantidad": 3}])
-    for b, p in ((b1, "A"), (b2, "B")):
-        svc.precintar(b["id"], p); svc.despachar(b["id"])
+    b1 = svc.precintar(b1["id"])
+    b2 = svc.precintar(b2["id"])
+    for b in (b1, b2):
+        svc.despachar(b["id"])
 
-    svc.recibir(b1["id"], "A", True)
+    svc.recibir(b1["id"])
+    svc.verificar_recepcion(b1["id"], f"R-{orden['id']:06d}", b1["precinto"], True)
     assert StockService().disponible(LOCAL, AGUA) == 0   # remito todavía no verificado
-    svc.recibir(b2["id"], "B", False)                     # el segundo llega roto
+    svc.recibir(b2["id"])
+    svc.verificar_recepcion(b2["id"], f"R-{orden['id']:06d}", b2["precinto"], False)
     assert StockService().disponible(LOCAL, AGUA) == 5    # entra solo lo verificado
     assert StockService().disponible(LOCAL, YERBA) == 0
 
@@ -82,18 +96,39 @@ def test_no_se_puede_saltear_estados(svc):
         svc.despachar(bulto["id"])          # sin precintar
 
 
+def test_no_se_puede_verificar_antes_de_recibir(svc):
+    _, bulto = armar_y_despachar(svc)
+    with pytest.raises(ReglaNegocioError):
+        svc.verificar_recepcion(
+            bulto["id"], f"R-{bulto['remito_id']:06d}", bulto["precinto"], True)
+    assert StockService().disponible(LOCAL, AGUA) == 0
+
+
 def test_no_empaquetar_mas_de_lo_pedido(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 3}])
     with pytest.raises(ReglaNegocioError):
         svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 4}])
 
 
-def test_precinto_duplicado(svc):
-    armar_y_despachar(svc, precinto="X")
+def test_precintos_generados_son_unicos(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 2}])
+    primero = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
+    segundo = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
+    precinto_primero = svc.precintar(primero["id"])["precinto"]
+    precinto_segundo = svc.precintar(segundo["id"])["precinto"]
+    assert precinto_primero.startswith("P-")
+    assert precinto_segundo.startswith("P-")
+    assert precinto_primero != precinto_segundo
+
+
+def test_precintar_bulto_inexistente(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
     b = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
+    svc.precintar(b["id"])
     with pytest.raises(ReglaNegocioError):
-        svc.precintar(b["id"], "X")
+        svc.precintar(b["id"])
+    with pytest.raises(NoEncontradoError):
+        svc.precintar(999999)
 
 
 def test_armar_bulto_reserva_stock_del_cd(svc):
@@ -104,7 +139,7 @@ def test_armar_bulto_reserva_stock_del_cd(svc):
     assert stock.reservado(CD, AGUA) == 300       # pero ya está comprometido
     assert stock.libre(CD, AGUA) == 200
 
-    svc.precintar(bulto["id"], "R1")
+    svc.precintar(bulto["id"])
     svc.despachar(bulto["id"])
     assert stock.disponible(CD, AGUA) == 200      # al despachar sale y se libera la reserva
     assert stock.reservado(CD, AGUA) == 0
@@ -175,11 +210,23 @@ def test_orden_a_cd_no_permitida(svc):
         svc.crear_orden(CD, [{"producto_id": AGUA, "cantidad": 1}])
 
 
+def test_orden_acepta_origen_cd_seleccionado_y_rechaza_origen_local(svc):
+    segundo_cd = BaseDeDatos().ejecutar(
+        "INSERT INTO sucursal (nombre, tipo) VALUES ('CD Secundario', 'CD')")
+    orden = svc.crear_orden(
+        LOCAL, [{"producto_id": AGUA, "cantidad": 1}], origen_id=segundo_cd)
+    assert orden["origen_id"] == segundo_cd
+    assert orden["origen"] == "CD Secundario"
+
+    with pytest.raises(ReglaNegocioError, match="origen.*CD"):
+        svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}], origen_id=LOCAL)
+
+
 def test_anular_bulto_libera_la_reserva(svc):
     stock = StockService()
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 300}])
     bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 300}])
-    svc.precintar(bulto["id"], "AN-1")
+    svc.precintar(bulto["id"])
     assert stock.reservado(CD, AGUA) == 300
 
     r = svc.anular_bulto(bulto["id"], "Se rompió una caja")

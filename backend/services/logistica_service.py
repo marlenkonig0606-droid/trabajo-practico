@@ -28,7 +28,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
     # ================================================================
     # 3. ORDEN DE REPOSICIÓN
     # ================================================================
-    def crear_orden(self, destino_id, items):
+    def crear_orden(self, destino_id, items, origen_id=None, solicitado_por_usuario_id=None):
         """items: [{"producto_id": 1, "cantidad": 10}, ...]"""
         destino = self._obtener_sucursal(destino_id)
         if destino.tipo != "LOCAL":
@@ -37,14 +37,22 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
             raise ReglaNegocioError("La orden debe tener al menos un producto")
         self._validar_items(items)
 
-        cd = self.db.consultar_uno("SELECT id FROM sucursal WHERE tipo='CD' LIMIT 1")
-        if cd is None:
+        if origen_id is None:
+            cd = self.db.consultar_uno(
+                "SELECT id FROM sucursal WHERE tipo='CD' ORDER BY id LIMIT 1")
+            origen_id = cd["id"] if cd else None
+        origen = self._obtener_sucursal(origen_id) if origen_id is not None else None
+        if origen is None:
             raise ReglaNegocioError("No hay un Centro de Distribución cargado")
+        if origen.tipo != "CD":
+            raise ReglaNegocioError("El origen de una orden de reposición debe ser un CD")
 
         with self.db.transaccion():
             orden_id = self.db.ejecutar(
-                "INSERT INTO orden_reposicion (origen_id, destino_id) VALUES (?, ?)",
-                (cd["id"], destino_id))
+                """INSERT INTO orden_reposicion
+                   (origen_id, destino_id, solicitado_por_usuario_id)
+                   VALUES (?, ?, ?)""",
+                (origen_id, destino_id, solicitado_por_usuario_id))
             for it in items:
                 self.db.ejecutar(
                     "INSERT INTO detalle_orden (orden_id, producto_id, cantidad) VALUES (?, ?, ?)",
@@ -74,8 +82,27 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         orden["bultos"] = [b.to_dict() for b in self._bultos_de_orden(orden_id)]
         return orden
 
-    def listar_ordenes(self):
-        ids = self.db.consultar("SELECT id FROM orden_reposicion ORDER BY id DESC")
+    def listar_ordenes(self, destino_id=None, solicitante_id=None):
+        if destino_id is None and solicitante_id is None:
+            ids = self.db.consultar("SELECT id FROM orden_reposicion ORDER BY id DESC")
+        elif destino_id is None:
+            ids = self.db.consultar(
+                """SELECT id FROM orden_reposicion
+                   WHERE solicitado_por_usuario_id=? ORDER BY id DESC""",
+                (solicitante_id,),
+            )
+        elif solicitante_id is None:
+            ids = self.db.consultar(
+                "SELECT id FROM orden_reposicion WHERE destino_id=? ORDER BY id DESC",
+                (destino_id,),
+            )
+        else:
+            ids = self.db.consultar(
+                """SELECT id FROM orden_reposicion
+                   WHERE destino_id=? OR solicitado_por_usuario_id=?
+                   ORDER BY id DESC""",
+                (destino_id, solicitante_id),
+            )
         return [self.obtener_orden(f["id"]) for f in ids]
 
     def sugerir_orden(self, local_id):
@@ -144,15 +171,17 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                              (orden_id,))
         return self.obtener_bulto(bulto_id).to_dict()
 
-    def precintar(self, bulto_id, precinto):
-        precinto = (precinto or "").strip()
-        if not precinto:
-            raise ReglaNegocioError("Debe indicar el número de precinto")
-        if self.db.consultar_uno("SELECT id FROM bulto WHERE precinto=?", (precinto,)):
-            raise ReglaNegocioError(f"El precinto {precinto} ya fue usado en otro bulto")
-
+    def precintar(self, bulto_id):
         bulto = self.obtener_bulto(bulto_id)
         with self.db.transaccion():
+            siguiente = bulto.id
+            while True:
+                precinto = f"P-{siguiente:06d}"
+                existente = self.db.consultar_uno(
+                    "SELECT id FROM bulto WHERE precinto=?", (precinto,))
+                if existente is None:
+                    break
+                siguiente += 1
             self._transicionar(bulto, EstadoBulto.PRECINTADO, f"Precinto {precinto}")
             self.db.ejecutar("UPDATE bulto SET precinto=? WHERE id=?", (precinto, bulto_id))
         return self.obtener_bulto(bulto_id).to_dict()
@@ -197,24 +226,39 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
     # ================================================================
     # 6. RECEPCIÓN + VERIFICACIÓN DE PRECINTO
     # ================================================================
-    def recibir(self, bulto_id, precinto_leido, precinto_intacto):
-        """El local recibe el bulto, lee el número de precinto y declara si está sano.
-        - Coincide y está intacto  -> VERIFICADO
-        - No coincide o está roto  -> RECHAZADO (rechazo logístico, no habilita venta)"""
+    def recibir(self, bulto_id):
+        """Registra que el local recibió físicamente el bulto, sin habilitar el stock."""
         bulto = self.obtener_bulto(bulto_id)
-
         with self.db.transaccion():
-            self._transicionar(bulto, EstadoBulto.RECIBIDO, "Recibido en local")
+            self._transicionar(bulto, EstadoBulto.RECIBIDO, "Bulto recibido en el local")
             self.db.ejecutar(
                 "UPDATE bulto SET fecha_recepcion=datetime('now','localtime') WHERE id=?",
                 (bulto_id,))
+        return self.obtener_bulto(bulto_id).to_dict()
 
-            coincide = (precinto_leido or "").strip() == bulto.precinto
-            if coincide and precinto_intacto:
-                self._transicionar(bulto, EstadoBulto.VERIFICADO, "Precinto OK")
+    def verificar_recepcion(self, bulto_id, remito_leido, precinto_leido, precinto_intacto):
+        """Verifica remito y precinto después de confirmar la recepción física."""
+        bulto = self.obtener_bulto(bulto_id)
+        orden = self._orden_de_remito(bulto.remito_id)
+        if orden is None:
+            raise NoEncontradoError(f"No existe una orden para el bulto {bulto_id}")
+
+        remito_leido = remito_leido.strip()
+        precinto_leido = precinto_leido.strip()
+        with self.db.transaccion():
+            diferencias = []
+            if remito_leido.casefold() != orden["remito_numero"].casefold():
+                diferencias.append(f"Remito no coincide (recibido {remito_leido})")
+            if not precinto_intacto:
+                diferencias.append("Precinto roto")
+            elif precinto_leido != bulto.precinto:
+                diferencias.append(f"Precinto no coincide (leído {precinto_leido})")
+
+            if not diferencias:
+                self._transicionar(
+                    bulto, EstadoBulto.VERIFICADO, "Remito y precinto verificados")
             else:
-                motivo = "Precinto roto" if not precinto_intacto else \
-                         f"Precinto no coincide (leído {precinto_leido})"
+                motivo = "; ".join(diferencias)
                 self._transicionar(bulto, EstadoBulto.RECHAZADO, motivo)
                 self.notificar(Eventos.BULTO_RECHAZADO, {"bulto_id": bulto_id, "motivo": motivo})
 
@@ -251,6 +295,13 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         items = self.db.consultar(
             "SELECT producto_id, cantidad FROM detalle_bulto WHERE bulto_id=?", (bulto_id,))
         return Bulto.desde_fila(fila, items)
+
+    def obtener_orden_de_bulto(self, bulto_id):
+        bulto = self.obtener_bulto(bulto_id)
+        orden = self._orden_de_remito(bulto.remito_id)
+        if orden is None:
+            raise NoEncontradoError(f"No existe una orden para el bulto {bulto_id}")
+        return orden
 
     def historial(self, bulto_id):
         self.obtener_bulto(bulto_id)   # valida que exista

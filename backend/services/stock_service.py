@@ -104,7 +104,8 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
 
     def listar(self, sucursal_id):
         return self.db.consultar(
-            """SELECT p.id AS producto_id, p.codigo, p.nombre, p.stock_minimo,
+            """SELECT p.id AS producto_id, p.codigo, p.nombre, p.precio_venta,
+                      p.stock_minimo,
                       COALESCE(s.disponible, 0) AS disponible,
                       COALESCE(s.reservado, 0) AS reservado,
                       COALESCE(s.disponible, 0) - COALESCE(s.reservado, 0) AS libre

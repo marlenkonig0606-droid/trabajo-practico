@@ -9,7 +9,7 @@ class VentasService:
         self.db = BaseDeDatos()
         self.stock = stock_service if stock_service is not None else StockService()
 
-    def listar_ventas(self):
+    def listar_ventas(self, sucursal_id=None):
         return self.db.consultar(
             """SELECT v.id, v.sucursal_id, s.nombre AS sucursal, v.fecha,
                       v.subtotal, v.total, p.medio_pago, p.importe AS importe_pagado,
@@ -18,7 +18,9 @@ class VentasService:
                JOIN sucursal s ON s.id = v.sucursal_id
                JOIN pago p ON p.venta_id = v.id
                JOIN comprobante c ON c.venta_id = v.id
-               ORDER BY v.id DESC"""
+               WHERE (? IS NULL OR v.sucursal_id = ?)
+               ORDER BY v.id DESC""",
+            (sucursal_id, sucursal_id),
         )
 
     def obtener_venta(self, venta_id):

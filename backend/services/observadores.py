@@ -76,8 +76,15 @@ class AlertasService:
     def __init__(self):
         self.db = BaseDeDatos()
 
-    def alertas(self, solo_pendientes=True):
-        filtro = "WHERE a.resuelta = 0" if solo_pendientes else ""
+    def alertas(self, solo_pendientes=True, sucursal_id=None):
+        filtros = []
+        params = []
+        if solo_pendientes:
+            filtros.append("a.resuelta = 0")
+        if sucursal_id is not None:
+            filtros.append("a.sucursal_id = ?")
+            params.append(sucursal_id)
+        filtro = f"WHERE {' AND '.join(filtros)}" if filtros else ""
         return self.db.consultar(f"""
             SELECT a.id, s.nombre AS sucursal, p.codigo, p.nombre AS producto,
                    a.libre, a.minimo, a.fecha, a.resuelta, a.fecha_resolucion
@@ -85,7 +92,7 @@ class AlertasService:
             JOIN sucursal s ON s.id = a.sucursal_id
             JOIN producto p ON p.id = a.producto_id
             {filtro}
-            ORDER BY a.id DESC""")
+            ORDER BY a.id DESC""", tuple(params))
 
     def eventos(self, limite=50):
         return self.db.consultar(

@@ -8,6 +8,7 @@ body { margin: 0; }
 header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 h1 { font-size: 1.4rem; margin: 0; }
 h2 { font-size: 1.05rem; margin: 0 0 10px; }
+nav { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 nav button { background: none; border: 0; padding: 8px 12px; cursor: pointer; color: var(--suave); }
 nav button.activo { color: var(--acento); border-bottom: 2px solid var(--acento); }
 main { margin-top: 16px; }
@@ -18,6 +19,20 @@ input, select { padding: 6px 8px; border: 1px solid var(--borde); border-radius:
 button { background: var(--acento); color: #fff; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; font: inherit; }
 button:disabled { opacity: .4; cursor: default; }
 button.link { background: none; color: var(--acento); padding: 0; text-decoration: underline; }
+button.secundario { background: #e8ebe8; color: var(--texto); }
+.acciones-formulario { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+.selector-productos { display: grid; gap: 8px; margin: 10px 0; }
+.fila-seleccion, .producto-seleccionado { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.fila-seleccion label { min-width: min(100%, 280px); }
+.producto-seleccionado { justify-content: space-between; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 6px; }
+.producto-seleccionado label { flex-direction: row; align-items: center; }
+.producto-seleccionado input { width: 80px; }
+.ayuda { color: var(--suave); font-size: .85rem; margin: 8px 0; }
+.sesion-usuario { color: var(--suave); font-size: .85rem; padding: 0 8px; }
+.acceso { min-height: 75vh; display: grid; place-items: center; padding: 16px; }
+.acceso-formulario { width: min(100%, 420px); display: grid; gap: 14px; }
+.acceso-formulario button.link { justify-self: start; }
+.acceso-formulario .ayuda { margin: 0; }
 table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: .9rem; }
 th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--borde); }
 tr.bajo td { color: var(--error); font-weight: 600; }
@@ -27,6 +42,10 @@ tr.bajo td { color: var(--error); font-weight: 600; }
 .armar input { width: 70px; }
 .bulto { border-top: 1px dashed var(--borde); padding: 8px 0; }
 .bulto label { flex-direction: row; align-items: center; }
+.recepcion-bulto { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; width: 100%; }
+.recepcion-bulto label:first-child { min-width: min(100%, 220px); }
+.recepcion-bulto .check-precinto { align-items: center; }
+.check-precinto input { width: auto; }
 .items { color: var(--suave); font-size: .85rem; }
 .estado { font-size: .75rem; padding: 2px 8px; border-radius: 99px; background: #e8ebe8; }
 .estado.VERIFICADO, .estado.CERRADA { background: #d6f0e4; color: #1f6f5c; }
