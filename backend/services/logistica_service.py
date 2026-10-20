@@ -236,29 +236,17 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                 (bulto_id,))
         return self.obtener_bulto(bulto_id).to_dict()
 
-    def verificar_recepcion(self, bulto_id, remito_leido, precinto_leido, precinto_intacto):
-        """Verifica remito y precinto después de confirmar la recepción física."""
+    def verificar_recepcion(self, bulto_id, aprobado):
+        """Registra la decisión del local tras revisar físicamente el remito y precinto."""
         bulto = self.obtener_bulto(bulto_id)
-        orden = self._orden_de_remito(bulto.remito_id)
-        if orden is None:
-            raise NoEncontradoError(f"No existe una orden para el bulto {bulto_id}")
-
-        remito_leido = remito_leido.strip()
-        precinto_leido = precinto_leido.strip()
+        if not isinstance(aprobado, bool):
+            raise ReglaNegocioError("aprobado debe ser verdadero o falso")
         with self.db.transaccion():
-            diferencias = []
-            if remito_leido.casefold() != orden["remito_numero"].casefold():
-                diferencias.append(f"Remito no coincide (recibido {remito_leido})")
-            if not precinto_intacto:
-                diferencias.append("Precinto roto")
-            elif precinto_leido != bulto.precinto:
-                diferencias.append(f"Precinto no coincide (leído {precinto_leido})")
-
-            if not diferencias:
+            if aprobado:
                 self._transicionar(
                     bulto, EstadoBulto.VERIFICADO, "Remito y precinto verificados")
             else:
-                motivo = "; ".join(diferencias)
+                motivo = "Remito o precinto rechazado por el local destinatario"
                 self._transicionar(bulto, EstadoBulto.RECHAZADO, motivo)
                 self.notificar(Eventos.BULTO_RECHAZADO, {"bulto_id": bulto_id, "motivo": motivo})
 

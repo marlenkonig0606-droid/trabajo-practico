@@ -32,8 +32,7 @@ def enviar_y_recibir(logistica, cantidad, intacto=True):
     bulto = logistica.precintar(bulto["id"])
     logistica.despachar(bulto["id"])
     logistica.recibir(bulto["id"])
-    logistica.verificar_recepcion(
-        bulto["id"], f"R-{orden['id']:06d}", bulto["precinto"], intacto)
+    logistica.verificar_recepcion(bulto["id"], intacto)
     return bulto
 
 
@@ -119,4 +118,4 @@ def test_auditoria_registra_rechazos_con_motivo(app_svc):
     enviar_y_recibir(logistica, 10, intacto=False)
     ultimo = alertas.eventos()[0]
     assert ultimo["evento"] == Eventos.BULTO_RECHAZADO
-    assert "Precinto roto" in ultimo["detalle"]
+    assert "rechazado por el local destinatario" in ultimo["detalle"]

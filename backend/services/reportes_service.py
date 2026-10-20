@@ -67,19 +67,58 @@ class ReportesService:
             (sucursal_id, sucursal_id))
 
     # Reporte: movimientos y valorización del inventario
-    def movimientos(self, sucursal_id=None):
-        return self.db.consultar("""
-            SELECT s.nombre AS sucursal, m.motivo,
-                   COUNT(*) AS movimientos,
-                   SUM(CASE WHEN m.cantidad > 0 THEN m.cantidad ELSE 0 END) AS entradas,
-                   SUM(CASE WHEN m.cantidad < 0 THEN -m.cantidad ELSE 0 END) AS salidas,
-                   ROUND(SUM(m.cantidad * p.precio_costo), 2) AS valor_neto
-            FROM movimiento_stock m
-            JOIN sucursal s ON s.id = m.sucursal_id
-            JOIN producto p ON p.id = m.producto_id
-            WHERE (? IS NULL OR s.id = ?)
-            GROUP BY s.id, m.motivo
-            ORDER BY s.nombre, m.motivo""", (sucursal_id, sucursal_id))
+    def movimientos(self, sucursal_id=None, tipos=None):
+        if tipos is None:
+            tipos = ("VENTA", "DEVOLUCION", "RECEPCION")
+        if not tipos:
+            return []
+
+        ramas = {
+            "VENTA": """
+                SELECT 'VENTA' AS tipo, v.id AS operacion_id, v.id AS venta_id,
+                       NULL AS devolucion_id, date(v.fecha) AS fecha, s.nombre AS sucursal,
+                       'Venta #' || v.id AS referencia,
+                       SUM(dv.cantidad) AS unidades,
+                       ROUND(SUM(dv.cantidad * dv.precio_unitario), 2) AS valor
+                FROM venta v
+                JOIN sucursal s ON s.id = v.sucursal_id
+                JOIN detalle_venta dv ON dv.venta_id = v.id
+                WHERE (? IS NULL OR v.sucursal_id = ?)
+                GROUP BY v.id
+            """,
+            "DEVOLUCION": """
+                SELECT 'DEVOLUCION' AS tipo, d.id AS operacion_id, d.venta_id,
+                       d.id AS devolucion_id, date(d.fecha) AS fecha, s.nombre AS sucursal,
+                       'Devolución #' || d.id AS referencia,
+                       SUM(dd.cantidad) AS unidades,
+                       -ROUND(SUM(dd.cantidad * dd.precio_unitario), 2) AS valor
+                FROM devolucion d
+                JOIN venta v ON v.id = d.venta_id
+                JOIN sucursal s ON s.id = v.sucursal_id
+                JOIN detalle_devolucion dd ON dd.devolucion_id = d.id
+                WHERE (? IS NULL OR v.sucursal_id = ?)
+                GROUP BY d.id
+            """,
+            "RECEPCION": """
+                SELECT 'RECEPCION' AS tipo, m.referencia AS operacion_id,
+                       NULL AS venta_id, NULL AS devolucion_id, date(MAX(m.fecha)) AS fecha,
+                       s.nombre AS sucursal, m.referencia AS referencia,
+                       SUM(m.cantidad) AS unidades, NULL AS valor
+                FROM movimiento_stock m
+                JOIN sucursal s ON s.id = m.sucursal_id
+                WHERE m.motivo='RECEPCION' AND (? IS NULL OR m.sucursal_id = ?)
+                GROUP BY s.id, m.referencia
+            """,
+        }
+        consulta = " UNION ALL ".join(ramas[tipo] for tipo in tipos)
+        params = tuple(
+            valor
+            for _ in tipos
+            for valor in (sucursal_id, sucursal_id)
+        )
+        return self.db.consultar(
+            f"SELECT * FROM ({consulta}) ORDER BY fecha DESC, sucursal, tipo",
+            params)
 
     # Filtro de fechas reutilizable: arma "date(columna) >= ? AND date(columna) <= ?"
     @staticmethod

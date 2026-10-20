@@ -52,14 +52,22 @@ frontend/src/pages/
 El registro desde la pantalla de inicio de sesión crea cuentas para la sucursal seleccionada.
 Para el CD, exige el código configurado en el servidor. Las contraseñas se guardan hasheadas.
 
-Cada cuenta local solo puede consultar su stock, ventas y reportes. Puede solicitar una
-reposición eligiendo cualquier CD de origen y local de destino; ve las órdenes de su sucursal
-y las que solicitó. La sugerencia automática usa únicamente el stock de su propia sucursal.
-La recepción física se confirma primero; luego, el local destinatario verifica el remito y el
-precinto. Un bulto solo suma stock local
-cuando esa verificación finaliza; si el precinto no coincide o está roto, se rechaza y no se
-incorpora. La API valida estos permisos en el servidor. Las cuentas del CD tienen acceso a
-todas las sucursales y gestionan la preparación, armado y despacho, pero no crean solicitudes.
+Las cuentas locales solo consultan su stock, ventas y reportes. Desde Reposición pueden crear
+solicitudes para su propia sucursal y elegir cualquier CD como origen; ven las órdenes dirigidas
+a su sucursal y las que solicitaron. La sugerencia automática usa únicamente el stock de su
+propia sucursal. El CD puede consultar todas las órdenes y gestionar su preparación, armado y
+despacho, y ajustar el stock disponible de su propio centro, pero no crear solicitudes ni
+confirmar recepciones.
+
+El local destinatario confirma primero la recepción física. Luego inspecciona el remito y el
+precinto y elige **Verificar** o **Rechazar**. El stock no cambia al confirmar la recepción:
+solo se actualiza cuando finaliza la verificación de todos los bultos del remito, incorporando
+únicamente los bultos verificados. La API valida los permisos en el servidor.
+
+El reporte de movimientos permite filtrar ventas, devoluciones y recepciones. Las ventas
+muestran su valorización positiva a precio de venta, las devoluciones la valorización negativa
+y las recepciones no se valorizan. Ventas y devoluciones incluyen una ventana emergente con el
+detalle de productos y precios.
 
 En producción, configurá `FLASK_SECRET_KEY` con un valor secreto persistente y serví la
 aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo local, la app genera una
@@ -94,51 +102,9 @@ se suma lo de los bultos verificados. Un bulto con precinto roto o con número d
 
 ---
 
-## 👉 Lo que te queda, en este orden
+## Estado de funcionalidades y documentación
 
-Para cada paso: **primero pensá entrada → proceso → salida y las validaciones**, después escribí.
-Cuando tengas algo, mandámelo y lo corregimos.
-
-### Paso 1 — Leer y entender lo hecho (antes de escribir nada)
-Abrí `logistica_service.py` y respondete:
-- ¿Por qué `crear_bulto` valida *todo* antes del `with self.db.transaccion()`?
-- ¿Qué pasaría si `StockObserver` sumara stock en `BULTO_DESPACHADO` en lugar de en `REMITO_VERIFICADO`?
-- ¿Quién llama a `StockObserver.actualizar`? (no es `app.py` directamente)
-
-### Paso 2 — ABM de catálogo (procesos 1 y 2)
-Clases `Categoria` y `Proveedor`; endpoints POST/PUT/DELETE. Validar duplicados por `codigo`
-(producto) y `cuit` (proveedor) **en el service** con `ReglaNegocioError`, no solo confiando en
-el `UNIQUE` de la base. ¿Por qué conviene hacer las dos cosas?
-
-### Paso 3 — Consolidar necesidades (proceso 3, segunda mitad)
-Hoy la orden se crea a mano. Agregá `LogisticaService.sugerir_orden(local_id)` que arme los ítems
-con los productos por debajo de `stock_minimo` en ese local. Pista: `StockService.listar()`.
-
-### Paso 4 — Creación de medios de pago
-Los productos de pago están en `models/medio_pago.py`. En `services/creadores_medio_pago.py`,
-`CreadorMedioDePago` declara el método de creación y cada creador
-concreto (`CreadorEfectivo`, `CreadorTarjetaCredito`, etc.) lo redefine para construir su medio.
-`VentasService` selecciona el creador según el tipo solicitado y trabaja con `IMedioDePago`.
-El crédito aplica un recargo del 5% por cuota. Un tipo desconocido produce un error de negocio.
-
-### Paso 5 — Ventas y devoluciones (proceso 7)
-1. ✅ Tablas en `schema.sql` y modelos para `venta`, `detalle_venta` (precio del momento),
-   `pago`, `comprobante`, `devolucion` y `detalle_devolucion`.
-2. `VentasService.registrar_venta` siguiendo los comentarios. `StockService.restar` ya valida
-   que no se venda más de lo disponible.
-3. `registrar_devolucion`: la venta debe existir y no se puede devolver más de lo vendido
-   (también sumando devoluciones parciales anteriores). Repone stock (`sumar(..., "DEVOLUCION")`)
-   y registra el egreso en `movimiento_caja`. El reintegro es proporcional al total efectivamente
-   pagado para distribuir descuentos y recargos de la venta.
-4. Tests: venta sin stock, venta en el CD, devolución de venta inexistente, devolución excesiva.
-
-### Paso 6 — Reportes (mínimo 4 no triviales: ya hay 2)
-- Ventas e ingresos por período, local y medio de pago (`GROUP BY`).
-- Productos más vendidos con margen estimado.
-- Existencias y productos en stock mínimo.
-
-### Paso 7 — Segundo Observer (opcional, suma)
-`AlertaStockMinimoObserver`: avisa cuando una venta o despacho deja un producto bajo el mínimo.
-
-### Paso 8 — Pantallas
-Reemplazar `Pendiente.jsx` por Ventas y Catálogo, copiando la forma de `Logistica.jsx`.
+La descripción funcional completa —permisos, solicitudes, recepción, ventas, devoluciones,
+reportes y patrones— está en [documentacion/README.md](./documentacion/README.md). El ABM de
+sucursales, productos, categorías y proveedores sigue pendiente; la pantalla Catálogo es
+todavía un marcador de posición.

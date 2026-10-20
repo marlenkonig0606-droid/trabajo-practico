@@ -47,7 +47,7 @@ class VentasService:
             (venta_id,),
         )
         venta["devoluciones"] = self.db.consultar(
-            """SELECT d.id, d.fecha, d.motivo, d.total,
+            """SELECT d.id, d.fecha, d.motivo, d.total AS total_devolucion,
                       dd.producto_id, p.nombre, dd.cantidad, dd.precio_unitario
                FROM devolucion d
                JOIN detalle_devolucion dd ON dd.devolucion_id = d.id

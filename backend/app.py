@@ -278,6 +278,20 @@ def crear_app():
             raise AccesoDenegadoError("Solo podés consultar el stock de tu sucursal")
         return jsonify(stock.listar(sucursal_id))
 
+    @app.put("/api/stock/<int:sucursal_id>/<int:producto_id>")
+    def ajustar_stock_cd(sucursal_id, producto_id):
+        if g.usuario["tipo"] != "CD" or sucursal_id != g.usuario["sucursal_id"]:
+            raise AccesoDenegadoError(
+                "Solo podés ajustar el stock de tu propio Centro de Distribución")
+        datos = cuerpo_json()
+        disponible = datos.get("disponible")
+        if (isinstance(disponible, bool) or not isinstance(disponible, int)
+                or disponible < 0):
+            raise ReglaNegocioError("disponible debe ser un entero mayor o igual a cero")
+        stock.ajustar_disponible(
+            sucursal_id, producto_id, disponible, f"ajuste manual por usuario {g.usuario['id']}")
+        return jsonify(stock.listar(sucursal_id))
+
     # ---------- logística ----------
     @app.get("/api/ordenes")
     def listar_ordenes():
@@ -299,6 +313,8 @@ def crear_app():
             raise AccesoDenegadoError("Solo los locales pueden crear solicitudes de reposición")
         datos = cuerpo_json()
         destino_id = entero_positivo(datos.get("destino_id"), "destino_id")
+        if destino_id != g.usuario["sucursal_id"]:
+            raise AccesoDenegadoError("Solo podés crear órdenes para tu propio local")
         origen_id = entero_positivo(datos.get("origen_id"), "origen_id")
         if not isinstance(datos.get("items"), list):
             raise ReglaNegocioError("items debe ser una lista")
@@ -348,17 +364,10 @@ def crear_app():
             raise AccesoDenegadoError(
                 "Solo podés verificar bultos enviados a tu sucursal")
         datos = cuerpo_json()
-        intacto = datos.get("intacto")
-        if not isinstance(intacto, bool):
-            raise ReglaNegocioError("intacto debe ser verdadero o falso")
-        precinto = datos.get("precinto")
-        if not isinstance(precinto, str):
-            raise ReglaNegocioError("Debe informar el precinto leído")
-        remito = datos.get("remito")
-        if not isinstance(remito, str) or not remito.strip():
-            raise ReglaNegocioError("Debe informar el número de remito recibido")
-        return jsonify(
-            logistica.verificar_recepcion(bulto_id, remito, precinto, intacto))
+        aprobado = datos.get("aprobado")
+        if not isinstance(aprobado, bool):
+            raise ReglaNegocioError("aprobado debe ser verdadero o falso")
+        return jsonify(logistica.verificar_recepcion(bulto_id, aprobado))
 
     @app.get("/api/bultos/<int:bulto_id>/historial")
     def historial(bulto_id):
@@ -460,7 +469,13 @@ def crear_app():
     @app.get("/api/reportes/movimientos")
     def rep_movimientos():
         sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
-        return jsonify(reportes.movimientos(sucursal_id))
+        permitidos = {"VENTA", "DEVOLUCION", "RECEPCION"}
+        tipos = request.args.getlist("tipo")
+        if not tipos:
+            tipos = list(permitidos)
+        if any(tipo not in permitidos for tipo in tipos):
+            raise ReglaNegocioError("El tipo de movimiento solicitado no es válido")
+        return jsonify(reportes.movimientos(sucursal_id, tipos))
 
     @app.get("/api/reportes/ventas")
     def rep_ventas():

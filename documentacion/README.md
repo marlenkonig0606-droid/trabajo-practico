@@ -22,15 +22,45 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 
 ## ⚙️ **Funcionalidades Principales**
 
-- 🏬 **ABM de sucursales** (locales y Centro de Distribución).
-- 🏷️ **ABM de productos, categorías, precios, stock mínimo y proveedores**, sin duplicados por código / CUIT.
-- 📝 **Órdenes de reposición** CD → local, consolidando las necesidades de cada local.
-- 📦 **Empaquetado en bultos** con remito de despacho y precinto de seguridad.
-- 🚚 **Despacho y recepción** con verificación del precinto.
+- 🔐 **Registro e inicio de sesión** para usuarios asociados a una sucursal; el alta de cuentas CD requiere un código de invitación configurado por el servidor.
+- 📊 **Stock por sucursal**, ventas, devoluciones y reportes con permisos según el tipo de cuenta.
+- 📝 **Solicitudes de reposición** iniciadas por los locales para su propia sucursal, con selección de CD de origen.
+- 🔎 **Selección de productos y cantidades** al solicitar reposición o registrar ventas.
+- 📦 **Empaquetado en bultos** con remito y precinto de seguridad único generado automáticamente.
+- 🚚 **Despacho por el CD** y recepción en dos pasos por el local destinatario: primero confirma que recibió físicamente el bulto y después verifica remito y precinto.
+- 💲 **Consulta de precio de venta** de los productos en el inventario.
 - 🔁 **Ciclo de vida del bulto** con trazabilidad inmutable:
   `Preparado → Precintado → En tránsito → Recibido → Verificado / Rechazado`
 - 🛒 **Ventas** de uno o más productos, con medio de pago y comprobante.
 - ↩️ **Devoluciones** con impacto en stock y caja.
+- 📈 **Reportes** de ventas, productos más vendidos, existencias, movimientos filtrables por tipo y bultos rechazados.
+
+> El ABM completo de sucursales, productos, categorías y proveedores todavía no está
+> implementado en la interfaz; no forma parte de las funcionalidades disponibles actualmente.
+
+---
+
+## 🔐 **Acceso y permisos**
+
+- El registro crea una cuenta asociada a la sucursal elegida. Las contraseñas se almacenan
+  hasheadas y la sesión se mantiene en una cookie HTTP segura según la configuración.
+- Para registrar una cuenta de CD, el servidor debe tener configurada la variable
+  `CD_REGISTRATION_CODE`. El usuario ingresa ese código al registrarse; no se debe guardar
+  el código en el repositorio.
+- Las cuentas locales pueden consultar únicamente su stock, ventas y reportes. Pueden crear
+  solicitudes para su propia sucursal, eligiendo cualquier CD de origen, y consultar las
+  solicitudes que hicieron o que tienen como destino su sucursal.
+- La sugerencia automática de reposición calcula faltantes usando el stock mínimo del local
+  asociado a la cuenta. No se habilita para otros locales.
+- El CD consulta las órdenes y sucursales y se ocupa de preparar bultos, generar precintos y
+  despachar. También puede ajustar el stock disponible de su propio CD, sin reducirlo por
+  debajo de las unidades reservadas. No puede crear solicitudes ni confirmar recepciones.
+- La pantalla de ventas está disponible para locales; las cuentas CD no registran ventas al
+  público. El registro de ventas no muestra un listado de ventas previas.
+- Solo el local que figura como destino de la orden puede confirmar la recepción física y
+  elegir entre **Verificar** y **Rechazar** después de inspeccionar el remito y el precinto.
+  La API aplica estos permisos además de ocultar o mostrar las acciones correspondientes en
+  la interfaz.
 
 ---
 
@@ -38,6 +68,13 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 
 - 🔒 La mercadería **no queda disponible para la venta** hasta que el remito se verifica.
 - ❌ Un bulto con **precinto roto o que no coincide** se rechaza y no habilita la venta.
+- 🧭 La confirmación de recepción física y la verificación son operaciones separadas. El
+  estado `RECIBIDO` registra la primera; el stock no cambia en esa etapa.
+- 🔢 El precinto se genera automáticamente y es único para cada bulto.
+- 📝 La decisión de verificación del remito y precinto se registra con las acciones
+  **Verificar** y **Rechazar** del local destinatario.
+- 📦 Si un remito tiene varios bultos, el stock se actualiza al finalizar la verificación de
+  todos: ingresan únicamente las unidades de los bultos verificados.
 - 📉 No se puede **vender más** que el stock disponible y verificado.
 - 🧾 No se aceptan **devoluciones** de ventas inexistentes ni por más unidades de las vendidas.
 
@@ -73,6 +110,11 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 - 📋 **Existencias actuales** y productos en stock mínimo.
 - 🚨 **Bultos rechazados** y merma valorizada por rotura de precinto.
 - ⏱️ **Tiempo promedio de tránsito** CD → local.
+
+El reporte de movimientos permite seleccionar ventas, devoluciones y recepciones. Las ventas
+se valorizan positivamente por el precio de los productos; las devoluciones, negativamente; y
+las recepciones no llevan valor monetario. Cada venta y devolución tiene un botón para abrir
+una ventana con su detalle de productos y precios.
 
 ---
 
@@ -121,6 +163,7 @@ tp-cd-locales/
 # Backend
 cd backend
 pip install -r requirements.txt
+$env:CD_REGISTRATION_CODE = "configurar-un-codigo-local"
 python app.py            # http://localhost:5000
 
 # Frontend (otra terminal)
@@ -128,3 +171,8 @@ cd frontend
 npm install
 npm run dev              # http://localhost:5173
 ```
+
+La variable debe configurarse en la terminal del backend antes de iniciar Flask. Para
+producción, usar un código de invitación privado y configurar también `FLASK_SECRET_KEY` con
+un valor secreto persistente; habilitar `FLASK_COOKIE_SECURE=1` al servir sobre HTTPS.
+Las pruebas backend se ejecutan desde `backend/` con `python -m pytest -v`.

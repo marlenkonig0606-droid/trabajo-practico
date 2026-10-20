@@ -7,7 +7,6 @@ export default function Solicitudes({ usuario }) {
   const [sucursales, setSucursales] = useState([])
   const [ordenes, setOrdenes] = useState([])
   const [origenId, setOrigenId] = useState('')
-  const [destinoId, setDestinoId] = useState('')
   const [cantidades, setCantidades] = useState({})
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
@@ -30,13 +29,8 @@ export default function Solicitudes({ usuario }) {
 
   useEffect(() => {
     const centros = sucursales.filter((s) => s.tipo === 'CD')
-    const locales = sucursales.filter((s) => s.tipo === 'LOCAL')
     if (!origenId && centros.length) setOrigenId(String(centros[0].id))
-    if (!destinoId && locales.length) {
-      const propio = locales.find((s) => s.id === usuario.sucursal_id)
-      setDestinoId(String((propio ?? locales[0]).id))
-    }
-  }, [sucursales, origenId, destinoId, usuario.sucursal_id])
+  }, [sucursales, origenId])
 
   const solicitar = async () => {
     setError('')
@@ -48,7 +42,7 @@ export default function Solicitudes({ usuario }) {
         cantidad: Number(cantidad),
       }))
     try {
-      await api.solicitarOrden(Number(origenId), Number(destinoId), items)
+      await api.solicitarOrden(Number(origenId), usuario.sucursal_id, items)
       setCantidades({})
       await recargar()
       setMensaje('Solicitud enviada al centro de distribución.')
@@ -69,14 +63,14 @@ export default function Solicitudes({ usuario }) {
     }
   }
 
-  const verificar = async (bultoId, remito, precinto, intacto) => {
+  const verificar = async (bultoId, aprobado) => {
     setError('')
     setMensaje('')
     try {
-      const resultado = await api.verificarRecepcion(bultoId, remito, precinto, intacto)
+      const resultado = await api.verificarRecepcion(bultoId, aprobado)
       await recargar()
       setMensaje(resultado.estado === 'VERIFICADO'
-        ? 'Remito y precinto verificados. El stock se actualizará al finalizar la verificación de todos los bultos.'
+        ? 'Bulto verificado. El stock se actualizará al finalizar la verificación de todos los bultos.'
         : 'Bulto rechazado. Sus productos no se suman al stock.')
     } catch (e) {
       setError(e.message)
@@ -86,7 +80,7 @@ export default function Solicitudes({ usuario }) {
   const sugerir = async () => {
     setError('')
     try {
-      const items = await api.sugerirOrden(Number(destinoId))
+      const items = await api.sugerirOrden(usuario.sucursal_id)
       setCantidades(Object.fromEntries(
         items.map((item) => [item.producto_id, String(item.cantidad)]),
       ))
@@ -103,39 +97,28 @@ export default function Solicitudes({ usuario }) {
       <div className="tarjeta">
         <h2>Solicitar reposición</h2>
         <p className="ayuda">
-          Elegí el CD de origen, el local de destino y los productos. La solicitud queda
-          pendiente hasta que el CD la prepare y despache.
+          Elegí el CD de origen y los productos. El destino es tu sucursal, {usuario.sucursal}.
+          La solicitud queda pendiente hasta que el CD la prepare y despache.
         </p>
         <div className="grilla">
           <label>Origen · Centro de distribución
             <select value={origenId} onChange={(e) => setOrigenId(e.target.value)}>
               <option value="">Elegí un CD…</option>
-              {sucursales.filter((s) => s.tipo === 'CD').map((s) =>
-                <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                {sucursales.filter((s) => s.tipo === 'CD').map((s) =>
+                  <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>
-          </label>
-          <label>Destino · Local
-            <select value={destinoId} onChange={(e) => setDestinoId(e.target.value)}>
-              <option value="">Elegí un local…</option>
-              {sucursales.filter((s) => s.tipo === 'LOCAL').map((s) =>
-                <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-          </label>
+            </label>
+            <div className="destino-propio"><span>Destino · Local</span>
+              <strong>{usuario.sucursal}</strong>
+            </div>
         </div>
         <SelectorProductos productos={productos} cantidades={cantidades}
-                           onChange={setCantidades} />
-        {Number(destinoId) !== usuario.sucursal_id && (
-          <p className="ayuda">
-            La sugerencia automática solo está disponible para el stock de tu local.
-          </p>
-        )}
+                             onChange={setCantidades} />
         <div className="acciones-formulario">
-          <button className="secundario"
-                  disabled={!destinoId || Number(destinoId) !== usuario.sucursal_id}
-                  onClick={sugerir}>Sugerir según stock mínimo</button>
-          <button disabled={!origenId || !destinoId
-            || !Object.values(cantidades).some((cantidad) => Number(cantidad) > 0)}
-                  onClick={solicitar}>Enviar solicitud</button>
+            <button className="secundario" onClick={sugerir}>Sugerir según stock mínimo</button>
+            <button disabled={!origenId
+              || !Object.values(cantidades).some((cantidad) => Number(cantidad) > 0)}
+                    onClick={solicitar}>Enviar solicitud</button>
         </div>
       </div>
 
@@ -200,9 +183,6 @@ function OrdenLocal({ orden, productos, sucursalId, onRecibir, onVerificar }) {
 function BultoLocal({
   bulto, remitoNumero, productos, puedeRecibir, onRecibir, onVerificar,
 }) {
-  const [remito, setRemito] = useState('')
-  const [precinto, setPrecinto] = useState('')
-  const [intacto, setIntacto] = useState(true)
   const nombreProducto = (id) => productos.find((p) => p.id === id)?.nombre ?? `#${id}`
 
   return (
@@ -222,24 +202,13 @@ function BultoLocal({
       )}
       {puedeRecibir && bulto.estado === 'RECIBIDO' && (
         <div className="recepcion-bulto">
-          <p>Recepción confirmada. Verificá ahora el remito y el precinto.</p>
-          <label>Número de remito leído
-            <input value={remito} onChange={(e) => setRemito(e.target.value)}
-                   placeholder={`Esperado: ${remitoNumero}`} />
-          </label>
-          <label>Precinto leído
-            <input value={precinto} onChange={(e) => setPrecinto(e.target.value)}
-                   placeholder={`Esperado: ${bulto.precinto}`} />
-          </label>
-          <label className="check-precinto">
-            <input type="checkbox" checked={intacto}
-                   onChange={(e) => setIntacto(e.target.checked)} />
-            Precinto intacto
-          </label>
-          <button disabled={!remito.trim() || !precinto.trim()}
-                  onClick={() => onVerificar(bulto.id, remito, precinto, intacto)}>
-            Verificar remito y precinto
-          </button>
+          <p>Recepción confirmada. Compará el remito y el precinto con los datos esperados y elegí:</p>
+          <div className="acciones-verificacion">
+            <button onClick={() => onVerificar(bulto.id, true)}>Verificar</button>
+            <button className="peligro" onClick={() => onVerificar(bulto.id, false)}>
+              Rechazar
+            </button>
+          </div>
         </div>
       )}
     </div>
