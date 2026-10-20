@@ -16,6 +16,7 @@ from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.reportes_service import ReportesService
 from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService
+from services.catalogo_service import CatalogoService
 
 
 def crear_app():
@@ -36,6 +37,7 @@ def crear_app():
     reportes = ReportesService()
     alertas = AlertasService()
 
+    catalogo = CatalogoService()
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(ReglaNegocioError)
     def regla_negocio(e):
@@ -49,17 +51,86 @@ def crear_app():
     def no_implementado(e):
         return jsonify({"error": f"Pendiente: {e}"}), 501
 
-    # ---------- catálogo (solo lectura por ahora) ----------
+        # ---------- catálogo (procesos 1 y 2) ----------
+    # Sucursales
     @app.get("/api/sucursales")
     def listar_sucursales():
-        return jsonify(db.consultar("SELECT * FROM sucursal ORDER BY tipo, nombre"))
+        return jsonify(catalogo.listar_sucursales())
 
+    @app.get("/api/sucursales/<int:id_sucursal>")
+    def obtener_sucursal(id_sucursal):
+        return jsonify(catalogo.obtener_sucursal(id_sucursal))
+
+    @app.post("/api/sucursales")
+    def crear_sucursal():
+        return jsonify(catalogo.crear_sucursal(request.get_json())), 201
+
+    @app.put("/api/sucursales/<int:id_sucursal>")
+    def actualizar_sucursal(id_sucursal):
+        return jsonify(catalogo.actualizar_sucursal(id_sucursal, request.get_json()))
+
+    @app.delete("/api/sucursales/<int:id_sucursal>")
+    def eliminar_sucursal(id_sucursal):
+        catalogo.eliminar_sucursal(id_sucursal)
+        return "", 204
+
+    # Productos
     @app.get("/api/productos")
     def listar_productos():
-        return jsonify(db.consultar("SELECT * FROM producto ORDER BY nombre"))
+        return jsonify(catalogo.listar_productos())
 
-    # TODO (vos): POST/PUT/DELETE de sucursales, productos, categorías y proveedores
-    #   (procesos 1 y 2). Validar duplicados por codigo / cuit -> ReglaNegocioError.
+    @app.get("/api/productos/<int:id_producto>")
+    def obtener_producto(id_producto):
+        return jsonify(catalogo.obtener_producto(id_producto))
+
+    @app.post("/api/productos")
+    def crear_producto():
+        return jsonify(catalogo.crear_producto(request.get_json())), 201
+
+    @app.put("/api/productos/<int:id_producto>")
+    def actualizar_producto(id_producto):
+        return jsonify(catalogo.actualizar_producto(id_producto, request.get_json()))
+
+    @app.delete("/api/productos/<int:id_producto>")
+    def eliminar_producto(id_producto):
+        catalogo.eliminar_producto(id_producto)
+        return "", 204
+
+    # Categorías
+    @app.get("/api/categorias")
+    def listar_categorias():
+        return jsonify(catalogo.listar_categorias())
+
+    @app.post("/api/categorias")
+    def crear_categoria():
+        return jsonify(catalogo.crear_categoria(request.get_json())), 201
+
+    @app.put("/api/categorias/<int:id_categoria>")
+    def actualizar_categoria(id_categoria):
+        return jsonify(catalogo.actualizar_categoria(id_categoria, request.get_json()))
+
+    @app.delete("/api/categorias/<int:id_categoria>")
+    def eliminar_categoria(id_categoria):
+        catalogo.eliminar_categoria(id_categoria)
+        return "", 204
+
+    # Proveedores
+    @app.get("/api/proveedores")
+    def listar_proveedores():
+        return jsonify(catalogo.listar_proveedores())
+
+    @app.post("/api/proveedores")
+    def crear_proveedor():
+        return jsonify(catalogo.crear_proveedor(request.get_json())), 201
+
+    @app.put("/api/proveedores/<int:id_proveedor>")
+    def actualizar_proveedor(id_proveedor):
+        return jsonify(catalogo.actualizar_proveedor(id_proveedor, request.get_json()))
+
+    @app.delete("/api/proveedores/<int:id_proveedor>")
+    def eliminar_proveedor(id_proveedor):
+        catalogo.eliminar_proveedor(id_proveedor)
+        return "", 204
 
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):

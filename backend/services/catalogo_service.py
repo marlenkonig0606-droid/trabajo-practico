@@ -1,6 +1,7 @@
 from dao.producto_dao import ProductoDAO
 from dao.categoria_dao import CategoriaDAO
 from dao.proveedor_dao import ProveedorDAO
+from dao.sucursal_dao import SucursalDAO
 from services.excepciones import ReglaNegocioError, NoEncontradoError
 
 
@@ -9,11 +10,8 @@ class CatalogoService:
         self.producto_dao = ProductoDAO()
         self.categoria_dao = CategoriaDAO()
         self.proveedor_dao = ProveedorDAO()
+        self.sucursal_dao = SucursalDAO()
 
-    # ------------------------------------------------------------------
-    # Utilidades: convierten filas sqlite3.Row (o dicts) en dicts,
-    # así app.py puede devolver todo como JSON
-    # ------------------------------------------------------------------
     def _a_dict(self, fila):
         if fila is None:
             return None
@@ -34,9 +32,6 @@ class CatalogoService:
             raise ReglaNegocioError("No se pudo crear el registro")
         return resultado[1]
 
-    # ------------------------------------------------------------------
-    # PRODUCTOS
-    # ------------------------------------------------------------------
     def _validar_producto(self, datos):
         if not isinstance(datos.get("codigo"), str) or not datos["codigo"].strip():
             raise ReglaNegocioError("El código es obligatorio")
@@ -107,9 +102,57 @@ class CatalogoService:
         resultado = self.producto_dao.eliminar(id_producto)
         self._comprobar_resultado(resultado)
 
-    # ------------------------------------------------------------------
-    # CATEGORÍAS
-    # ------------------------------------------------------------------
+    def _validar_sucursal(self, datos):
+        if not isinstance(datos.get("nombre"), str) or not datos["nombre"].strip():
+            raise ReglaNegocioError("El nombre de la sucursal es obligatorio")
+        if datos.get("tipo") not in ("CD", "LOCAL"):
+            raise ReglaNegocioError("El tipo debe ser CD o LOCAL")
+
+    def listar_sucursales(self):
+        return self._a_lista(self.sucursal_dao.listar())
+
+    def obtener_sucursal(self, id_sucursal):
+        sucursal = self._a_dict(self.sucursal_dao.obtener_por_id(id_sucursal))
+        if sucursal is None:
+            raise NoEncontradoError(f"No existe la sucursal con id {id_sucursal}")
+        return sucursal
+
+    def crear_sucursal(self, datos):
+        self._validar_sucursal(datos)
+        if datos["tipo"] != "CD" and self._cantidad_cd() == 0:
+            raise ReglaNegocioError(
+                "Debe existir al menos un Centro de Distribución: la primera sucursal debe ser CD")
+        resultado = self.sucursal_dao.crear(
+            datos["nombre"], datos.get("direccion"), datos["tipo"])
+        return self.obtener_sucursal(self._id_creado(resultado))
+
+    def _cantidad_cd(self):
+        sucursales = self.listar_sucursales()
+        cant = 0
+        for suc in sucursales:
+            if suc["tipo"] == "CD":
+                cant += 1
+        return cant
+
+    def eliminar_sucursal(self, id_sucursal):
+        sucursal = self.obtener_sucursal(id_sucursal)
+        if sucursal["tipo"] == "CD" and self._cantidad_cd() <= 1:
+            raise ReglaNegocioError("Debe existir al menos un Centro de Distribución")
+        resultado = self.sucursal_dao.eliminar(id_sucursal)
+        self._comprobar_resultado(resultado)
+
+    def actualizar_sucursal(self, id_sucursal, datos):
+        sucursal = self.obtener_sucursal(id_sucursal)
+        self._validar_sucursal(datos)
+        if (sucursal["tipo"] == "CD" and datos["tipo"] != "CD"
+                and self._cantidad_cd() <= 1):
+            raise ReglaNegocioError("Debe existir al menos un Centro de Distribución")
+        resultado = self.sucursal_dao.actualizar(
+            id_sucursal, datos["nombre"], datos.get("direccion"), datos["tipo"]
+        )
+        self._comprobar_resultado(resultado)
+        return self.obtener_sucursal(id_sucursal)
+
     def _validar_categoria(self, datos):
         if not isinstance(datos.get("nombre"), str) or not datos["nombre"].strip():
             raise ReglaNegocioError("El nombre de la categoria es obligatorio")
@@ -145,15 +188,11 @@ class CatalogoService:
         resultado = self.categoria_dao.eliminar(id_categoria)
         self._comprobar_resultado(resultado)
 
-    # ------------------------------------------------------------------
-    # PROVEEDORES
-    # ------------------------------------------------------------------
     def _validar_proveedor(self, datos):
         for campo in ("razon_social", "cuit", "nombre"):
             if not isinstance(datos.get(campo), str) or not datos[campo].strip():
                 raise ReglaNegocioError(
-                    "La razon social, el CUIT y el nombre del proveedor son obligatorios"
-                )
+                    "La razon social, el CUIT y el nombre del proveedor son obligatorios")
 
     def listar_proveedores(self):
         return self._a_lista(self.proveedor_dao.listar())
@@ -167,8 +206,7 @@ class CatalogoService:
     def crear_proveedor(self, datos):
         self._validar_proveedor(datos)
         resultado = self.proveedor_dao.crear(
-            datos["razon_social"], datos["cuit"], datos["nombre"]
-        )
+            datos["razon_social"], datos["cuit"], datos["nombre"])
         nuevo_id = self._id_creado(resultado)
         return self.obtener_proveedor(nuevo_id)
 
@@ -176,8 +214,7 @@ class CatalogoService:
         self.obtener_proveedor(id_proveedor)
         self._validar_proveedor(datos)
         resultado = self.proveedor_dao.actualizar(
-            id_proveedor, datos["razon_social"], datos["cuit"], datos["nombre"]
-        )
+            id_proveedor, datos["razon_social"], datos["cuit"], datos["nombre"])
         self._comprobar_resultado(resultado)
         return self.obtener_proveedor(id_proveedor)
 
