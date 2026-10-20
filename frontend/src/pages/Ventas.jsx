@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
+import SelectorProductos from '../components/SelectorProductos.jsx'
 
 const MEDIOS_PAGO = [
   ['EFECTIVO', 'Efectivo'],
@@ -8,13 +9,12 @@ const MEDIOS_PAGO = [
   ['TRANSFERENCIA', 'Transferencia'],
 ]
 
-export default function Ventas() {
+export default function Ventas({ usuario }) {
   const [sucursales, setSucursales] = useState([])
   const [productos, setProductos] = useState([])
   const [ventas, setVentas] = useState([])
   const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
-  const [cargando, setCargando] = useState(true)
 
   const recargar = async () => {
     const [nuevasVentas, nuevasSucursales, nuevosProductos] = await Promise.all([
@@ -28,7 +28,6 @@ export default function Ventas() {
   useEffect(() => {
     recargar()
       .catch((e) => setError(e.message))
-      .finally(() => setCargando(false))
   }, [])
 
   const accion = async (fn, texto) => {
@@ -54,6 +53,7 @@ export default function Ventas() {
       {error && <div className="error">{error}</div>}
       {mensaje && <div className="exito">{mensaje}</div>}
       <NuevaVenta
+        usuario={usuario}
         sucursales={sucursales}
         productos={productos}
         onRegistrar={(datos) => accion(() => api.registrarVenta(datos), 'Venta registrada.')}
@@ -63,26 +63,15 @@ export default function Ventas() {
         productos={productos}
         onRegistrar={(datos) => accion(() => api.registrarDevolucion(datos), 'Devolución registrada.')}
       />
-      <h2>Ventas registradas</h2>
-      {cargando && <p className="vacio">Cargando ventas…</p>}
-      {!cargando && ventas.length === 0 && <p className="vacio">Todavía no hay ventas.</p>}
-      {ventas.map((venta) => (
-        <div className="tarjeta fila-titulo" key={venta.id}>
-          <strong>Venta #{venta.id}</strong>
-          <span>{venta.sucursal}</span>
-          <span>{venta.fecha}</span>
-          <span>{venta.medio_pago}</span>
-          <span>Comprobante #{venta.comprobante_numero}</span>
-          <strong>${Number(venta.total).toFixed(2)}</strong>
-        </div>
-      ))}
     </section>
   )
 }
 
-function NuevaVenta({ sucursales, productos, onRegistrar }) {
+function NuevaVenta({ usuario, sucursales, productos, onRegistrar }) {
   const locales = sucursales.filter((s) => s.tipo === 'LOCAL')
-  const [sucursalId, setSucursalId] = useState('')
+  const [sucursalId, setSucursalId] = useState(
+    usuario.tipo === 'LOCAL' ? String(usuario.sucursal_id) : '',
+  )
   const [medioPago, setMedioPago] = useState('EFECTIVO')
   const [cuotas, setCuotas] = useState('1')
   const [cantidades, setCantidades] = useState({})
@@ -132,14 +121,8 @@ function NuevaVenta({ sucursales, productos, onRegistrar }) {
           <input value={referencia} onChange={(e) => setReferencia(e.target.value)} />
         </label>
       </div>
-      <div className="grilla">
-        {productos.map((p) => (
-          <label key={p.id}>{p.nombre} · ${Number(p.precio_venta).toFixed(2)}
-            <input type="number" min="0" step="1" value={cantidades[p.id] ?? ''}
-                   onChange={(e) => setCantidades({ ...cantidades, [p.id]: e.target.value })} />
-          </label>
-        ))}
-      </div>
+      <SelectorProductos productos={productos} cantidades={cantidades}
+                         onChange={setCantidades} mostrarPrecio />
       <button disabled={!sucursalId || !Object.values(cantidades).some((cantidad) => Number(cantidad) > 0)}
               onClick={registrar}>Cobrar y emitir comprobante</button>
     </div>
@@ -182,6 +165,11 @@ function NuevaDevolucion({ ventas, productos, onRegistrar }) {
     if (registrada) {
       setCantidades({})
       setMotivo('')
+      try {
+        setVenta(await api.venta(ventaId))
+      } catch (e) {
+        setError(e.message)
+      }
     }
   }
 

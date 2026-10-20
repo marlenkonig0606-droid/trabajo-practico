@@ -13,7 +13,9 @@ async function pedir(metodo, url, cuerpo) {
     // la respuesta no era JSON (ej. página de error HTML)
   }
   if (!resp.ok) {
-    throw new Error(datos?.error || (texto ? `Error ${resp.status}` : `Sin respuesta del backend (${resp.status}). ¿Está corriendo python app.py?`))
+    const error = new Error(datos?.error || (texto ? `Error ${resp.status}` : `Sin respuesta del backend (${resp.status}). ¿Está corriendo python app.py?`))
+    error.status = resp.status
+    throw error
   }
   return datos
 }
@@ -28,18 +30,26 @@ function conFechas({ desde, hasta }) {
 }
 
 export const api = {
+  sesion: () => pedir('GET', '/auth/me'),
+  registrar: (datos) => pedir('POST', '/auth/register', datos),
+  iniciarSesion: (datos) => pedir('POST', '/auth/login', datos),
+  cerrarSesion: () => pedir('POST', '/auth/logout'),
   sucursales: () => pedir('GET', '/sucursales'),
   productos: () => pedir('GET', '/productos'),
   stock: (sucursalId) => pedir('GET', `/stock/${sucursalId}`),
 
   sugerirOrden: (localId) => pedir('GET', `/sucursales/${localId}/sugerencia`),
   ordenes: () => pedir('GET', '/ordenes'),
-  crearOrden: (destino_id, items) => pedir('POST', '/ordenes', { destino_id, items }),
+  solicitarOrden: (origen_id, destino_id, items) => pedir('POST', '/ordenes', {
+    origen_id, destino_id, items,
+  }),
   crearBulto: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/bultos`, { items }),
-  precintar: (id, precinto) => pedir('POST', `/bultos/${id}/precintar`, { precinto }),
+  precintar: (id) => pedir('POST', `/bultos/${id}/precintar`, {}),
   despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
   anular: (id, motivo) => pedir('POST', `/bultos/${id}/anular`, { motivo }),
-  recibir: (id, precinto, intacto) => pedir('POST', `/bultos/${id}/recibir`, { precinto, intacto }),
+  recibir: (id) => pedir('POST', `/bultos/${id}/recibir`, {}),
+  verificarRecepcion: (id, remito, precinto, intacto) =>
+    pedir('POST', `/bultos/${id}/verificar`, { remito, precinto, intacto }),
   historial: (id) => pedir('GET', `/bultos/${id}/historial`),
 
   alertas: () => pedir('GET', '/alertas'),
