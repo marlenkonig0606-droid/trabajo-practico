@@ -23,13 +23,15 @@ CREATE TABLE IF NOT EXISTS usuario (
 -- ---------- 2. Catálogo ----------
 CREATE TABLE IF NOT EXISTS categoria (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre  TEXT NOT NULL UNIQUE
+    nombre  TEXT NOT NULL UNIQUE,
+    descripcion TEXT
 );
 
 CREATE TABLE IF NOT EXISTS proveedor (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     cuit    TEXT NOT NULL UNIQUE,          -- identificador que evita duplicados
-    razon_social TEXT NOT NULL
+    razon_social TEXT NOT NULL,
+    nombre TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS producto (

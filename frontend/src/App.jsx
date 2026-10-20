@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Logistica from './pages/Logistica.jsx'
 import Stock from './pages/Stock.jsx'
 import Reportes from './pages/Reportes.jsx'
-import Pendiente from './pages/Pendiente.jsx'
+import Catalogo from './pages/Catalogo.jsx'
 import Ventas from './pages/Ventas.jsx'
 import Acceso from './pages/Acceso.jsx'
 import Solicitudes from './pages/Solicitudes.jsx'
@@ -50,7 +50,7 @@ export default function App() {
     ...(usuario.tipo === 'CD'
       ? [
         { id: 'logistica', titulo: 'Logística', componente: <Logistica /> },
-        { id: 'abm', titulo: 'Catálogo', componente: <Pendiente nombre="ABM de productos, sucursales y proveedores" /> },
+        { id: 'abm', titulo: 'Catálogo', componente: <Catalogo /> },
       ]
       : [{
         id: 'solicitudes',
