@@ -17,8 +17,8 @@ _Estado: los 7 procesos ✅ · 6 reportes ✅ · 3 patrones ✅ · **76/76 tests
 - [x] Subir `mar` y pasarla a `main` (PR o `git push origin mar:main`)
 
 **2. Limpieza de código**
-- [ ] Borrar los DAOs viejos duplicados en `models/` (`categoria_dao.py`, `producto_dao.py`, `proveedor_dao.py`): usan `inventario.db` y nadie los importa; los buenos están en `dao/` → Facundo
-- [ ] Actualizar el dibujo del comentario de `models/bulto.py` (falta el estado `ANULADO`) → Marlén
+- [x] Borrar los DAOs viejos duplicados en `models/` (`categoria_dao.py`, `producto_dao.py`, `proveedor_dao.py`): usan `inventario.db` y nadie los importa; los buenos están en `dao/` → Facundo
+- [x] Actualizar el dibujo del comentario de `models/bulto.py` (falta el estado `ANULADO`) → Marlén
 
 **3. Documentación (lo único grande que queda)** → Marlén
 - [ ] **Diagrama de clases** en `documentacion/` (models + services + patrones)

@@ -2,16 +2,19 @@
 Ciclo de vida del bulto (lo que la cátedra va a evaluar "críticamente").
 
     PREPARADO ──precintar──▶ PRECINTADO ──despachar──▶ EN_TRANSITO
-                                                          │
-                                                       recibir
-                                                          ▼
-                                                      RECIBIDO
-                                                     ╱        ╲
-                                     precinto intacto          precinto roto
-                                           ▼                        ▼
-                                      VERIFICADO               RECHAZADO
+        │                        │                         │
+        └──────anular────────────┤                 recibir (local)
+                                 ▼                         ▼
+                              ANULADO                  RECIBIDO
+                     (libera la reserva del CD)       ╱        ╲
+                                          verificar (aprobado)  rechazar
+                                                ▼                  ▼
+                                           VERIFICADO          RECHAZADO
 
-VERIFICADO y RECHAZADO son estados FINALES: desde ahí no se puede ir a ningún lado.
+- ANULADO: solo antes de despachar (desde PREPARADO o PRECINTADO); el stock
+  reservado vuelve a estar libre en el CD.
+- VERIFICADO, RECHAZADO y ANULADO son estados FINALES: desde ahí no se puede ir
+  a ningún lado.
 """
 
 class EstadoBulto:
@@ -21,16 +24,16 @@ class EstadoBulto:
     RECIBIDO = "RECIBIDO"
     VERIFICADO = "VERIFICADO"
     RECHAZADO = "RECHAZADO"
-    ANULADO = "ANULADO"                   
+    ANULADO = "ANULADO"
 
     TRANSICIONES = {
-        PREPARADO: {PRECINTADO, ANULADO},    
-        PRECINTADO: {EN_TRANSITO, ANULADO},  
+        PREPARADO: {PRECINTADO, ANULADO},
+        PRECINTADO: {EN_TRANSITO, ANULADO},
         EN_TRANSITO: {RECIBIDO},
         RECIBIDO: {VERIFICADO, RECHAZADO},
         VERIFICADO: set(),
         RECHAZADO: set(),
-        ANULADO: set(),                  
+        ANULADO: set(),
     }
 
     FINALES = {VERIFICADO, RECHAZADO, ANULADO}
