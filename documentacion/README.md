@@ -8,6 +8,8 @@
 
 📄 Consigna completa: [consigna-tema3.pdf](consigna-tema3.pdf)
 
+📑 Presentación del grupo (propuesta, alcances y DER): [presentacion-grupo.pdf](presentacion-grupo.pdf) · DER: [der.png](der.png)
+
 El sistema gestiona una cadena de locales que se abastecen desde un **Centro de Distribución (CD)**: desde la orden de reposición y el armado de bultos precintados, pasando por el despacho y la verificación en el local, hasta la venta al público y las devoluciones.
 
 ---
