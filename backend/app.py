@@ -412,8 +412,10 @@ def crear_app():
     def registrar_venta():
         datos = cuerpo_json()
         sucursal_id = entero_positivo(datos.get("sucursal_id"), "sucursal_id")
-        if (g.usuario["tipo"] != "CD"
-                and sucursal_id != g.usuario["sucursal_id"]):
+        if g.usuario["tipo"] == "CD":
+            raise AccesoDenegadoError(
+                "El CD solo distribuye: las ventas las registran los locales")
+        if sucursal_id != g.usuario["sucursal_id"]:
             raise AccesoDenegadoError("Solo podés registrar ventas en tu sucursal")
         items = datos.get("items")
         if not isinstance(items, list):
@@ -434,14 +436,16 @@ def crear_app():
     def registrar_devolucion():
         datos = cuerpo_json()
         venta_id = entero_positivo(datos.get("venta_id"), "venta_id")
-        if g.usuario["tipo"] != "CD":
-            venta = db.consultar_uno(
-                "SELECT sucursal_id FROM venta WHERE id=?", (venta_id,))
-            if venta is None:
-                raise NoEncontradoError(f"No existe la venta {venta_id}")
-            if venta["sucursal_id"] != g.usuario["sucursal_id"]:
-                raise AccesoDenegadoError(
-                    "Solo podés registrar devoluciones de ventas de tu sucursal")
+        if g.usuario["tipo"] == "CD":
+            raise AccesoDenegadoError(
+                "El CD solo distribuye: las devoluciones las registran los locales")
+        venta = db.consultar_uno(
+            "SELECT sucursal_id FROM venta WHERE id=?", (venta_id,))
+        if venta is None:
+            raise NoEncontradoError(f"No existe la venta {venta_id}")
+        if venta["sucursal_id"] != g.usuario["sucursal_id"]:
+            raise AccesoDenegadoError(
+                "Solo podés registrar devoluciones de ventas de tu sucursal")
         items = datos.get("items")
         if not isinstance(items, list):
             raise ReglaNegocioError("items debe ser una lista")

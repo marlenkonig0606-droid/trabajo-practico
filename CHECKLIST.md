@@ -9,6 +9,35 @@ _Hoy: Proceso 3, bloqueo de stock y Observer completo en `main`; Lucía: ventas,
 > ⚠ La versión con ORM (SQLAlchemy), ABM y PRs #1–#3 **no está en `main`**, pero no se perdió:
 > está en la compu de Marlén (rama `main` local y rama `mar`). Si el grupo decide volver a ella, se restaura.
 
+## 🔜 LO QUE FALTA (actualizado 31/10)
+_Estado: los 7 procesos ✅ · 6 reportes ✅ · 3 patrones ✅ · **76/76 tests** ✅_
+
+**1. Guardar y subir lo último**
+- [x] Commit de los cambios sin guardar: "el CD no registra ventas ni devoluciones" (`app.py` + test + `README.md`)
+- [x] Subir `mar` y pasarla a `main` (PR o `git push origin mar:main`)
+
+**2. Limpieza de código**
+- [ ] Borrar los DAOs viejos duplicados en `models/` (`categoria_dao.py`, `producto_dao.py`, `proveedor_dao.py`): usan `inventario.db` y nadie los importa; los buenos están en `dao/` → Facundo
+- [ ] Actualizar el dibujo del comentario de `models/bulto.py` (falta el estado `ANULADO`) → Marlén
+
+**3. Documentación (lo único grande que queda)** → Marlén
+- [ ] **Diagrama de clases** en `documentacion/` (models + services + patrones)
+- [ ] **Diagrama de estados del bulto** (PREPARADO → PRECINTADO → EN_TRANSITO → RECIBIDO → VERIFICADO / RECHAZADO, y ANULADO desde PREPARADO/PRECINTADO)
+- [ ] Enlazar los diagramas desde `documentacion/README.md`
+
+**4. Prueba final entre los tres**
+- [ ] Probar el circuito completo con login: catálogo → solicitud → bulto → despacho → recepción → verificación → venta → devolución → reportes
+- [ ] Probar con dos usuarios a la vez armando bultos del mismo producto (bloqueo de stock)
+
+**5. Defensa**
+- [ ] Cada uno sabe explicar su parte: Facundo (ABM, procesos 1-2), Lucía (ventas, devoluciones, login, procesos 7), Marlén (logística, bloqueo, Observer, reportes, procesos 3-6)
+- [ ] Los 3 explican los patrones: Singleton (`BaseDeDatos`), Observer (2 sujetos / 3 observadores), creación delegada / Factory (medios de pago)
+- [ ] Repasar las reglas de negocio: stock solo verificado, precinto roto → rechazado, historial inmutable, no vender sin stock, devoluciones válidas
+
+**Opcionales (suman si sobra tiempo):** promociones / listas de precios · lotes y vencimientos · clientes frecuentes · inventario físico
+
+---
+
 ## 👥 Reparto de tareas
 > Cada uno trabaja en **su rama** (`lucia`, `facu`, `mar`) y sube con Pull Request a `main`.
 > Antes de empezar: `git checkout <su-rama>` y `git pull origin main`.
@@ -29,16 +58,16 @@ _Hoy: Proceso 3, bloqueo de stock y Observer completo en `main`; Lucía: ventas,
 ---
 
 ### 🔵 Facundo — rama `facu` · ABM de catálogo y sucursales (procesos 1 y 2)
-_Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarlos._
-- [ ] **Unificar los DAOs con la base del proyecto**: hoy usan `inventario.db`; tienen que usar `tp_cd_locales.db` (la conexión Singleton `BaseDeDatos`)
-- [ ] **Alinear DAOs con `schema.sql`**: `CategoriaDAO` usa `descripcion` y `ProveedorDAO` usa `nombre`, `telefono`, `mail`, `direccion`, que no existen en las tablas → agregar columnas o sacarlas
-- [ ] `services/catalogo_service.py`: alta / modificación / baja de **productos, categorías y proveedores**
-- [ ] Validar duplicados: producto por `codigo`, proveedor por `cuit` (consigna) → `ReglaNegocioError`
-- [ ] No permitir borrar algo ya usado (con stock, órdenes o bultos)
-- [ ] **Proceso 1**: alta / modificación / baja de **sucursales** (no duplicar nombre, siempre al menos un CD)
-- [ ] Endpoints `POST` / `PUT` / `DELETE` de todo lo anterior en `app.py`
-- [ ] Pantalla **Catálogo** (reemplazar `Pendiente.jsx`) con productos, categorías, proveedores y sucursales
-- [ ] Tests del ABM (duplicados, borrar algo usado, datos inválidos)
+_Terminado: `catalogo_service.py` + DAOs en `dao/` sobre `BaseDeDatos`, endpoints, pantalla Catálogo y 16 tests._
+- [x] **Unificar los DAOs con la base del proyecto**: hoy usan `inventario.db`; tienen que usar `tp_cd_locales.db` (la conexión Singleton `BaseDeDatos`)
+- [x] **Alinear DAOs con `schema.sql`**: `CategoriaDAO` usa `descripcion` y `ProveedorDAO` usa `nombre`, `telefono`, `mail`, `direccion`, que no existen en las tablas → agregar columnas o sacarlas
+- [x] `services/catalogo_service.py`: alta / modificación / baja de **productos, categorías y proveedores**
+- [x] Validar duplicados: producto por `codigo`, proveedor por `cuit` (consigna) → `ReglaNegocioError`
+- [x] No permitir borrar algo ya usado (con stock, órdenes o bultos)
+- [x] **Proceso 1**: alta / modificación / baja de **sucursales** (no duplicar nombre, siempre al menos un CD)
+- [x] Endpoints `POST` / `PUT` / `DELETE` de todo lo anterior en `app.py`
+- [x] Pantalla **Catálogo** (reemplazar `Pendiente.jsx`) con productos, categorías, proveedores y sucursales
+- [x] Tests del ABM (duplicados, borrar algo usado, datos inválidos)
 
 ### 🟣 Lucía — rama `lucia` · Ventas, devoluciones y medios de pago (proceso 7)
 - [x] Tablas en `schema.sql`: `venta`, `detalle_venta` (precio del momento), `pago`, `comprobante`, `devolucion`, `detalle_devolucion` + sus clases en `models/`
@@ -76,12 +105,12 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 
 ----------------------------------------------------
 - [ ] **Diagrama de clases** y **diagrama de estados del bulto** en `documentacion/`
-- [ ] Documentar las reglas que definió el grupo + actualizar `documentacion/README.md`
+- [x] Documentar las reglas que definió el grupo + actualizar `documentacion/README.md` (hecho por Lucía)
 
 ### 🤝 Entre los tres (al final)
-- [ ] Validar el JSON de entrada en `app.py` (campo faltante → 400, no 500)
+- [x] Validar el JSON de entrada en `app.py` (`cuerpo_json` / `entero_positivo` → 400)
 - [ ] Probar el circuito completo: catálogo → orden → bulto → despacho → recepción → venta → devolución → reportes
-- [ ] Que no se suban `__pycache__`, `.pytest_cache` ni `*.db`
+- [x] Que no se suban `__pycache__`, `.pytest_cache` ni `*.db` (`.gitignore`)
 - [ ] Preparar la defensa: cada uno explica su parte y los patrones (Singleton, Observer y creación delegada)
 
 ---
@@ -90,8 +119,8 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 
 | # | Proceso | Estado | Responsable |
 |---|---|---|---|
-| 1 | Sucursales y CD | 🟡 solo listar | Facundo |
-| 2 | Productos, categorías, precios, mínimos, proveedores | 🟡 models y DAOs, sin conectar | Facundo |
+| 1 | Sucursales y CD | ✅ ABM completo (siempre queda un CD) | Facundo |
+| 2 | Productos, categorías, precios, mínimos, proveedores | ✅ ABM + pantalla Catálogo | Facundo |
 | 3 | Consolidar necesidades en orden de reposición | ✅ orden manual + sugerencia por stock mínimo | Marlén |
 | 4 | Empaquetar en bultos con remito y precinto | ✅ con reserva de stock y bloqueo entre usuarios | Marlén |
 | 5 | Despacho | ✅ funciona | Facundo |
@@ -102,7 +131,7 @@ _Ya armó los DAOs y models de categoría, producto y proveedor: falta conectarl
 - [x] Stock disponible en destino solo con remito + bulto Verificado; precinto roto → Rechazado
 - [x] Trazabilidad inmutable (triggers en `schema.sql`)
 - [x] No vender más que el stock disponible y verificado (`StockService.restar` atómico + test) → Lucía
-- [ ] Sin productos ni proveedores duplicados (los DAOs lo intentan, falta conectarlos) → Facundo
+- [x] Sin productos ni proveedores duplicados (código y CUIT `UNIQUE` + tests) → Facundo
 - [x] No aceptar devoluciones inválidas → Lucía
 
 **Patrones (mínimo 2)**

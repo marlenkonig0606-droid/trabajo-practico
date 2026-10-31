@@ -551,3 +551,42 @@ def test_cuenta_cd_se_crea_fuera_del_registro_publico_y_tiene_acceso_global(tmp_
         assert cliente.get("/api/ordenes").status_code == 200
     finally:
         BaseDeDatos.reiniciar()
+
+
+def test_cd_solo_distribuye_y_no_registra_ventas_ni_devoluciones(cliente_api, monkeypatch):
+    venta = cliente_api.post(
+        "/api/ventas",
+        json={
+            "sucursal_id": 2,
+            "items": [{"producto_id": 1, "cantidad": 1}],
+            "medio_pago": "EFECTIVO",
+        },
+    ).get_json()
+    cliente_api.post("/api/auth/logout")
+    monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
+    assert cliente_api.post(
+        "/api/auth/register",
+        json={
+            "email": "cd@example.com",
+            "password": "contraseña-segura",
+            "sucursal_id": 1,
+            "codigo_cd": "marlufa",
+        },
+    ).status_code == 201
+
+    nueva_venta = cliente_api.post(
+        "/api/ventas",
+        json={
+            "sucursal_id": 2,
+            "items": [{"producto_id": 1, "cantidad": 1}],
+            "medio_pago": "EFECTIVO",
+        },
+    )
+    devolucion = cliente_api.post(
+        "/api/devoluciones",
+        json={"venta_id": venta["id"], "items": [{"producto_id": 1, "cantidad": 1}]},
+    )
+
+    assert nueva_venta.status_code == 403
+    assert "solo distribuye" in nueva_venta.get_json()["error"]
+    assert devolucion.status_code == 403

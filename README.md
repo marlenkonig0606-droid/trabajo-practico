@@ -57,7 +57,8 @@ solicitudes para su propia sucursal y elegir cualquier CD como origen; ven las �
 a su sucursal y las que solicitaron. La sugerencia automática usa únicamente el stock de su
 propia sucursal. El CD puede consultar todas las órdenes y gestionar su preparación, armado y
 despacho, y ajustar el stock disponible de su propio centro, pero no crear solicitudes ni
-confirmar recepciones.
+confirmar recepciones. El CD solo distribuye: las ventas y devoluciones las registran
+únicamente los locales, cada uno en su propia sucursal.
 
 El local destinatario confirma primero la recepción física. Luego inspecciona el remito y el
 precinto y elige **Verificar** o **Rechazar**. El stock no cambia al confirmar la recepción:
