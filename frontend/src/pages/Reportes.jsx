@@ -59,12 +59,14 @@ export default function Reportes({ usuario }) {
       </div>
       <div className="tarjeta">
         <h2>Productos más vendidos y margen</h2>
+        <GraficoMasVendidos filas={masVendidos} />
         <Tabla filas={masVendidos}
                columnas={['codigo', 'producto', 'unidades', 'ingresos', 'costo', 'margen', 'margen_pct']}
                resaltar={(f) => f.margen < 0} />
       </div>
       <div className="tarjeta">
         <h2>Existencias actuales y stock mínimo</h2>
+        <GraficoStock filas={existencias} />
         <Tabla filas={existencias}
                columnas={['sucursal', 'codigo', 'producto', 'disponible', 'reservado', 'libre', 'stock_minimo', 'estado']}
                resaltar={(f) => f.estado === 'BAJO MÍNIMO'} />
@@ -207,5 +209,79 @@ function Tabla({ filas, columnas, resaltar }) {
       <thead><tr>{columnas.map((c) => <th key={c}>{c.replaceAll('_', ' ')}</th>)}</tr></thead>
       <tbody>{filas.map((f, i) => <tr key={i} className={resaltar?.(f) ? 'bajo' : ''}>{columnas.map((c) => <td key={c}>{f[c]}</td>)}</tr>)}</tbody>
     </table>
+  )
+}
+
+// ---------- Gráficos de barras (CSS puro, sin librerías) ----------
+
+// Barras horizontales: unidades vendidas por producto (top 8).
+// Verde = margen positivo, rojo = el producto se vende a pérdida.
+function GraficoMasVendidos({ filas }) {
+  const top = filas.filter((f) => f.unidades > 0).slice(0, 8)
+  if (top.length === 0) return null
+  const maximo = Math.max(...top.map((f) => f.unidades))
+  return (
+    <div className="grafico" aria-label="Gráfico de productos más vendidos">
+      <p className="grafico-titulo">Unidades vendidas por producto</p>
+      {top.map((f) => (
+        <div className="grafico-fila" key={f.codigo}>
+          <span className="grafico-etiqueta" title={f.producto}>{f.producto}</span>
+          <div className="grafico-pista">
+            <div className={`grafico-barra ${f.margen < 0 ? 'negativa' : ''}`}
+                 style={{ width: `${(f.unidades / maximo) * 100}%` }} />
+          </div>
+          <span className="grafico-valor">
+            {f.unidades} u. · {f.margen < 0 ? '-' : ''}${Math.abs(Number(f.margen)).toFixed(0)}
+          </span>
+        </div>
+      ))}
+      <p className="grafico-leyenda">
+        <span className="muestra" /> margen positivo
+        <span className="muestra negativa" /> margen negativo (pérdida)
+      </p>
+    </div>
+  )
+}
+
+// Barras de stock libre por producto, con una marca en el stock mínimo.
+// Se elige la sucursal porque cada una tiene su propio stock.
+function GraficoStock({ filas }) {
+  const sucursales = [...new Set(filas.map((f) => f.sucursal))]
+  const [sucursal, setSucursal] = useState('')
+  const elegida = sucursales.includes(sucursal) ? sucursal : sucursales[0]
+  if (!elegida) return null
+  const datos = filas.filter((f) => f.sucursal === elegida)
+  const maximo = Math.max(1, ...datos.map((f) => Math.max(f.libre, f.stock_minimo)))
+  return (
+    <div className="grafico" aria-label="Gráfico de stock libre contra stock mínimo">
+      <p className="grafico-titulo">
+        Stock libre vs. mínimo en{' '}
+        {sucursales.length > 1
+          ? <select value={elegida} onChange={(e) => setSucursal(e.target.value)}>
+              {sucursales.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          : <b>{elegida}</b>}
+      </p>
+      {datos.map((f) => {
+        const bajo = f.libre < f.stock_minimo
+        return (
+          <div className="grafico-fila" key={f.codigo}>
+            <span className="grafico-etiqueta" title={f.producto}>{f.producto}</span>
+            <div className="grafico-pista">
+              <div className={`grafico-barra ${bajo ? 'negativa' : ''}`}
+                   style={{ width: `${(f.libre / maximo) * 100}%` }} />
+              <div className="grafico-minimo" style={{ left: `${(f.stock_minimo / maximo) * 100}%` }}
+                   title={`Mínimo: ${f.stock_minimo}`} />
+            </div>
+            <span className="grafico-valor">{f.libre} / mín. {f.stock_minimo}</span>
+          </div>
+        )
+      })}
+      <p className="grafico-leyenda">
+        <span className="muestra" /> stock libre suficiente
+        <span className="muestra negativa" /> bajo el mínimo
+        <span className="muestra-minimo" /> stock mínimo
+      </p>
+    </div>
   )
 }

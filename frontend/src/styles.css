@@ -102,3 +102,19 @@ button.peligro { color: var(--error); }
   .catalogo-cabecera { align-items: flex-start; }
   .catalogo-cabecera > button { width: 100%; }
 }
+
+/* ---------- Gráficos de barras de Reportes ---------- */
+.grafico { margin: 6px 0 16px; padding: 12px; border: 1px solid var(--borde); border-radius: 8px; }
+.grafico-titulo { margin: 0 0 10px; font-weight: 600; font-size: .9rem; }
+.grafico-titulo select { margin-left: 4px; }
+.grafico-fila { display: grid; grid-template-columns: minmax(90px, 160px) 1fr 130px; align-items: center; gap: 10px; margin: 6px 0; }
+.grafico-etiqueta { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grafico-pista { position: relative; height: 16px; background: #eef1ee; border-radius: 4px; }
+.grafico-barra { height: 100%; background: var(--acento); border-radius: 4px; transition: width .3s; }
+.grafico-barra.negativa { background: var(--error); }
+.grafico-minimo { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #222; }
+.grafico-valor { font-size: .8rem; color: var(--suave); white-space: nowrap; text-align: right; }
+.grafico-leyenda { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 10px 0 0; font-size: .78rem; color: var(--suave); }
+.grafico-leyenda .muestra { display: inline-block; width: 12px; height: 10px; border-radius: 2px; background: var(--acento); margin-right: -8px; }
+.grafico-leyenda .muestra.negativa { background: var(--error); }
+.grafico-leyenda .muestra-minimo { display: inline-block; width: 2px; height: 12px; background: #222; margin-right: -8px; }

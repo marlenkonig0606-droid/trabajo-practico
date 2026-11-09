@@ -34,6 +34,8 @@ _Estado: los 7 procesos ✅ · 6 reportes ✅ · 3 patrones ✅ · **76/76 tests
 - [ ] Los 3 explican los patrones: Singleton (`BaseDeDatos`), Observer (2 sujetos / 3 observadores), creación delegada / Factory (medios de pago)
 - [ ] Repasar las reglas de negocio: stock solo verificado, precinto roto → rechazado, historial inmutable, no vender sin stock, devoluciones válidas
 
+- [x] Gráficos de barras en Reportes: más vendidos y stock libre vs. mínimo (CSS, sin librerías)
+
 **Opcionales (suman si sobra tiempo):** promociones / listas de precios · lotes y vencimientos · clientes frecuentes · inventario físico
 
 ---
