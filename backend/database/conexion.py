@@ -78,23 +78,66 @@ class BaseDeDatos:
             self._conexion.execute(
                 "ALTER TABLE proveedor ADD COLUMN activo INTEGER NOT NULL DEFAULT 1")
             self._conexion.commit()
-        proveedores = self.consultar("SELECT id, cuit FROM proveedor ORDER BY id")
-        cuit_por_digitos = {}
+        proveedores = self.consultar(
+            "SELECT id, cuit, razon_social, activo FROM proveedor ORDER BY id")
+        proveedores_por_cuit = {}
         for proveedor in proveedores:
             cuit_normalizado = re.sub(r"[^0-9]", "", proveedor["cuit"])
-            if not cuit_normalizado:
-                continue
-            otro_id = cuit_por_digitos.get(cuit_normalizado)
-            if otro_id is not None and otro_id != proveedor["id"]:
-                raise sqlite3.IntegrityError(
-                    "Hay proveedores duplicados al normalizar sus CUIT; "
-                    "resolvelos antes de iniciar la aplicación")
-            cuit_por_digitos[cuit_normalizado] = proveedor["id"]
-            if proveedor["cuit"] != cuit_normalizado:
-                self._conexion.execute(
-                    "UPDATE proveedor SET cuit=? WHERE id=?",
-                    (cuit_normalizado, proveedor["id"]))
-        self._conexion.commit()
+            if cuit_normalizado:
+                proveedores_por_cuit.setdefault(cuit_normalizado, []).append(proveedor)
+
+        with self.transaccion() as cx:
+            for cuit_normalizado, grupo in proveedores_por_cuit.items():
+                if len(grupo) > 1:
+                    razones_sociales = {
+                        re.sub(r"\s+", " ", proveedor["razon_social"]).strip().casefold()
+                        for proveedor in grupo
+                    }
+                    if len(razones_sociales) > 1:
+                        ids = ", ".join(str(proveedor["id"]) for proveedor in grupo)
+                        raise sqlite3.IntegrityError(
+                            f"Hay proveedores con CUIT duplicado y razones sociales "
+                            f"distintas (IDs: {ids}); revisalos antes de iniciar la "
+                            "aplicación")
+
+                    referencias = {
+                        proveedor["id"]: cx.execute(
+                            "SELECT COUNT(*) FROM producto WHERE proveedor_id=?",
+                            (proveedor["id"],),
+                        ).fetchone()[0]
+                        for proveedor in grupo
+                    }
+                    principal = min(
+                        grupo,
+                        key=lambda proveedor: (
+                            proveedor["cuit"] != cuit_normalizado,
+                            -referencias[proveedor["id"]],
+                            proveedor["id"],
+                        ),
+                    )
+                    activo = max(proveedor["activo"] for proveedor in grupo)
+                    for proveedor in grupo:
+                        if proveedor["id"] == principal["id"]:
+                            continue
+                        cx.execute(
+                            "UPDATE producto SET proveedor_id=? WHERE proveedor_id=?",
+                            (principal["id"], proveedor["id"]),
+                        )
+                        cx.execute(
+                            "UPDATE proveedor SET activo=0 WHERE id=?",
+                            (proveedor["id"],),
+                        )
+                    cx.execute(
+                        "UPDATE proveedor SET cuit=?, activo=? WHERE id=?",
+                        (cuit_normalizado, activo, principal["id"]),
+                    )
+                else:
+                    proveedor = grupo[0]
+                    if proveedor["cuit"] != cuit_normalizado:
+                        cx.execute(
+                            "UPDATE proveedor SET cuit=? WHERE id=?",
+                            (cuit_normalizado, proveedor["id"]),
+                        )
         columnas_sucursal = [
             c["name"] for c in self.consultar("PRAGMA table_info(sucursal)")
         ]

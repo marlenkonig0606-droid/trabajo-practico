@@ -47,6 +47,63 @@ def test_migra_nombre_de_proveedor_en_base_existente(tmp_path):
         BaseDeDatos.reiniciar()
 
 
+def test_migra_cuits_duplicados_del_mismo_proveedor_sin_borrar_registros(tmp_path):
+    ruta = str(tmp_path / "proveedores_duplicados.db")
+    conexion_legacy = sqlite3.connect(ruta)
+    conexion_legacy.executescript("""
+        CREATE TABLE proveedor (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cuit TEXT NOT NULL UNIQUE,
+            razon_social TEXT NOT NULL
+        );
+        INSERT INTO proveedor (id, cuit, razon_social)
+            VALUES (1, '30123456789', 'Distribuidora Norte SA');
+        INSERT INTO proveedor (id, cuit, razon_social)
+            VALUES (2, '30-12345678-9', 'Distribuidora Norte SA');
+        CREATE TABLE producto (
+            id INTEGER PRIMARY KEY,
+            proveedor_id INTEGER REFERENCES proveedor(id)
+        );
+        INSERT INTO producto (id, proveedor_id) VALUES (1, 2);
+    """)
+    conexion_legacy.commit()
+    conexion_legacy.close()
+
+    BaseDeDatos.reiniciar()
+    try:
+        db = BaseDeDatos(ruta)
+        proveedores = db.consultar(
+            "SELECT id, cuit, activo FROM proveedor ORDER BY id")
+        producto = db.consultar_uno(
+            "SELECT proveedor_id FROM producto WHERE id=1")
+
+        assert proveedores == [
+            {"id": 1, "cuit": "30123456789", "activo": 1},
+            {"id": 2, "cuit": "30-12345678-9", "activo": 0},
+        ]
+        assert producto["proveedor_id"] == 1
+        assert ProveedorDAO(db).obtener_por_cuit("30-12345678-9")["id"] == 1
+    finally:
+        BaseDeDatos.reiniciar()
+
+
+def test_carga_demo_no_duplica_proveedores_por_formato_de_cuit(tmp_path):
+    ruta = str(tmp_path / "demo_proveedores.db")
+    BaseDeDatos.reiniciar()
+    try:
+        db = BaseDeDatos(ruta)
+        cargar()
+        cargar()
+
+        assert db.consultar_uno(
+            "SELECT COUNT(*) AS cantidad FROM proveedor")["cantidad"] == 3
+        assert db.consultar_uno(
+            "SELECT COUNT(*) AS cantidad FROM proveedor WHERE cuit='30123456789'"
+        )["cantidad"] == 1
+    finally:
+        BaseDeDatos.reiniciar()
+
+
 def test_migra_vencimientos_y_toma_de_rastros_en_esquema_logistico_anterior(tmp_path):
     ruta = str(tmp_path / "logistica_legacy.db")
     conexion_legacy = sqlite3.connect(ruta)

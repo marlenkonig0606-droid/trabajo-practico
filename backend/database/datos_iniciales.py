@@ -2,9 +2,21 @@
 from datetime import datetime, timedelta
 
 from database.conexion import BaseDeDatos
+from models.proveedor import normalizar_cuit
 
 
 def _insertar_o_buscar(db, tabla, columna_unica, valores):
+    if tabla == "proveedor" and columna_unica == "cuit":
+        valores = dict(valores)
+        valores["cuit"] = normalizar_cuit(valores["cuit"])
+        proveedor = next(
+            (fila for fila in db.consultar("SELECT id, cuit FROM proveedor ORDER BY id")
+             if normalizar_cuit(fila["cuit"]) == valores["cuit"]),
+            None,
+        )
+        if proveedor:
+            return proveedor["id"]
+
     columnas = ", ".join(valores)
     signos = ", ".join("?" for _ in valores)
     db.ejecutar(
