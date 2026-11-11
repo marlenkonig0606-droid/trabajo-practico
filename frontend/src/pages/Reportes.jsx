@@ -17,11 +17,15 @@ export default function Reportes({ usuario }) {
   const [cargandoResumen, setCargandoResumen] = useState(true)
   const [rechazados, setRechazados] = useState([])
   const [transito, setTransito] = useState([])
+  const [estadoOrdenes, setEstadoOrdenes] = useState([])
+  const[ abastecimiento, setAbastecimiento] = useState([])
+  const [mediosPago, setMediosPago] = useState([])
   const [eventos, setEventos] = useState([])
   const [existencias, setExistencias] = useState([])
   const [movimientos, setMovimientos] = useState([])
   const [ventas, setVentas] = useState([])
   const [masVendidos, setMasVendidos] = useState([])
+  const [devoluciones, setDevoluciones] = useState([])
   const [fechas, setFechas] = useState({ desde: '', hasta: '' })
   const [tiposMovimiento, setTiposMovimiento] = useState([
     'VENTA', 'DEVOLUCION', 'RECEPCION',
@@ -47,10 +51,15 @@ export default function Reportes({ usuario }) {
 
   useEffect(() => {
     api.reporteExistencias().then(setExistencias)
+    api.reporteMediosPago().then(setMediosPago)
+    api.reporteDevoluciones().then(setDevoluciones)
     if (usuario.tipo === 'CD') {
       api.reporteRechazados(fechas).then(setRechazados)
       api.reporteTransito().then(setTransito)
+      api.reporteAbastecimiento().then(setAbastecimiento)
+      api.reporteEstadoOrdenes().then(setEstadoOrdenes)
       api.eventos().then(setEventos)
+      
     }
   }, [usuario.tipo, fechas])
 
@@ -147,6 +156,10 @@ export default function Reportes({ usuario }) {
         <Tabla filas={ventas} columnas={['dia', 'local', 'medio_pago', 'ventas', 'ingresos', 'ticket_promedio']} />
       </div>
       <div className="tarjeta">
+        <h2>Ventas por medio de pago</h2>
+        <Tabla filas={mediosPago} columnas={['medio_pago', 'ventas', 'ingresos']} />
+      </div>
+      <div className="tarjeta">
         <h2>Productos más vendidos y margen</h2>
         <GraficoMasVendidos filas={masVendidos} />
         <Tabla filas={masVendidos}
@@ -189,6 +202,17 @@ export default function Reportes({ usuario }) {
       {usuario.tipo === 'CD' && <div className="tarjeta">
         <h2>Bultos rechazados / merma por precinto</h2>
         <Tabla filas={rechazados} columnas={['bulto_id', 'remito', 'destino', 'motivo', 'unidades', 'merma_valorizada']} />
+      </div>}
+      {usuario.tipo === 'CD' && <div className="tarjeta">
+        <h2>Abastecimiento de locales</h2>
+        <Tabla filas={abastecimiento} columnas={['local', 'bultos', 'rechazados']} 
+        resaltar={(f) => f.rechazados > 0} />
+      </div>}
+      {usuario.tipo === 'CD' && <div className="tarjeta">
+        <h2>Estado de las órdenes de reposición</h2>
+        <p className="ayuda">Demoradas: pendientes o en preparación desde hace más de 2 días.</p>
+        <Tabla filas={estadoOrdenes} columnas={['estado', 'ordenes', 'demoradas']}
+               resaltar={(f) => f.demoradas > 0} />
       </div>}
       {usuario.tipo === 'CD' && <div className="tarjeta">
         <h2>Tiempo promedio de tránsito CD → local</h2>

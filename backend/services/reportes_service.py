@@ -1,5 +1,5 @@
 from dao.reportes_dao import ReportesDAO
-
+from datetime import datetime, timedelta
 
 class ReportesService:
     def __init__(self):
@@ -87,3 +87,27 @@ class ReportesService:
             params_devuelto += (sucursal_id,)
         return self.dao.mas_vendidos(
             where_vendido, params_vendido, where_devuelto, params_devuelto)
+
+    #pase el estado_ordenes al service asi mantenemos las RN en el service y no en el dao
+    def estado_ordenes(self):
+        limite = datetime.now() - timedelta(days=2)        # hace 2 días
+        resumen = {}                                        # una entrada por estado
+        for orden in self.dao.ordenes():
+            estado = orden["estado"]
+            if estado not in resumen:                      #por si es la primera vez que aparece un estado
+                resumen[estado] = {"estado": estado, "ordenes": 0, "demoradas": 0}
+            resumen[estado]["ordenes"] += 1                 # contador
+
+            fecha = datetime.strptime(orden["fecha"], "%Y-%m-%d %H:%M:%S") #%Y-%m-%d %H:%M:%S convierte el texto de la base en un objeto datetime(segun el agus)
+            if estado in ("PENDIENTE", "EN_PREPARACION") and fecha < limite:
+                resumen[estado]["demoradas"] += 1           # contador de demoradas
+        return list(resumen.values())
+
+    def abastecimiento(self): #aca le pedi los datos al DAO y los devuelve(creo que no hay que poner mas nada aca)
+        return self.dao.abastecimiento()
+    
+    def ventas_por_medio_pago(self, sucursal_id=None): #idem a def abastecimiento, solo que puse el sucursal_id y se lo pasa al DAO
+        return self.dao.ventas_por_medio_pago(sucursal_id)
+
+    def devoluciones_por_producto(self, sucursal_id=None):
+      return self.dao.devoluciones_por_producto(sucursal_id)

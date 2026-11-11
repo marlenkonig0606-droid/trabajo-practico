@@ -477,6 +477,26 @@ def crear_app(cargar_demo=True):
     @requiere_cd
     def rep_transito():
         return jsonify(reportes.tiempo_promedio_transito())
+        
+    @app.get("/api/reportes/estado-ordenes")
+    @requiere_cd
+    def rep_estado_ordenes():
+        return jsonify(reportes.estado_ordenes())
+
+    @app.get("/api/reportes/abastecimiento")
+    @requiere_cd
+    def rep_abastecimiento():
+        return jsonify(reportes.abastecimiento())
+
+    @app.get("/api/reportes/medios-pago")
+    def rep_medios_pago():#no se pone lo del cd para que lo vean tanto los locales como el CD
+        sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
+        return jsonify(reportes.ventas_por_medio_pago(sucursal_id))
+
+    @app.get("/api/reportes/devoluciones")
+    def rep_devoluciones():
+        sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
+        return jsonify(reportes.devoluciones_por_producto(sucursal_id))
 
     @app.get("/api/reportes/existencias")
     def rep_existencias():
