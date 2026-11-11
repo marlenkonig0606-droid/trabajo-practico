@@ -44,22 +44,29 @@ class ReportesDAO:
     def local_lider(self, where_devoluciones, params_devoluciones,
                     where_ventas, params_ventas):
         return self.db.consultar(f"""
-            SELECT s.id, s.nombre,
-                   ROUND(SUM(v.total) - COALESCE(SUM(devoluciones.importe), 0), 2)
-                       AS ingresos_netos,
-                   COUNT(DISTINCT v.id) AS cantidad_ventas
-            FROM venta v
-            JOIN sucursal s ON s.id = v.sucursal_id
-            LEFT JOIN (
-                SELECT d.venta_id, SUM(d.total) AS importe
-                FROM devolucion d
+            WITH ingresos_ventas AS (
+                SELECT v.sucursal_id, SUM(v.total) AS importe,
+                       COUNT(*) AS cantidad_ventas
+                FROM venta v WHERE {where_ventas}
+                GROUP BY v.sucursal_id
+            ),
+            egresos_devoluciones AS (
+                SELECT v.sucursal_id, SUM(d.total) AS importe
+                FROM devolucion d JOIN venta v ON v.id=d.venta_id
                 WHERE {where_devoluciones}
-                GROUP BY d.venta_id
-            ) devoluciones ON devoluciones.venta_id = v.id
-            WHERE {where_ventas}
-            GROUP BY s.id
+                GROUP BY v.sucursal_id
+            )
+            SELECT s.id, s.nombre,
+                   ROUND(COALESCE(iv.importe, 0)
+                         - COALESCE(ed.importe, 0), 2) AS ingresos_netos,
+                   COALESCE(iv.cantidad_ventas, 0) AS cantidad_ventas
+            FROM sucursal s
+            LEFT JOIN ingresos_ventas iv ON iv.sucursal_id=s.id
+            LEFT JOIN egresos_devoluciones ed ON ed.sucursal_id=s.id
+            WHERE s.tipo='LOCAL'
+              AND (iv.sucursal_id IS NOT NULL OR ed.sucursal_id IS NOT NULL)
             ORDER BY ingresos_netos DESC, cantidad_ventas DESC, s.nombre
-            LIMIT 1""", tuple(params_devoluciones) + tuple(params_ventas))
+            LIMIT 1""", tuple(params_ventas) + tuple(params_devoluciones))
 
     def rechazados(self, filtros, parametros):
         return self.db.consultar(f"""
@@ -68,18 +75,20 @@ class ReportesDAO:
                    (SELECT h.observacion FROM historial_bulto h
                     WHERE h.bulto_id = b.id AND h.estado = 'RECHAZADO') AS motivo,
                    SUM(db.cantidad) AS unidades,
-                   ROUND(SUM(db.cantidad * p.precio_costo), 2) AS merma_valorizada
+                   CASE WHEN COUNT(db.costo_unitario)=COUNT(*)
+                        THEN ROUND(SUM(db.cantidad * db.costo_unitario), 2)
+                        ELSE NULL END AS valor_historico,
+                   COUNT(db.costo_unitario) != COUNT(*) AS costo_faltante
             FROM bulto b
             JOIN remito r ON r.id = b.remito_id
             JOIN orden_reposicion o ON o.id = r.orden_id
             JOIN sucursal s ON s.id = o.destino_id
             JOIN detalle_bulto db ON db.bulto_id = b.id
-            JOIN producto p ON p.id = db.producto_id
             WHERE {' AND '.join(filtros)}
             GROUP BY b.id
             ORDER BY b.fecha_recepcion DESC""", tuple(parametros))
 
-    def tiempo_promedio_transito(self):
+    def tiempo_promedio_transito(self, sucursal_id=None):
         return self.db.consultar("""
             SELECT s.nombre AS local, COUNT(*) AS bultos,
                    ROUND(AVG((julianday(b.fecha_recepcion) - julianday(b.fecha_despacho)) * 24), 2)
@@ -88,8 +97,47 @@ class ReportesDAO:
             JOIN remito r ON r.id = b.remito_id
             JOIN orden_reposicion o ON o.id = r.orden_id
             JOIN sucursal s ON s.id = o.destino_id
-            WHERE b.fecha_despacho IS NOT NULL AND b.fecha_recepcion IS NOT NULL
-            GROUP BY s.id ORDER BY horas_promedio DESC""")
+            WHERE b.estado='VERIFICADO'
+              AND b.fecha_despacho IS NOT NULL AND b.fecha_recepcion IS NOT NULL
+              AND (? IS NULL OR s.id=?)
+            GROUP BY s.id ORDER BY horas_promedio DESC""",
+            (sucursal_id, sucursal_id))
+
+    def estados_transito(self, sucursal_id=None):
+        return self.db.consultar(
+            """SELECT s.id AS sucursal_id, s.nombre AS local,
+                      SUM(CASE WHEN b.estado IN ('EN_TRANSITO', 'RECIBIDO')
+                               THEN 1 ELSE 0 END) AS pendientes_verificacion,
+                      SUM(CASE WHEN b.estado='RECHAZADO' THEN 1 ELSE 0 END) AS rechazados,
+                      SUM(CASE WHEN b.estado='PERDIDO' THEN 1 ELSE 0 END) AS perdidos
+               FROM sucursal s
+               LEFT JOIN orden_reposicion o ON o.destino_id=s.id
+               LEFT JOIN remito r ON r.orden_id=o.id
+               LEFT JOIN bulto b ON b.remito_id=r.id
+               WHERE s.tipo='LOCAL' AND (? IS NULL OR s.id=?)
+               GROUP BY s.id ORDER BY s.nombre""",
+            (sucursal_id, sucursal_id))
+
+    def alertas_verificacion(self, sucursal_id=None):
+        return self.db.consultar(
+            """SELECT b.id AS bulto_id, r.numero AS remito, s.nombre AS local,
+                      b.estado, b.fecha_despacho, b.fecha_recepcion,
+                      ROUND((julianday('now', 'localtime')
+                             - julianday(b.fecha_despacho))*24, 1) AS horas_sin_verificar,
+                      CASE WHEN julianday('now', 'localtime')
+                                    - julianday(b.fecha_despacho) >= 2
+                           THEN 'ESCALADO_48_HORAS'
+                           ELSE 'ALERTA_24_HORAS' END AS nivel
+               FROM bulto b
+               JOIN remito r ON r.id=b.remito_id
+               JOIN orden_reposicion o ON o.id=r.orden_id
+               JOIN sucursal s ON s.id=o.destino_id
+               WHERE b.estado IN ('EN_TRANSITO', 'RECIBIDO')
+                 AND b.fecha_despacho IS NOT NULL
+                 AND b.fecha_despacho <= datetime('now', 'localtime', '-24 hours')
+                 AND (? IS NULL OR s.id=?)
+               ORDER BY b.fecha_despacho""",
+            (sucursal_id, sucursal_id))
 
     def existencias(self, sucursal_id):
         return self.db.consultar("""
@@ -97,12 +145,40 @@ class ReportesDAO:
                    COALESCE(st.disponible, 0) AS disponible,
                    COALESCE(st.reservado, 0) AS reservado,
                    COALESCE(st.disponible - st.reservado, 0) AS libre,
+                   COALESCE(logistica.en_transito, 0) AS en_transito,
+                   COALESCE(logistica.recibido_sin_verificar, 0) AS recibido_sin_verificar,
+                   COALESCE(logistica.rechazado, 0) AS rechazado,
+                   COALESCE(libro.movimientos, 0) AS saldo_segun_movimientos,
+                   COALESCE(st.disponible, 0)-COALESCE(libro.movimientos, 0)
+                       AS diferencia_movimientos,
                    p.stock_minimo,
-                   CASE WHEN COALESCE(st.disponible - st.reservado, 0) < p.stock_minimo
+                   CASE WHEN COALESCE(st.disponible, 0)!=COALESCE(libro.movimientos, 0)
+                        THEN 'CONCILIAR'
+                        WHEN COALESCE(st.disponible-st.reservado, 0)<p.stock_minimo
                         THEN 'BAJO MÍNIMO' ELSE 'OK' END AS estado
             FROM sucursal s
             CROSS JOIN producto p
             LEFT JOIN stock st ON st.sucursal_id = s.id AND st.producto_id = p.id
+            LEFT JOIN (
+                SELECT m.sucursal_id, m.producto_id, SUM(m.cantidad) AS movimientos
+                FROM movimiento_stock m
+                GROUP BY m.sucursal_id, m.producto_id
+            ) libro ON libro.sucursal_id=s.id AND libro.producto_id=p.id
+            LEFT JOIN (
+                SELECT o.destino_id AS sucursal_id, db.producto_id,
+                       SUM(CASE WHEN b.estado='EN_TRANSITO' THEN db.cantidad ELSE 0 END)
+                           AS en_transito,
+                       SUM(CASE WHEN b.estado='RECIBIDO' THEN db.cantidad ELSE 0 END)
+                           AS recibido_sin_verificar,
+                       SUM(CASE WHEN b.estado='RECHAZADO' THEN db.cantidad ELSE 0 END)
+                           AS rechazado
+                FROM orden_reposicion o
+                JOIN remito r ON r.orden_id=o.id
+                JOIN bulto b ON b.remito_id=r.id
+                JOIN detalle_bulto db ON db.bulto_id=b.id
+                GROUP BY o.destino_id, db.producto_id
+            ) logistica ON logistica.sucursal_id=s.id
+                        AND logistica.producto_id=p.id
             WHERE (? IS NULL OR s.id = ?)
             ORDER BY estado = 'OK', s.nombre, p.nombre""",
             (sucursal_id, sucursal_id))
@@ -140,7 +216,10 @@ class ReportesDAO:
                 SELECT 'RECEPCION' AS tipo, m.referencia AS operacion_id,
                        NULL AS venta_id, NULL AS devolucion_id, date(MAX(m.fecha)) AS fecha,
                        s.nombre AS sucursal, m.referencia AS referencia,
-                       SUM(m.cantidad) AS unidades, NULL AS valor
+                       SUM(m.cantidad) AS unidades,
+                       CASE WHEN COUNT(m.costo_unitario)=COUNT(*)
+                            THEN ROUND(SUM(m.cantidad * m.costo_unitario), 2)
+                            ELSE NULL END AS valor
                 FROM movimiento_stock m
                 JOIN sucursal s ON s.id = m.sucursal_id
                 WHERE m.motivo='RECEPCION' AND (? IS NULL OR m.sucursal_id = ?)
@@ -173,7 +252,10 @@ class ReportesDAO:
             WITH vendido AS (
                 SELECT dv.producto_id,
                        SUM(dv.cantidad) AS unidades,
-                       SUM(dv.cantidad * dv.precio_unitario) AS ingresos
+                       SUM(dv.cantidad * dv.precio_unitario) AS ingresos,
+                       SUM(dv.cantidad * dv.costo_unitario) AS costo,
+                       SUM(CASE WHEN dv.costo_unitario IS NULL
+                                THEN dv.cantidad ELSE 0 END) AS unidades_sin_costo
                 FROM detalle_venta dv
                 JOIN venta v ON v.id = dv.venta_id
                 WHERE {where_vendido}
@@ -182,7 +264,10 @@ class ReportesDAO:
             devuelto AS (
                 SELECT dd.producto_id,
                        SUM(dd.cantidad) AS unidades,
-                       SUM(dd.cantidad * dd.precio_unitario) AS importe
+                       SUM(dd.cantidad * dd.precio_unitario) AS importe,
+                       SUM(dd.cantidad * dd.costo_unitario) AS costo,
+                       SUM(CASE WHEN dd.costo_unitario IS NULL
+                                THEN dd.cantidad ELSE 0 END) AS unidades_sin_costo
                 FROM detalle_devolucion dd
                 JOIN devolucion d ON d.id = dd.devolucion_id
                 JOIN venta v ON v.id = d.venta_id
@@ -192,12 +277,24 @@ class ReportesDAO:
             SELECT p.codigo, p.nombre AS producto,
                    ve.unidades - COALESCE(de.unidades, 0) AS unidades,
                    ROUND(ve.ingresos - COALESCE(de.importe, 0), 2) AS ingresos,
-                   ROUND((ve.unidades - COALESCE(de.unidades, 0)) * p.precio_costo, 2) AS costo,
-                   ROUND(ve.ingresos - COALESCE(de.importe, 0)
-                         - (ve.unidades - COALESCE(de.unidades, 0)) * p.precio_costo, 2) AS margen,
-                   ROUND(100.0 * (ve.ingresos - COALESCE(de.importe, 0)
-                         - (ve.unidades - COALESCE(de.unidades, 0)) * p.precio_costo)
-                         / NULLIF(ve.ingresos - COALESCE(de.importe, 0), 0), 1) AS margen_pct
+                   CASE WHEN ve.unidades_sin_costo=0
+                              AND COALESCE(de.unidades_sin_costo, 0)=0
+                        THEN ROUND(ve.costo - COALESCE(de.costo, 0), 2)
+                        ELSE NULL END AS costo,
+                   CASE WHEN ve.unidades_sin_costo=0
+                              AND COALESCE(de.unidades_sin_costo, 0)=0
+                        THEN ROUND(ve.ingresos - COALESCE(de.importe, 0)
+                             - ve.costo + COALESCE(de.costo, 0), 2)
+                        ELSE NULL END AS margen,
+                   CASE WHEN ve.unidades_sin_costo=0
+                              AND COALESCE(de.unidades_sin_costo, 0)=0
+                        THEN ROUND(100.0 * (ve.ingresos - COALESCE(de.importe, 0)
+                             - ve.costo + COALESCE(de.costo, 0))
+                             / NULLIF(ve.ingresos - COALESCE(de.importe, 0), 0), 1)
+                        ELSE NULL END AS margen_pct,
+                   CASE WHEN ve.unidades_sin_costo>0
+                              OR COALESCE(de.unidades_sin_costo, 0)>0
+                        THEN 1 ELSE 0 END AS costo_faltante
             FROM vendido ve
             JOIN producto p ON p.id = ve.producto_id
             LEFT JOIN devuelto de ON de.producto_id = ve.producto_id

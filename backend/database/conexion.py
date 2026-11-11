@@ -13,6 +13,7 @@ La primera vez crea el objeto; las siguientes devuelve siempre el mismo.
     a is b   # True
 """
 import os
+import re
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -60,6 +61,171 @@ class BaseDeDatos:
                 """ALTER TABLE orden_reposicion
                    ADD COLUMN solicitado_por_usuario_id INTEGER REFERENCES usuario(id)""")
             self._conexion.commit()
+        columnas_proveedor = [
+            c["name"] for c in self.consultar("PRAGMA table_info(proveedor)")
+        ]
+        if "nombre" not in columnas_proveedor:
+            self._conexion.execute(
+                "ALTER TABLE proveedor ADD COLUMN nombre TEXT NOT NULL DEFAULT ''")
+            self._conexion.execute(
+                """UPDATE proveedor SET nombre=razon_social
+                   WHERE trim(nombre)=''""")
+            self._conexion.commit()
+        columnas_proveedor = [
+            c["name"] for c in self.consultar("PRAGMA table_info(proveedor)")
+        ]
+        if "activo" not in columnas_proveedor:
+            self._conexion.execute(
+                "ALTER TABLE proveedor ADD COLUMN activo INTEGER NOT NULL DEFAULT 1")
+            self._conexion.commit()
+        proveedores = self.consultar("SELECT id, cuit FROM proveedor ORDER BY id")
+        cuit_por_digitos = {}
+        for proveedor in proveedores:
+            cuit_normalizado = re.sub(r"[^0-9]", "", proveedor["cuit"])
+            if not cuit_normalizado:
+                continue
+            otro_id = cuit_por_digitos.get(cuit_normalizado)
+            if otro_id is not None and otro_id != proveedor["id"]:
+                raise sqlite3.IntegrityError(
+                    "Hay proveedores duplicados al normalizar sus CUIT; "
+                    "resolvelos antes de iniciar la aplicación")
+            cuit_por_digitos[cuit_normalizado] = proveedor["id"]
+            if proveedor["cuit"] != cuit_normalizado:
+                self._conexion.execute(
+                    "UPDATE proveedor SET cuit=? WHERE id=?",
+                    (cuit_normalizado, proveedor["id"]))
+        self._conexion.commit()
+        columnas_sucursal = [
+            c["name"] for c in self.consultar("PRAGMA table_info(sucursal)")
+        ]
+        if "activo" not in columnas_sucursal:
+            self._conexion.execute(
+                "ALTER TABLE sucursal ADD COLUMN activo INTEGER NOT NULL DEFAULT 1")
+            self._conexion.commit()
+        columnas_sucursal = [
+            c["name"] for c in self.consultar("PRAGMA table_info(sucursal)")
+        ]
+        if "codigo" not in columnas_sucursal:
+            self._conexion.execute("ALTER TABLE sucursal ADD COLUMN codigo TEXT")
+            self._conexion.commit()
+        self._conexion.execute(
+            """UPDATE sucursal SET codigo='SUC-' || printf('%06d', id)
+               WHERE codigo IS NULL OR trim(codigo)=''""")
+        self._conexion.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_sucursal_codigo ON sucursal(codigo)")
+
+        columnas_categoria = [
+            c["name"] for c in self.consultar("PRAGMA table_info(categoria)")
+        ]
+        if "activo" not in columnas_categoria:
+            self._conexion.execute(
+                "ALTER TABLE categoria ADD COLUMN activo INTEGER NOT NULL DEFAULT 1")
+
+        columnas_producto = [
+            c["name"] for c in self.consultar("PRAGMA table_info(producto)")
+        ]
+        if "activo" not in columnas_producto:
+            self._conexion.execute(
+                "ALTER TABLE producto ADD COLUMN activo INTEGER NOT NULL DEFAULT 1")
+
+        columnas_movimiento = [
+            c["name"] for c in self.consultar("PRAGMA table_info(movimiento_stock)")
+        ]
+        if "costo_unitario" not in columnas_movimiento:
+            self._conexion.execute(
+                "ALTER TABLE movimiento_stock ADD COLUMN costo_unitario REAL")
+
+        columnas_detalle_bulto = [
+            c["name"] for c in self.consultar("PRAGMA table_info(detalle_bulto)")
+        ]
+        if "costo_unitario" not in columnas_detalle_bulto:
+            self._conexion.execute(
+                "ALTER TABLE detalle_bulto ADD COLUMN costo_unitario REAL")
+
+        columnas_orden = [
+            c["name"] for c in self.consultar("PRAGMA table_info(orden_reposicion)")
+        ]
+        if "fecha_vencimiento" not in columnas_orden:
+            self._conexion.execute(
+                "ALTER TABLE orden_reposicion ADD COLUMN fecha_vencimiento TEXT")
+            self._conexion.execute(
+                """UPDATE orden_reposicion
+                   SET fecha_vencimiento=datetime(fecha, '+30 days')
+                   WHERE fecha_vencimiento IS NULL OR trim(fecha_vencimiento)=''""")
+        if "resolucion" not in columnas_orden:
+            self._conexion.execute(
+                "ALTER TABLE orden_reposicion ADD COLUMN resolucion TEXT")
+        if "motivo_resolucion" not in columnas_orden:
+            self._conexion.execute(
+                "ALTER TABLE orden_reposicion ADD COLUMN motivo_resolucion TEXT")
+        if "aviso_vencimiento_enviado" not in columnas_orden:
+            self._conexion.execute(
+                """ALTER TABLE orden_reposicion
+                   ADD COLUMN aviso_vencimiento_enviado INTEGER NOT NULL DEFAULT 0""")
+
+        columnas_bulto = [
+            c["name"] for c in self.consultar("PRAGMA table_info(bulto)")
+        ]
+        if "intento" not in columnas_bulto:
+            self._conexion.execute(
+                "ALTER TABLE bulto ADD COLUMN intento INTEGER NOT NULL DEFAULT 1")
+        if "usuario_despacho_id" not in columnas_bulto:
+            self._conexion.execute(
+                "ALTER TABLE bulto ADD COLUMN usuario_despacho_id INTEGER REFERENCES usuario(id)")
+        if "observacion_rechazo" not in columnas_bulto:
+            self._conexion.execute(
+                "ALTER TABLE bulto ADD COLUMN observacion_rechazo TEXT")
+
+        columnas_historial = [
+            c["name"] for c in self.consultar("PRAGMA table_info(historial_bulto)")
+        ]
+        if "desde_estado" not in columnas_historial:
+            self._conexion.execute(
+                "ALTER TABLE historial_bulto ADD COLUMN desde_estado TEXT")
+        if "usuario_id" not in columnas_historial:
+            self._conexion.execute(
+                "ALTER TABLE historial_bulto ADD COLUMN usuario_id INTEGER REFERENCES usuario(id)")
+        if "intento" not in columnas_historial:
+            self._conexion.execute(
+                "ALTER TABLE historial_bulto ADD COLUMN intento INTEGER NOT NULL DEFAULT 1")
+
+        for tabla in ("detalle_venta", "detalle_devolucion"):
+            columnas = [
+                c["name"] for c in self.consultar(f"PRAGMA table_info({tabla})")
+            ]
+            if "costo_unitario" not in columnas:
+                self._conexion.execute(
+                    f"ALTER TABLE {tabla} ADD COLUMN costo_unitario REAL")
+
+        self._conexion.execute(
+            """INSERT OR IGNORE INTO producto_sucursal (sucursal_id, producto_id, habilitado)
+               SELECT s.id, p.id, 1 FROM sucursal s CROSS JOIN producto p
+               WHERE s.tipo='LOCAL' AND s.activo=1 AND p.activo=1""")
+        self._conexion.executescript("""
+            CREATE TRIGGER IF NOT EXISTS sucursal_codigo_automatico
+            AFTER INSERT ON sucursal
+            WHEN NEW.codigo IS NULL OR trim(NEW.codigo) = ''
+            BEGIN
+                UPDATE sucursal SET codigo = 'SUC-' || printf('%06d', NEW.id)
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS producto_habilitado_en_locales
+            AFTER INSERT ON producto
+            BEGIN
+                INSERT OR IGNORE INTO producto_sucursal (sucursal_id, producto_id, habilitado)
+                SELECT id, NEW.id, 1 FROM sucursal WHERE tipo = 'LOCAL' AND activo = 1;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS local_habilita_productos_activos
+            AFTER INSERT ON sucursal
+            WHEN NEW.tipo = 'LOCAL' AND NEW.activo = 1
+            BEGIN
+                INSERT OR IGNORE INTO producto_sucursal (sucursal_id, producto_id, habilitado)
+                SELECT NEW.id, id, 1 FROM producto WHERE activo = 1;
+            END;
+        """)
+        self._conexion.commit()
 
     # ---------- helpers de consulta ----------
     

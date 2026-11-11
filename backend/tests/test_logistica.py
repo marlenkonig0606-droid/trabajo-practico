@@ -9,6 +9,7 @@ from services.logistica_service import LogisticaService
 from services.stock_service import StockService, StockObserver
 from services.excepciones import NoEncontradoError, ReglaNegocioError
 from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver
+from services.catalogo_service import CatalogoService
 
 CD, LOCAL = 1, 2
 AGUA, YERBA = 1, 3
@@ -52,11 +53,20 @@ def test_flujo_feliz_suma_stock_solo_al_verificar(svc):
 
 
 def test_local_puede_rechazar_bulto_y_no_habilita_venta(svc):
-    _, bulto = armar_y_despachar(svc)
+    orden, bulto = armar_y_despachar(svc)
     svc.recibir(bulto["id"])
-    r = svc.verificar_recepcion(bulto["id"], False)
+    r = svc.verificar_recepcion(
+        bulto["id"], False, "Precinto dañado al recibir")
     assert r["estado"] == "RECHAZADO"
     assert StockService().disponible(LOCAL, AGUA) == 0
+    assert StockService().disponible(CD, AGUA) == 500
+    assert svc.obtener_bulto(bulto["id"]).estado == "RECHAZADO"
+    assert svc.dao.obtener_bulto(bulto["id"])["observacion_rechazo"] == (
+        "Precinto dañado al recibir")
+    nuevo = svc.crear_bulto(
+        orden["id"], [{"producto_id": AGUA, "cantidad": 10}])
+    assert nuevo["id"] != bulto["id"]
+    assert StockService().reservado(CD, AGUA) == 10
 
 
 def test_remito_con_dos_bultos_espera_a_ambos(svc):
@@ -73,7 +83,7 @@ def test_remito_con_dos_bultos_espera_a_ambos(svc):
     svc.verificar_recepcion(b1["id"], True)
     assert StockService().disponible(LOCAL, AGUA) == 0   # remito todavía no verificado
     svc.recibir(b2["id"])
-    svc.verificar_recepcion(b2["id"], False)
+    svc.verificar_recepcion(b2["id"], False, "Bulto incompleto")
     assert StockService().disponible(LOCAL, AGUA) == 5    # entra solo lo verificado
     assert StockService().disponible(LOCAL, YERBA) == 0
 
@@ -98,6 +108,72 @@ def test_no_empaquetar_mas_de_lo_pedido(svc):
     with pytest.raises(ReglaNegocioError):
         svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 4}])
 
+
+def test_solicitud_rechaza_cantidades_no_enteras_y_producto_no_habilitado(svc):
+    with pytest.raises(ReglaNegocioError, match="entero positivo"):
+        svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1.5}])
+    CatalogoService().cambiar_habilitacion_producto(LOCAL, AGUA, False)
+    with pytest.raises(ReglaNegocioError, match="no está habilitado"):
+        svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
+
+
+def test_sugerencia_descuenta_ordenes_abiertas_sin_contarlas_como_stock(svc):
+    svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 10}])
+    sugerencias = svc.sugerir_orden(LOCAL)
+    assert next(item for item in sugerencias if item["producto_id"] == AGUA) == {
+        "producto_id": AGUA, "nombre": "Agua 1.5L", "cantidad": 10,
+    }
+    assert StockService().disponible(LOCAL, AGUA) == 0
+
+
+def test_cancelar_orden_libera_reservas_y_registra_resolucion(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 5}])
+    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 5}])
+    svc.precintar(bulto["id"])
+    resultado = svc.resolver_orden(orden["id"], "CANCELAR", "Solicitud duplicada")
+    assert resultado["estado"] == "CERRADA"
+    assert resultado["resolucion"] == "CANCELADA"
+    assert StockService().reservado(CD, AGUA) == 0
+
+
+def test_rechazo_del_cd_notifica_al_local_y_la_notificacion_se_marca_leida(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
+    svc.resolver_orden(orden["id"], "RECHAZAR", "Sin disponibilidad")
+
+    primera_lectura = svc.notificaciones(LOCAL)
+    segunda_lectura = svc.notificaciones(LOCAL)
+
+    assert primera_lectura[0]["evento"] == "ORDEN_RECHAZADA"
+    assert "Sin disponibilidad" in primera_lectura[0]["mensaje"]
+    assert primera_lectura[0]["leida"] == 0
+    assert segunda_lectura[0]["leida"] == 1
+
+
+def test_orden_pendiente_vencida_cancela_bultos_y_libera_stock(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 5}])
+    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 5}])
+    BaseDeDatos().ejecutar(
+        "UPDATE orden_reposicion SET fecha_vencimiento='2000-01-01 00:00:00' WHERE id=?",
+        (orden["id"],))
+    svc.procesar_vencimientos()
+    orden_vencida = svc.obtener_orden(orden["id"])
+    assert orden_vencida["resolucion"] == "VENCIDA"
+    assert svc.obtener_bulto(bulto["id"]).estado == "ANULADO"
+    assert StockService().reservado(CD, AGUA) == 0
+
+
+def test_orden_proxima_a_vencer_avisa_al_local(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
+    BaseDeDatos().ejecutar(
+        """UPDATE orden_reposicion SET fecha_vencimiento=
+           datetime('now', 'localtime', '+12 hours') WHERE id=?""",
+        (orden["id"],))
+
+    svc.listar_ordenes()
+
+    notificacion = svc.notificaciones(LOCAL)[0]
+    assert notificacion["evento"] == "ORDEN_POR_VENCER"
+    assert "24 horas" in notificacion["mensaje"]
 
 def test_precintos_generados_son_unicos(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 2}])
@@ -142,6 +218,33 @@ def test_sin_stock_libre_no_se_arma_el_bulto(svc):
     assert StockService().reservado(CD, AGUA) == 0
 
 
+def test_no_se_desactiva_local_con_bultos_en_transito(svc):
+    armar_y_despachar(svc)
+
+    with pytest.raises(ReglaNegocioError, match="bultos en tránsito"):
+        CatalogoService().cambiar_estado_sucursal(LOCAL, False)
+
+
+def test_sucursal_inactiva_no_recibe_ordenes_ni_despachos(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
+    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 1}])
+    svc.precintar(bulto["id"])
+    CatalogoService().cambiar_estado_sucursal(LOCAL, False)
+
+    with pytest.raises(ReglaNegocioError, match="sucursal inactiva"):
+        svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 1}])
+    with pytest.raises(ReglaNegocioError, match="sucursal inactiva"):
+        svc.despachar(bulto["id"])
+
+
+def test_sucursal_inactiva_no_registra_recepcion(svc):
+    _, bulto = armar_y_despachar(svc)
+    BaseDeDatos().ejecutar("UPDATE sucursal SET activo=0 WHERE id=?", (LOCAL,))
+
+    with pytest.raises(ReglaNegocioError, match="sucursal inactiva"):
+        svc.recibir(bulto["id"])
+
+
 def test_dos_usuarios_a_la_vez_por_el_mismo_stock(svc):
     """Hay 500 en el CD. Dos usuarios piden 300 cada uno EXACTAMENTE al mismo tiempo.
     Solo uno puede quedarse con el stock; el otro recibe un error claro."""
@@ -167,7 +270,7 @@ def test_dos_usuarios_a_la_vez_por_el_mismo_stock(svc):
 
 
 def test_muchos_usuarios_nunca_sobrevenden(svc):
-    """20 usuarios piden 40 unidades a la vez (800 en total) sobre 500 -> entran 12."""
+    """Veinte órdenes se atienden en FIFO sin comprometer más de 500 unidades."""
     ordenes = [svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 40}]) for _ in range(20)]
     largada = threading.Barrier(len(ordenes))
     exitos = []
@@ -183,6 +286,16 @@ def test_muchos_usuarios_nunca_sobrevenden(svc):
     hilos = [threading.Thread(target=usuario, args=(o["id"],)) for o in ordenes]
     for h in hilos: h.start()
     for h in hilos: h.join()
+
+    for orden in ordenes:
+        if orden["id"] in exitos:
+            continue
+        try:
+            svc.crear_bulto(
+                orden["id"], [{"producto_id": AGUA, "cantidad": 40}])
+            exitos.append(orden["id"])
+        except ReglaNegocioError:
+            pass
 
     assert len(exitos) == 12                              # 12 * 40 = 480 <= 500
     assert StockService().reservado(CD, AGUA) == 480
@@ -242,3 +355,38 @@ def test_anular_sin_motivo(svc):
     with pytest.raises(ReglaNegocioError):
         svc.anular_bulto(bulto["id"], "  ")
     assert StockService().reservado(CD, AGUA) == 1
+
+
+def test_reabrir_bulto_precintado_anula_el_precinto_y_registra_nuevo_intento(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 2}])
+    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 2}])
+    precinto_anterior = svc.precintar(bulto["id"])["precinto"]
+
+    reabierto = svc.reabrir_bulto(bulto["id"], "Corregir el embalaje")
+    assert reabierto["estado"] == "PREPARADO"
+    assert reabierto["precinto"] is None
+
+    precinto_nuevo = svc.precintar(bulto["id"])["precinto"]
+    assert precinto_nuevo != precinto_anterior
+    historial = svc.historial(bulto["id"])
+    assert "Precinto anterior anulado" in historial[2]["observacion"]
+    assert historial[-1]["intento"] == 2
+
+
+def test_no_se_reabre_un_bulto_despachado(svc):
+    _, bulto = armar_y_despachar(svc)
+    with pytest.raises(ReglaNegocioError, match="reabrir"):
+        svc.reabrir_bulto(bulto["id"], "Cambiar el contenido")
+
+
+def test_bulto_perdido_requiere_48_horas_y_no_se_suma_al_local(svc):
+    _, bulto = armar_y_despachar(svc, 2)
+    with pytest.raises(ReglaNegocioError, match="48 horas"):
+        svc.marcar_perdido(bulto["id"], "Sin novedades")
+
+    BaseDeDatos().ejecutar(
+        """UPDATE bulto SET fecha_despacho=datetime('now', 'localtime', '-49 hours')
+           WHERE id=?""", (bulto["id"],))
+    perdido = svc.marcar_perdido(bulto["id"], "Sin novedades")
+    assert perdido["estado"] == "PERDIDO"
+    assert StockService().disponible(LOCAL, AGUA) == 0

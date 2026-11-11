@@ -6,10 +6,11 @@ from abc import ABC, abstractmethod
 
 
 class Sucursal(ABC):
-    def __init__(self, id, nombre, direccion=None):
+    def __init__(self, id, nombre, direccion=None, activo=True):
         self.id = id
         self.nombre = nombre
         self.direccion = direccion
+        self.activo = bool(activo)
 
     @property
     @abstractmethod
@@ -23,11 +24,13 @@ class Sucursal(ABC):
     @staticmethod
     def desde_fila(fila):
         clase = CentroDistribucion if fila["tipo"] == "CD" else LocalVenta
-        return clase(fila["id"], fila["nombre"], fila["direccion"])
+        return clase(
+            fila["id"], fila["nombre"], fila["direccion"], fila["activo"])
 
     def to_dict(self):
         return {"id": self.id, "nombre": self.nombre,
-                "direccion": self.direccion, "tipo": self.tipo}
+                "direccion": self.direccion, "tipo": self.tipo,
+                "activo": self.activo}
 
 
 class CentroDistribucion(Sucursal):

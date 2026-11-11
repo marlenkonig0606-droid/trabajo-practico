@@ -5,6 +5,7 @@ import pytest
 from app import crear_app
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
+from services.stock_service import StockService
 
 
 @pytest.fixture
@@ -12,10 +13,7 @@ def cliente_api(tmp_path):
     BaseDeDatos.reiniciar()
     db = BaseDeDatos(str(tmp_path / "ventas_api.db"))
     cargar(incluir_demo=False)
-    with db.transaccion():
-        db.ejecutar(
-            "INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (2, 1, 5)"
-        )
+    StockService().sumar(2, 1, 5, "APERTURA_TEST")
     app = crear_app(cargar_demo=False)
     app.config.update(TESTING=True)
     cliente = app.test_client()
@@ -95,6 +93,49 @@ def test_api_resumen_filtra_local_y_cd_compara_todas_las_sucursales(
     resumen_cd = cliente_api.get("/api/reportes/resumen").get_json()
     assert resumen_cd["ventas"] == 1
     assert resumen_cd["local_mas_vendio"]["nombre"] == "Local Centro"
+
+
+def test_cd_crea_sucursales_que_aparecen_en_acceso_y_puede_desactivarlas(
+        cliente_api, monkeypatch):
+    cliente_api.post("/api/auth/logout")
+    monkeypatch.setenv("CD_REGISTRATION_CODE", "codigo-prueba")
+    registrado = cliente_api.post(
+        "/api/auth/register",
+        json={
+            "email": "cd@example.com",
+            "password": "contraseña-segura",
+            "sucursal_id": 1,
+            "codigo_cd": "codigo-prueba",
+        },
+    )
+    assert registrado.status_code == 201
+
+    nuevo_local = cliente_api.post(
+        "/api/sucursales",
+        json={"nombre": "Local Nuevo", "direccion": "Calle 123", "tipo": "LOCAL"},
+    )
+    nuevo_cd = cliente_api.post(
+        "/api/sucursales",
+        json={"nombre": "CD Nuevo", "direccion": "Ruta 9", "tipo": "CD"},
+    )
+    assert nuevo_local.status_code == 201
+    assert nuevo_cd.status_code == 201
+    local_id = nuevo_local.get_json()["id"]
+
+    desactivado = cliente_api.patch(
+        f"/api/sucursales/{local_id}/estado", json={"activo": False})
+
+    assert desactivado.status_code == 200
+    assert desactivado.get_json()["activo"] == 0
+    assert local_id not in {
+        sucursal["id"] for sucursal in cliente_api.get("/api/sucursales").get_json()
+    }
+    catalogo = cliente_api.get("/api/catalogo/sucursales")
+    assert catalogo.status_code == 200
+    assert any(
+        sucursal["id"] == local_id and sucursal["activo"] == 0
+        for sucursal in catalogo.get_json()
+    )
 
 
 def test_api_resumen_aplica_el_rango_completo_de_fechas(cliente_api):
@@ -520,7 +561,7 @@ def test_local_rechaza_bulto_si_precinto_roto_sin_sumar_stock(cliente_api, monke
     assert recepcion.get_json()["estado"] == "RECIBIDO"
     verificacion = cliente_api.post(
         f"/api/bultos/{bulto['id']}/verificar",
-        json={"aprobado": False},
+        json={"aprobado": False, "motivo": "Precinto dañado"},
     )
 
     assert verificacion.status_code == 200
@@ -563,7 +604,7 @@ def test_local_rechaza_manualmente_bulto_y_no_suma_stock(cliente_api, monkeypatc
     assert recepcion.status_code == 200
     verificacion = cliente_api.post(
         f"/api/bultos/{bulto['id']}/verificar",
-        json={"aprobado": False},
+        json={"aprobado": False, "motivo": "Bulto incompleto"},
     )
 
     assert verificacion.status_code == 200

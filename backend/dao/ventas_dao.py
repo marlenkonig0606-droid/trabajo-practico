@@ -52,23 +52,29 @@ class VentasDAO:
 
     def tipo_sucursal(self, sucursal_id):
         return self.db.consultar_uno(
-            "SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))
+            "SELECT tipo, activo FROM sucursal WHERE id=?", (sucursal_id,))
 
-    def precio_producto(self, producto_id):
+    def precio_producto(self, producto_id, sucursal_id):
         return self.db.consultar_uno(
-            "SELECT precio_venta FROM producto WHERE id=?", (producto_id,))
+            """SELECT p.precio_venta, p.precio_costo, p.activo,
+                      COALESCE(ps.habilitado, 0) AS habilitado
+               FROM producto p
+               LEFT JOIN producto_sucursal ps
+                 ON ps.producto_id=p.id AND ps.sucursal_id=?
+               WHERE p.id=?""", (sucursal_id, producto_id))
 
     def crear_venta(self, sucursal_id, subtotal, total):
         return self.db.ejecutar(
             """INSERT INTO venta (sucursal_id, subtotal, total)
                VALUES (?, ?, ?)""", (sucursal_id, subtotal, total))
 
-    def crear_detalle_venta(self, venta_id, producto_id, cantidad, precio_unitario):
+    def crear_detalle_venta(self, venta_id, producto_id, cantidad, precio_unitario,
+                            costo_unitario):
         return self.db.ejecutar(
             """INSERT INTO detalle_venta
-               (venta_id, producto_id, cantidad, precio_unitario)
-               VALUES (?, ?, ?, ?)""",
-            (venta_id, producto_id, cantidad, precio_unitario))
+               (venta_id, producto_id, cantidad, precio_unitario, costo_unitario)
+               VALUES (?, ?, ?, ?, ?)""",
+            (venta_id, producto_id, cantidad, precio_unitario, costo_unitario))
 
     def siguiente_numero_comprobante(self):
         return self.db.consultar_uno(
@@ -87,7 +93,8 @@ class VentasDAO:
 
     def obtener_para_devolucion(self, venta_id):
         return self.db.consultar_uno(
-            """SELECT v.id, v.sucursal_id, v.subtotal, p.importe AS importe_pagado
+            """SELECT v.id, v.sucursal_id, v.fecha, v.subtotal,
+                      p.importe AS importe_pagado
                FROM venta v
                JOIN pago p ON p.venta_id = v.id
                WHERE v.id=?""", (venta_id,))
@@ -98,7 +105,7 @@ class VentasDAO:
 
     def detalles_para_devolucion(self, venta_id):
         return self.db.consultar(
-            """SELECT producto_id, cantidad, precio_unitario
+            """SELECT producto_id, cantidad, precio_unitario, costo_unitario
                FROM detalle_venta WHERE venta_id=?""", (venta_id,))
 
     def devoluciones_previas(self, venta_id):
@@ -114,12 +121,12 @@ class VentasDAO:
                VALUES (?, ?, ?)""", (venta_id, motivo, total))
 
     def crear_detalle_devolucion(
-            self, devolucion_id, producto_id, cantidad, precio_unitario):
+            self, devolucion_id, producto_id, cantidad, precio_unitario, costo_unitario):
         return self.db.ejecutar(
             """INSERT INTO detalle_devolucion
-               (devolucion_id, producto_id, cantidad, precio_unitario)
-               VALUES (?, ?, ?, ?)""",
-            (devolucion_id, producto_id, cantidad, precio_unitario))
+               (devolucion_id, producto_id, cantidad, precio_unitario, costo_unitario)
+               VALUES (?, ?, ?, ?, ?)""",
+            (devolucion_id, producto_id, cantidad, precio_unitario, costo_unitario))
 
     def crear_movimiento_caja(self, sucursal_id, devolucion_id, importe):
         return self.db.ejecutar(

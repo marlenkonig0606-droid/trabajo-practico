@@ -121,6 +121,67 @@ export default function Stock({ usuario }) {
         </tbody>
       </table>
     </section>
+    {usuario.tipo === 'LOCAL' && (
+      <HabilitacionesProductos sucursalId={usuario.sucursal_id} />
+    )}
     </>
+  )
+}
+
+function HabilitacionesProductos({ sucursalId }) {
+  const [productos, setProductos] = useState([])
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(null)
+
+  const recargar = () => api.productosSucursal(sucursalId).then(setProductos)
+
+  useEffect(() => {
+    recargar().catch((e) => setError(e.message))
+  }, [sucursalId])
+
+  const cambiar = async (producto) => {
+    setError('')
+    setGuardando(producto.id)
+    try {
+      await api.cambiarHabilitacionProducto(
+        sucursalId, producto.id, !Boolean(producto.habilitado),
+      )
+      await recargar()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setGuardando(null)
+    }
+  }
+
+  return (
+    <section className="tarjeta">
+      <h2>Productos habilitados en mi local</h2>
+      <p className="ayuda">
+        Solo los productos habilitados aparecen para solicitar o vender. Para
+        deshabilitar uno, primero transferí o ajustá su stock y resolvé sus bultos pendientes.
+      </p>
+      {error && <div className="error" role="alert">{error}</div>}
+      {productos.length === 0 ? <p className="vacio">No hay productos activos.</p> : (
+        <table>
+          <thead><tr><th>Código</th><th>Producto</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody>
+            {productos.map((producto) => (
+              <tr key={producto.id}>
+                <td>{producto.codigo}</td>
+                <td>{producto.nombre}</td>
+                <td>{producto.habilitado ? 'Habilitado' : 'Deshabilitado'}</td>
+                <td>
+                  <button disabled={guardando === producto.id}
+                          onClick={() => cambiar(producto)}>
+                    {producto.habilitado ? 'Deshabilitar' : 'Habilitar'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }

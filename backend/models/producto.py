@@ -1,3 +1,7 @@
+def normalizar_codigo(codigo):
+    return "".join(codigo.split()).lower()
+
+
 class Producto:
     def __init__(self, id, codigo, nombre, categoria_id, precio_costo, precio_venta,
                  stock_minimo=0, proveedor_id=None):

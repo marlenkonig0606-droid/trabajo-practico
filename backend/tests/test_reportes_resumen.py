@@ -46,3 +46,14 @@ def test_resumen_compara_locales_y_calcula_ingresos_netos(reportes):
     assert resumen_local["ventas"] == 1
     assert resumen_local["ingresos_netos"] == 1400
     assert resumen_local["local_mas_vendio"] is None
+
+
+def test_margen_usa_el_costo_guardado_en_la_venta(reportes):
+    db = BaseDeDatos()
+    db.ejecutar("UPDATE producto SET precio_costo=900 WHERE id=1")
+
+    producto = reportes.mas_vendidos()[0]
+
+    assert producto["costo"] == 2000
+    assert producto["margen"] == 1500
+    assert producto["costo_faltante"] == 0

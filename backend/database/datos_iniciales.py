@@ -28,21 +28,26 @@ def _crear_venta_demo(db, sucursal_id, items, medio_pago, total, dias):
            VALUES (?, ?, ?, ?)""",
         (sucursal_id, fecha, subtotal, total))
     for item in items:
+        costo_unitario = db.consultar_uno(
+            "SELECT precio_costo FROM producto WHERE id=?",
+            (item["producto_id"],))["precio_costo"]
         db.ejecutar(
             """INSERT INTO detalle_venta
-               (venta_id, producto_id, cantidad, precio_unitario)
-               VALUES (?, ?, ?, ?)""",
-            (venta_id, item["producto_id"], item["cantidad"], item["precio"]))
+               (venta_id, producto_id, cantidad, precio_unitario, costo_unitario)
+               VALUES (?, ?, ?, ?, ?)""",
+            (venta_id, item["producto_id"], item["cantidad"], item["precio"],
+             costo_unitario))
         db.ejecutar(
             """UPDATE stock SET disponible=disponible-?
                WHERE sucursal_id=? AND producto_id=?""",
             (item["cantidad"], sucursal_id, item["producto_id"]))
         db.ejecutar(
             """INSERT INTO movimiento_stock
-               (sucursal_id, producto_id, cantidad, motivo, referencia, fecha)
-               VALUES (?, ?, ?, 'VENTA', ?, ?)""",
+               (sucursal_id, producto_id, cantidad, motivo, referencia, fecha,
+                costo_unitario)
+               VALUES (?, ?, ?, 'VENTA', ?, ?, ?)""",
             (sucursal_id, item["producto_id"], -item["cantidad"],
-             f"venta {venta_id}", fecha))
+             f"venta {venta_id}", fecha, costo_unitario))
 
     db.ejecutar(
         """INSERT INTO pago (venta_id, medio_pago, importe, cuotas, referencia)
@@ -54,6 +59,31 @@ def _crear_venta_demo(db, sucursal_id, items, medio_pago, total, dias):
         """INSERT INTO comprobante (venta_id, numero, fecha)
            VALUES (?, ?, ?)""", (venta_id, numero, fecha))
     return venta_id, fecha, subtotal
+
+
+def _registrar_aperturas_stock(db):
+    if db.consultar_uno(
+            "SELECT nombre FROM datos_iniciales WHERE nombre='stock-ledger-v1'"):
+        return
+    saldos = db.consultar("""
+        SELECT s.sucursal_id, s.producto_id, s.disponible,
+               COALESCE(SUM(m.cantidad), 0) AS movimientos
+        FROM stock s
+        LEFT JOIN movimiento_stock m
+          ON m.sucursal_id=s.sucursal_id AND m.producto_id=s.producto_id
+        GROUP BY s.sucursal_id, s.producto_id, s.disponible
+    """)
+    for saldo in saldos:
+        diferencia = saldo["disponible"] - saldo["movimientos"]
+        if diferencia:
+            db.ejecutar(
+                """INSERT INTO movimiento_stock
+                   (sucursal_id, producto_id, cantidad, motivo, referencia)
+                   VALUES (?, ?, ?, 'APERTURA_MIGRACION', ?)""",
+                (saldo["sucursal_id"], saldo["producto_id"], diferencia,
+                 "Apertura auditada del libro de movimientos"))
+    db.ejecutar(
+        "INSERT INTO datos_iniciales (nombre) VALUES ('stock-ledger-v1')")
 
 
 def _cargar_demo(db, sucursales, categorias, productos):
@@ -132,18 +162,20 @@ def _cargar_demo(db, sucursales, categorias, productos):
            VALUES (?, ?, ?, ?)""",
         (venta_devolucion, _fecha_hace(3), "Producto de demostración devuelto",
          importe_devuelto))
+    costo_agua = db.consultar_uno(
+        "SELECT precio_costo FROM producto WHERE id=?", (agua,))["precio_costo"]
     db.ejecutar(
         """INSERT INTO detalle_devolucion
-           (devolucion_id, producto_id, cantidad, precio_unitario)
-           VALUES (?, ?, 1, ?)""", (devolucion_id, agua, precio_agua))
+           (devolucion_id, producto_id, cantidad, precio_unitario, costo_unitario)
+           VALUES (?, ?, 1, ?, ?)""", (devolucion_id, agua, precio_agua, costo_agua))
     db.ejecutar(
         """UPDATE stock SET disponible=disponible+1
            WHERE sucursal_id=? AND producto_id=?""", (local_centro, agua))
     db.ejecutar(
         """INSERT INTO movimiento_stock
-           (sucursal_id, producto_id, cantidad, motivo, referencia, fecha)
-           VALUES (?, ?, 1, 'DEVOLUCION', ?, ?)""",
-        (local_centro, agua, f"devolucion {devolucion_id}", _fecha_hace(3)))
+           (sucursal_id, producto_id, cantidad, motivo, referencia, fecha, costo_unitario)
+           VALUES (?, ?, 1, 'DEVOLUCION', ?, ?, ?)""",
+        (local_centro, agua, f"devolucion {devolucion_id}", _fecha_hace(3), costo_agua))
     db.ejecutar(
         """INSERT INTO movimiento_caja
            (sucursal_id, devolucion_id, tipo, importe, fecha)
@@ -190,6 +222,7 @@ def cargar(incluir_demo=True):
 
         if incluir_demo:
             _cargar_demo(db, sucursales, categorias, productos)
+        _registrar_aperturas_stock(db)
 
 
 if __name__ == "__main__":

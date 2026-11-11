@@ -55,8 +55,12 @@ class ReportesService:
             parametros.append(hasta)
         return self.dao.rechazados(filtros, parametros)
 
-    def tiempo_promedio_transito(self):
-        return self.dao.tiempo_promedio_transito()
+    def tiempo_promedio_transito(self, sucursal_id=None):
+        return {
+            "promedios_verificados": self.dao.tiempo_promedio_transito(sucursal_id),
+            "estados": self.dao.estados_transito(sucursal_id),
+            "alertas_verificacion": self.dao.alertas_verificacion(sucursal_id),
+        }
 
     def existencias(self, sucursal_id=None):
         return self.dao.existencias(sucursal_id)

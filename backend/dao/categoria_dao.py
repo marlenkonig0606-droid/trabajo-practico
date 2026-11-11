@@ -62,13 +62,11 @@ class CategoriaDAO:
             return False, f'Error de base de datos: {error}'
 
     def eliminar(self, categoria_id):
-        try:
-            with self._conn() as cx:
-                cur = cx.execute(
-                    'DELETE FROM categoria WHERE id = ?', (categoria_id,)
-                )
-                return cur.rowcount
-        except sqlite3.IntegrityError:
-            return False, 'No se puede eliminar: la categoría tiene productos asociados'
-        except sqlite3.Error as error:
-            return False, f'Error de base de datos: {error}'
+        return self.cambiar_estado(categoria_id, False)
+
+    def cambiar_estado(self, categoria_id, activo):
+        with self._conn() as cx:
+            return cx.execute(
+                'UPDATE categoria SET activo=? WHERE id=?',
+                (int(activo), categoria_id),
+            ).rowcount

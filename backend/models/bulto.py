@@ -24,19 +24,21 @@ class EstadoBulto:
     RECIBIDO = "RECIBIDO"
     VERIFICADO = "VERIFICADO"
     RECHAZADO = "RECHAZADO"
+    PERDIDO = "PERDIDO"
     ANULADO = "ANULADO"
 
     TRANSICIONES = {
         PREPARADO: {PRECINTADO, ANULADO},
-        PRECINTADO: {EN_TRANSITO, ANULADO},
-        EN_TRANSITO: {RECIBIDO},
+        PRECINTADO: {PREPARADO, EN_TRANSITO, ANULADO},
+        EN_TRANSITO: {RECIBIDO, PERDIDO},
         RECIBIDO: {VERIFICADO, RECHAZADO},
         VERIFICADO: set(),
         RECHAZADO: set(),
+        PERDIDO: set(),
         ANULADO: set(),
     }
 
-    FINALES = {VERIFICADO, RECHAZADO, ANULADO}
+    FINALES = {VERIFICADO, RECHAZADO, PERDIDO, ANULADO}
 
     @classmethod
     def puede_pasar(cls, desde, hacia):

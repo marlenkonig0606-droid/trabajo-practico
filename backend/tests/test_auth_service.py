@@ -4,6 +4,7 @@ from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
 from services.auth_service import AuthService
 from services.excepciones import ReglaNegocioError
+from services.catalogo_service import CatalogoService
 
 
 def test_registro_local_guarda_hash_y_persiste_tras_reabrir_db(tmp_path):
@@ -41,5 +42,22 @@ def test_registro_no_permite_asignar_tipo_de_sucursal_incorrecto(tmp_path):
 
         with pytest.raises(ReglaNegocioError, match="tipo LOCAL"):
             servicio.registrar_local("cd@example.com", "contraseña-segura", 1)
+    finally:
+        BaseDeDatos.reiniciar()
+
+
+def test_sucursal_inactiva_no_acepta_cuentas_ni_autenticacion(tmp_path):
+    BaseDeDatos.reiniciar()
+    try:
+        BaseDeDatos(str(tmp_path / "auth_sucursal_inactiva.db"))
+        cargar(incluir_demo=False)
+        auth = AuthService()
+        auth.registrar_local("local@example.com", "contraseña-segura", 2)
+
+        CatalogoService().cambiar_estado_sucursal(2, False)
+
+        with pytest.raises(ReglaNegocioError, match="sucursal inactiva"):
+            auth.registrar_local("otro@example.com", "contraseña-segura", 2)
+        assert auth.autenticar("local@example.com", "contraseña-segura") is None
     finally:
         BaseDeDatos.reiniciar()

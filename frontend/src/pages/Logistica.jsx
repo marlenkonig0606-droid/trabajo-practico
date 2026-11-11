@@ -44,6 +44,10 @@ function Orden({ orden, nombreProducto, accion }) {
   const pendientes = orden.items.filter(
     (i) => Number(i.cantidad) > Number(i.empaquetado || 0),
   )
+  const puedeReintentar = orden.estado === 'CERRADA'
+    && orden.remito_estado === 'RECHAZADO' && !orden.resolucion
+  const permitePreparar = ['PENDIENTE', 'EN_PREPARACION'].includes(orden.estado)
+    || puedeReintentar
   const [aEmpaquetar, setAEmpaquetar] = useState({})
   const [empaquetando, setEmpaquetando] = useState(false)
 
@@ -57,6 +61,12 @@ function Orden({ orden, nombreProducto, accion }) {
     if (creado) setAEmpaquetar({})
   }
 
+  const resolver = (accionOrden) => {
+    const motivo = window.prompt(`Motivo para ${accionOrden.toLowerCase()} la orden #${orden.id}`)
+    if (motivo === null) return
+    accion(() => api.resolverOrden(orden.id, accionOrden, motivo))
+  }
+
   return (
     <div className="tarjeta">
       <div className="fila-titulo">
@@ -64,7 +74,22 @@ function Orden({ orden, nombreProducto, accion }) {
         <span>{orden.origen} → {orden.destino}</span>
         <span className={`estado ${orden.estado}`}>{orden.estado}</span>
         {orden.remito_numero && <span>Remito {orden.remito_numero} · {orden.remito_estado}</span>}
+        {orden.fecha_vencimiento && <span>Vence: {orden.fecha_vencimiento}</span>}
       </div>
+      {['PENDIENTE', 'EN_PREPARACION'].includes(orden.estado) && (
+        <div className="acciones-formulario">
+          <button className="secundario"
+            onClick={() => accion(() => api.resolverOrden(orden.id, 'ESPERAR'))}>
+            Mantener pendiente
+          </button>
+          <button className="secundario" onClick={() => resolver('RECHAZAR')}>
+            Rechazar solicitud
+          </button>
+          <button className="peligro" onClick={() => resolver('CANCELAR')}>
+            Cancelar solicitud
+          </button>
+        </div>
+      )}
 
       <table>
         <thead><tr><th>Producto</th><th>Pedido</th><th>Empaquetado</th></tr></thead>
@@ -76,8 +101,8 @@ function Orden({ orden, nombreProducto, accion }) {
       </table>
 
       {pendientes.length > 0
-        && ['PENDIENTE', 'EN_PREPARACION'].includes(orden.estado)
-        && (orden.remito_estado ?? 'ABIERTO') === 'ABIERTO' && (
+        && permitePreparar
+        && ((orden.remito_estado ?? 'ABIERTO') === 'ABIERTO' || puedeReintentar) && (
         <div className="armar">
           <div className="armar-cabecera">
             <strong>Preparar bulto</strong>
@@ -127,6 +152,18 @@ function FilaBulto({ bulto, nombreProducto, accion }) {
     accion(() => api.anular(bulto.id, motivo))
   }
 
+  const reabrir = () => {
+    const motivo = window.prompt(`Motivo de reapertura del bulto #${bulto.id}`)
+    if (motivo === null) return
+    accion(() => api.reabrirBulto(bulto.id, motivo))
+  }
+
+  const marcarPerdido = () => {
+    const motivo = window.prompt(`Motivo para declarar perdido el bulto #${bulto.id}`)
+    if (motivo === null) return
+    accion(() => api.marcarPerdido(bulto.id, motivo))
+  }
+
   return (
     <div className="bulto">
       <span>Bulto #{bulto.id}</span>
@@ -139,8 +176,12 @@ function FilaBulto({ bulto, nombreProducto, accion }) {
       {bulto.estado === 'PREPARADO' && <>
         <button onClick={() => accion(() => api.precintar(bulto.id))}>Generar precinto</button>
       </>}
-      {bulto.estado === 'PRECINTADO' &&
-        <button onClick={() => accion(() => api.despachar(bulto.id))}>Despachar</button>}
+      {bulto.estado === 'PRECINTADO' && <>
+        <button onClick={() => accion(() => api.despachar(bulto.id))}>Despachar</button>
+        <button className="secundario" onClick={reabrir}>Reabrir y cambiar precinto</button>
+      </>}
+      {bulto.estado === 'EN_TRANSITO' &&
+        <button className="peligro" onClick={marcarPerdido}>Declarar perdido</button>}
       {(bulto.estado === 'PREPARADO' || bulto.estado === 'PRECINTADO') &&
         <button onClick={anular}>Anular</button>}
       {bulto.estado === 'EN_TRANSITO' && (
