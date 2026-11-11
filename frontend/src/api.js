@@ -92,6 +92,10 @@ export const api = {
   reporteResumen: (f = {}) => pedir('GET', `/reportes/resumen${conFechas(f)}`),
   reporteRechazados: (f = {}) => pedir('GET', `/reportes/bultos-rechazados${conFechas(f)}`),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
+  reporteEstadoOrdenes: () => pedir('GET', '/reportes/estado-ordenes'),
+  reporteAbastecimiento: () => pedir('GET', '/reportes/abastecimiento'),
+  reporteMediosPago: () => pedir('GET', '/reportes/medios-pago'),
+  reporteDevoluciones: () => pedir('GET', '/reportes/devoluciones'),
   reporteExistencias: () => pedir('GET', '/reportes/existencias'),
   reporteMovimientos: (tipos = []) => {
     if (tipos.length === 0) return Promise.resolve([])

@@ -1,6 +1,5 @@
 from database.conexion import BaseDeDatos
 
-
 class ReportesDAO:
     def __init__(self, db=None):
         self.db = db if db is not None else BaseDeDatos()
@@ -301,3 +300,67 @@ class ReportesDAO:
             LEFT JOIN devuelto de ON de.producto_id = ve.producto_id
             ORDER BY unidades DESC, margen DESC""",
             tuple(params_vendido) + tuple(params_devuelto))
+
+    def ordenes(self):
+        return self.db.consultar(
+            "SELECT estado, fecha FROM orden_reposicion"
+        )
+    #busco el remito para cada bulto(y de ahi su orden y orden del local tmb) /
+    # para agruparlo por local, contandolo y sumando a cada bulto rechazadp
+    def abastecimiento(self):
+        return self.db.consultar("""
+            SELECT s.nombre AS local,
+                   COUNT(*) AS bultos,
+                   SUM(CASE WHEN b.estado = 'RECHAZADO' THEN 1 ELSE 0 END) AS rechazados
+            FROM bulto b
+            JOIN remito r ON r.id = b.remito_id
+            JOIN orden_reposicion o ON o.id = r.orden_id
+            JOIN sucursal s ON s.id = o.destino_id
+            GROUP BY s.id""")
+
+    #queremos que el reporrte de ventas por medio de pago quede algo asi
+    #medio_pago        ventas          ingresos
+    #EFECTIVO          12              10000
+    #TARJETA_CREDITO   34              90000
+
+    def ventas_por_medio_pago(self, sucursal_id):
+        filtro = ""
+        parametros = ()
+        if sucursal_id is not None:                 # es un local: solo sus ventas
+            filtro = "WHERE v.sucursal_id = ?"
+            parametros = (sucursal_id,) #LLEVA COMA PORQUE NECESITAMOS UNA TUPLA DE PARAMETROS, sin la coma es un parentesis comun y quedarian numeros sueltos
+        return self.db.consultar(f"""
+            SELECT pg.medio_pago,
+                   COUNT(*) AS ventas,
+                   ROUND(SUM(v.total), 2) AS ingresos
+            FROM venta v
+            JOIN pago pg ON pg.venta_id = v.id
+            {filtro}   
+            GROUP BY pg.medio_pago
+            ORDER BY ingresos DESC""", parametros)
+ #el filtro hace que pythonn rellene lo que tiene guardado en esa variable
+
+
+
+#lo que quiero hacer maso menos es esto
+#producto   devoluciones      unidades        importe
+#agua 1.5l       3               5             4000
+#yerba 1kg       2               4             9000
+    def devoluciones_por_producto(self, sucursal_id):
+           filtro = ""
+           parametros = ()
+           if sucursal_id is not None:
+               filtro = "WHERE v.sucursal_id = ?"
+               parametros = (sucursal_id,)
+           return self.db.consultar(f"""
+               SELECT p.nombre AS producto,
+                      COUNT(DISTINCT d.id) AS devoluciones,
+                      SUM(dd.cantidad) AS unidades,
+                      ROUND(SUM(dd.cantidad * dd.precio_unitario), 2) AS importe
+               FROM detalle_devolucion dd
+               JOIN devolucion d ON d.id = dd.devolucion_id
+               JOIN venta v ON v.id = d.venta_id
+               JOIN producto p ON p.id = dd.producto_id
+               {filtro}
+               GROUP BY p.id
+               ORDER BY unidades DESC""", parametros)

@@ -17,13 +17,19 @@ export default function Reportes({ usuario }) {
   const [cargandoResumen, setCargandoResumen] = useState(true)
   const [rechazados, setRechazados] = useState([])
   const [transito, setTransito] = useState({
-    promedios_verificados: [], estados: [],
+    promedios_verificados: [],
+    estados: [],
+    alertas_verificacion: [],
   })
+  const [estadoOrdenes, setEstadoOrdenes] = useState([])
+  const [abastecimiento, setAbastecimiento] = useState([])
+  const [mediosPago, setMediosPago] = useState([])
   const [eventos, setEventos] = useState([])
   const [existencias, setExistencias] = useState([])
   const [movimientos, setMovimientos] = useState([])
   const [ventas, setVentas] = useState([])
   const [masVendidos, setMasVendidos] = useState([])
+  const [devoluciones, setDevoluciones] = useState([])
   const [fechas, setFechas] = useState({ desde: '', hasta: '' })
   const [tiposMovimiento, setTiposMovimiento] = useState([
     'VENTA', 'DEVOLUCION', 'RECEPCION',
@@ -49,9 +55,13 @@ export default function Reportes({ usuario }) {
 
   useEffect(() => {
     api.reporteExistencias().then(setExistencias)
+    api.reporteMediosPago().then(setMediosPago)
+    api.reporteDevoluciones().then(setDevoluciones)
     if (usuario.tipo === 'CD') {
       api.reporteRechazados(fechas).then(setRechazados)
       api.reporteTransito().then(setTransito)
+      api.reporteAbastecimiento().then(setAbastecimiento)
+      api.reporteEstadoOrdenes().then(setEstadoOrdenes)
       api.eventos().then(setEventos)
     }
   }, [usuario.tipo, fechas])
@@ -149,6 +159,15 @@ export default function Reportes({ usuario }) {
         <Tabla filas={ventas} columnas={['dia', 'local', 'medio_pago', 'ventas', 'ingresos', 'ticket_promedio']} />
       </div>
       <div className="tarjeta">
+        <h2>Ventas por medio de pago</h2>
+        <Tabla filas={mediosPago} columnas={['medio_pago', 'ventas', 'ingresos']} />
+      </div>
+      <div className="tarjeta">
+        <h2>Devoluciones por producto</h2>
+        <Tabla filas={devoluciones}
+               columnas={['producto', 'devoluciones', 'unidades', 'importe']} />
+      </div>
+      <div className="tarjeta">
         <h2>Productos más vendidos y margen</h2>
         <GraficoMasVendidos filas={masVendidos} />
         <Tabla filas={masVendidos}
@@ -191,20 +210,37 @@ export default function Reportes({ usuario }) {
                             onCerrar={() => setMovimientoDetalle(null)} />
       )}
       {usuario.tipo === 'CD' && <div className="tarjeta">
-        <h2>Bultos rechazados y valor histórico (no se consideran merma automática)</h2>
-        <Tabla filas={rechazados} columnas={['bulto_id', 'remito', 'destino', 'motivo',
-          'unidades', 'valor_historico', 'costo_faltante']} />
+        <h2>Bultos rechazados y valor histórico</h2>
+        <p className="ayuda">
+          El rechazo no se considera merma automáticamente; el valor se calcula con el costo
+          guardado al despacho.
+        </p>
+        <Tabla filas={rechazados}
+               columnas={['bulto_id', 'remito', 'destino', 'motivo', 'unidades',
+                 'valor_historico', 'costo_faltante']} />
+      </div>}
+      {usuario.tipo === 'CD' && <div className="tarjeta">
+        <h2>Abastecimiento de locales</h2>
+        <Tabla filas={abastecimiento}
+               columnas={['local', 'bultos', 'rechazados']}
+               resaltar={(f) => f.rechazados > 0} />
+      </div>}
+      {usuario.tipo === 'CD' && <div className="tarjeta">
+        <h2>Estado de las órdenes de reposición</h2>
+        <p className="ayuda">Demoradas: pendientes o en preparación desde hace más de 2 días.</p>
+        <Tabla filas={estadoOrdenes} columnas={['estado', 'ordenes', 'demoradas']}
+               resaltar={(f) => f.demoradas > 0} />
+      </div>}
+      {usuario.tipo === 'CD' && <div className="tarjeta">
+        <h2>Tiempo promedio de entregas verificadas CD → local</h2>
+        <Tabla filas={transito.promedios_verificados}
+               columnas={['local', 'bultos', 'horas_promedio']} />
+        <h3>Estado de los bultos</h3>
+        <Tabla filas={transito.estados}
+               columnas={['local', 'pendientes_verificacion', 'rechazados', 'perdidos']} />
       </div>}
       {(usuario.tipo === 'CD' || transito.alertas_verificacion.length > 0) && (
         <div className="tarjeta">
-          {usuario.tipo === 'CD' && <>
-            <h2>Tiempo promedio de entregas verificadas CD → local</h2>
-            <Tabla filas={transito.promedios_verificados}
-                   columnas={['local', 'bultos', 'horas_promedio']} />
-            <h3>Bultos pendientes o rechazados</h3>
-            <Tabla filas={transito.estados}
-                   columnas={['local', 'pendientes_verificacion', 'rechazados', 'perdidos']} />
-          </>}
           <h3>Alertas de bultos sin verificar (24/48 horas)</h3>
           <Tabla filas={transito.alertas_verificacion}
                  columnas={['bulto_id', 'remito', 'local', 'estado',
