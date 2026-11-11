@@ -1,3 +1,6 @@
+import threading
+from datetime import datetime, timedelta
+
 import pytest
 
 from database.conexion import BaseDeDatos
@@ -17,6 +20,7 @@ from services.medio_pago_service import (
 )
 from services.stock_service import StockService
 from services.ventas_service import VentasService
+from services.catalogo_service import CatalogoService
 
 
 CD, LOCAL = 1, 2
@@ -94,6 +98,15 @@ def test_venta_en_cd_se_rechaza(svc):
         ventas.registrar_venta(CD, [{"producto_id": AGUA, "cantidad": 1}], "EFECTIVO")
 
 
+def test_sucursal_inactiva_no_puede_vender(svc):
+    ventas, _ = svc
+    CatalogoService().cambiar_estado_sucursal(LOCAL, False)
+
+    with pytest.raises(ReglaNegocioError, match="sucursal inactiva"):
+        ventas.registrar_venta(
+            LOCAL, [{"producto_id": AGUA, "cantidad": 1}], "EFECTIVO")
+
+
 def test_venta_sin_stock_hace_rollback(svc):
     ventas, stock = svc
     with pytest.raises(ReglaNegocioError, match="Stock insuficiente"):
@@ -104,6 +117,114 @@ def test_venta_sin_stock_hace_rollback(svc):
     assert ventas.db.consultar_uno(
         "SELECT COUNT(*) AS total FROM comprobante")["total"] == 0
     assert stock.disponible(LOCAL, AGUA) == 0
+
+
+def test_stock_inconsistente_se_bloquea_hasta_una_conciliacion_auditada(svc):
+    ventas, stock = svc
+    with stock.db.transaccion():
+        stock.db.ejecutar(
+            "INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (?, ?, ?)",
+            (LOCAL, AGUA, 3))
+    with pytest.raises(ReglaNegocioError, match="Stock bloqueado"):
+        stock.sumar(LOCAL, AGUA, 1, "TEST")
+
+    stock.ajustar_disponible(LOCAL, AGUA, 3, "Conteo físico validado")
+    assert stock.disponible(LOCAL, AGUA) == 3
+    assert stock.dao.cantidad_registrada_en_movimientos(LOCAL, AGUA) == 3
+    assert ventas.db.consultar_uno(
+        "SELECT motivo, referencia FROM movimiento_stock ORDER BY id DESC LIMIT 1"
+    ) == {
+        "motivo": "CONCILIACION",
+        "referencia": "Conteo físico validado",
+    }
+
+
+def test_venta_rechaza_producto_no_habilitado_o_sin_precio_valido(svc):
+    ventas, _ = svc
+    CatalogoService().cambiar_habilitacion_producto(LOCAL, AGUA, False)
+    with pytest.raises(ReglaNegocioError, match="no está habilitado"):
+        ventas.registrar_venta(
+            LOCAL, [{"producto_id": AGUA, "cantidad": 1}], "EFECTIVO")
+
+
+def test_devolucion_conserva_costo_historico_y_vence_a_los_30_dias(svc):
+    ventas, stock = svc
+    stock.sumar(LOCAL, AGUA, 5, "APERTURA")
+    venta = ventas.registrar_venta(
+        LOCAL, [{"producto_id": AGUA, "cantidad": 2}], "EFECTIVO")
+    ventas.db.ejecutar("UPDATE producto SET precio_costo=900 WHERE id=?", (AGUA,))
+
+    ventas.registrar_devolucion(
+        venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Devolución parcial")
+    assert ventas.db.consultar_uno(
+        "SELECT costo_unitario FROM detalle_devolucion WHERE devolucion_id=1"
+    )["costo_unitario"] == 400
+    assert ventas.db.consultar_uno(
+        """SELECT costo_unitario FROM movimiento_stock
+           WHERE motivo='DEVOLUCION' ORDER BY id DESC LIMIT 1"""
+    )["costo_unitario"] == 400
+
+    fecha_antigua = (datetime.now().astimezone() - timedelta(days=31)).isoformat()
+    ventas.db.ejecutar("UPDATE venta SET fecha=? WHERE id=?", (fecha_antigua, venta["id"]))
+    with pytest.raises(ReglaNegocioError, match="30 días"):
+        ventas.registrar_devolucion(
+            venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Fuera de plazo")
+
+
+def test_ventas_simultaneas_no_pueden_vender_el_mismo_stock_dos_veces(svc):
+    ventas, stock = svc
+    stock.sumar(LOCAL, AGUA, 5, "APERTURA")
+    barrera = threading.Barrier(2)
+    resultados = []
+
+    def vender():
+        barrera.wait()
+        try:
+            ventas.registrar_venta(
+                LOCAL, [{"producto_id": AGUA, "cantidad": 4}], "EFECTIVO")
+            resultados.append("ok")
+        except ReglaNegocioError:
+            resultados.append("rechazada")
+
+    hilos = [threading.Thread(target=vender) for _ in range(2)]
+    for hilo in hilos:
+        hilo.start()
+    for hilo in hilos:
+        hilo.join()
+
+    assert sorted(resultados) == ["ok", "rechazada"]
+    assert stock.disponible(LOCAL, AGUA) == 1
+
+
+def test_devoluciones_simultaneas_no_superan_lo_vendido(svc):
+    ventas, stock = svc
+    stock.sumar(LOCAL, AGUA, 1, "APERTURA")
+    venta = ventas.registrar_venta(
+        LOCAL, [{"producto_id": AGUA, "cantidad": 1}], "EFECTIVO")
+    barrera = threading.Barrier(2)
+    resultados = []
+
+    def devolver():
+        barrera.wait()
+        try:
+            ventas.registrar_devolucion(
+                venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Concurrente")
+            resultados.append("ok")
+        except ReglaNegocioError:
+            resultados.append("rechazada")
+
+    hilos = [threading.Thread(target=devolver) for _ in range(2)]
+    for hilo in hilos:
+        hilo.start()
+    for hilo in hilos:
+        hilo.join()
+
+    assert sorted(resultados) == ["ok", "rechazada"]
+    assert ventas.db.consultar_uno(
+        "SELECT COUNT(*) AS cantidad FROM devolucion WHERE venta_id=?",
+        (venta["id"],),
+    )["cantidad"] == 1
+    assert stock.disponible(LOCAL, AGUA) == 1
 
 
 def test_devolucion_de_venta_inexistente_se_rechaza(svc):

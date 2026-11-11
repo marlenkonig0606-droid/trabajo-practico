@@ -35,37 +35,55 @@ export const api = {
   iniciarSesion: (datos) => pedir('POST', '/auth/login', datos),
   cerrarSesion: () => pedir('POST', '/auth/logout'),
   sucursales: () => pedir('GET', '/sucursales'),
+  sucursalesCatalogo: () => pedir('GET', '/catalogo/sucursales'),
   crearSucursal: (datos) => pedir('POST', '/sucursales', datos),
   actualizarSucursal: (id, datos) => pedir('PUT', `/sucursales/${id}`, datos),
   eliminarSucursal: (id) => pedir('DELETE', `/sucursales/${id}`),
+  cambiarEstadoSucursal: (id, activo) =>
+    pedir('PATCH', `/sucursales/${id}/estado`, { activo }),
   productos: () => pedir('GET', '/productos'),
   crearProducto: (datos) => pedir('POST', '/productos', datos),
   actualizarProducto: (id, datos) => pedir('PUT', `/productos/${id}`, datos),
   eliminarProducto: (id) => pedir('DELETE', `/productos/${id}`),
+  cambiarEstadoProducto: (id, activo) =>
+    pedir('PATCH', `/productos/${id}/estado`, { activo }),
   categorias: () => pedir('GET', '/categorias'),
   crearCategoria: (datos) => pedir('POST', '/categorias', datos),
   actualizarCategoria: (id, datos) => pedir('PUT', `/categorias/${id}`, datos),
   eliminarCategoria: (id) => pedir('DELETE', `/categorias/${id}`),
+  cambiarEstadoCategoria: (id, activo) =>
+    pedir('PATCH', `/categorias/${id}/estado`, { activo }),
   proveedores: () => pedir('GET', '/proveedores'),
   crearProveedor: (datos) => pedir('POST', '/proveedores', datos),
   actualizarProveedor: (id, datos) => pedir('PUT', `/proveedores/${id}`, datos),
   eliminarProveedor: (id) => pedir('DELETE', `/proveedores/${id}`),
+  cambiarEstadoProveedor: (id, activo) =>
+    pedir('PATCH', `/proveedores/${id}/estado`, { activo }),
+  productosSucursal: (sucursalId) =>
+    pedir('GET', `/sucursales/${sucursalId}/productos`),
+  cambiarHabilitacionProducto: (sucursalId, productoId, habilitado) =>
+    pedir('PATCH', `/sucursales/${sucursalId}/productos/${productoId}`, { habilitado }),
   stock: (sucursalId) => pedir('GET', `/stock/${sucursalId}`),
   ajustarStock: (sucursalId, productoId, disponible) =>
     pedir('PUT', `/stock/${sucursalId}/${productoId}`, { disponible }),
 
   sugerirOrden: (localId) => pedir('GET', `/sucursales/${localId}/sugerencia`),
   ordenes: () => pedir('GET', '/ordenes'),
+  notificaciones: () => pedir('GET', '/notificaciones'),
   solicitarOrden: (origen_id, destino_id, items) => pedir('POST', '/ordenes', {
     origen_id, destino_id, items,
   }),
   crearBulto: (ordenId, items) => pedir('POST', `/ordenes/${ordenId}/bultos`, { items }),
+  resolverOrden: (id, accion, motivo) =>
+    pedir('POST', `/ordenes/${id}/resolver`, { accion, motivo }),
   precintar: (id) => pedir('POST', `/bultos/${id}/precintar`, {}),
+  reabrirBulto: (id, motivo) => pedir('POST', `/bultos/${id}/reabrir`, { motivo }),
   despachar: (id) => pedir('POST', `/bultos/${id}/despachar`),
+  marcarPerdido: (id, motivo) => pedir('POST', `/bultos/${id}/perdido`, { motivo }),
   anular: (id, motivo) => pedir('POST', `/bultos/${id}/anular`, { motivo }),
   recibir: (id) => pedir('POST', `/bultos/${id}/recibir`, {}),
-  verificarRecepcion: (id, aprobado) =>
-    pedir('POST', `/bultos/${id}/verificar`, { aprobado }),
+  verificarRecepcion: (id, aprobado, motivo) =>
+    pedir('POST', `/bultos/${id}/verificar`, { aprobado, motivo }),
   historial: (id) => pedir('GET', `/bultos/${id}/historial`),
 
   alertas: () => pedir('GET', '/alertas'),

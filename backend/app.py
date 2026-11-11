@@ -172,9 +172,14 @@ def crear_app(cargar_demo=True):
 
     @app.get("/api/sucursales")
     def api_sucursales():
-        return jsonify(catalogo.listar_sucursales())
+        return jsonify(catalogo.listar_sucursales(solo_activas=True))
 
     # ---------- catálogo (procesos 1 y 2) ----------
+
+    @app.get("/api/catalogo/sucursales")
+    @requiere_cd
+    def listar_sucursales_catalogo():
+        return jsonify(catalogo.listar_sucursales())
 
     @app.get("/api/sucursales/<int:id_sucursal>")
     @requiere_cd
@@ -197,21 +202,26 @@ def crear_app(cargar_demo=True):
         catalogo.eliminar_sucursal(id_sucursal)
         return "", 204
 
+    @app.patch("/api/sucursales/<int:id_sucursal>/estado")
+    @requiere_cd
+    def cambiar_estado_sucursal(id_sucursal):
+        datos = cuerpo_json()
+        return jsonify(catalogo.cambiar_estado_sucursal(
+            id_sucursal, datos.get("activo")))
+
     # Productos
     @app.get("/api/productos")
     def listar_productos():
-        productos = catalogo.listar_productos()
         if g.usuario["tipo"] != "CD":
-            productos_publicos = []
-            for producto in productos:
-                productos_publicos.append({
+            productos = catalogo.productos_habilitados_sucursal(
+                g.usuario["sucursal_id"])
+            return jsonify([{
                     "id": producto["id"],
                     "codigo": producto["codigo"],
                     "nombre": producto["nombre"],
                     "precio_venta": producto["precio_venta"],
-                })
-            return jsonify(productos_publicos)
-        return jsonify(productos)
+                } for producto in productos])
+        return jsonify(catalogo.listar_productos())
 
     @app.get("/api/productos/<int:id_producto>")
     @requiere_cd
@@ -233,6 +243,13 @@ def crear_app(cargar_demo=True):
     def eliminar_producto(id_producto):
         catalogo.eliminar_producto(id_producto)
         return "", 204
+
+    @app.patch("/api/productos/<int:id_producto>/estado")
+    @requiere_cd
+    def cambiar_estado_producto(id_producto):
+        datos = cuerpo_json()
+        return jsonify(catalogo.cambiar_estado_producto(
+            id_producto, datos.get("activo")))
 
     # Categorías
     @app.get("/api/categorias")
@@ -256,6 +273,13 @@ def crear_app(cargar_demo=True):
         catalogo.eliminar_categoria(id_categoria)
         return "", 204
 
+    @app.patch("/api/categorias/<int:id_categoria>/estado")
+    @requiere_cd
+    def cambiar_estado_categoria(id_categoria):
+        datos = cuerpo_json()
+        return jsonify(catalogo.cambiar_estado_categoria(
+            id_categoria, datos.get("activo")))
+
     # Proveedores
     @app.get("/api/proveedores")
     @requiere_cd
@@ -277,6 +301,31 @@ def crear_app(cargar_demo=True):
     def eliminar_proveedor(id_proveedor):
         catalogo.eliminar_proveedor(id_proveedor)
         return "", 204
+
+    @app.patch("/api/proveedores/<int:id_proveedor>/estado")
+    @requiere_cd
+    def cambiar_estado_proveedor(id_proveedor):
+        datos = cuerpo_json()
+        return jsonify(catalogo.cambiar_estado_proveedor(
+            id_proveedor, datos.get("activo")))
+
+    @app.get("/api/sucursales/<int:id_sucursal>/productos")
+    def productos_de_sucursal(id_sucursal):
+        if (g.usuario["tipo"] != "LOCAL"
+                or id_sucursal != g.usuario["sucursal_id"]):
+            raise AccesoDenegadoError(
+                "Cada local solo puede consultar las habilitaciones de su sucursal")
+        return jsonify(catalogo.productos_de_sucursal(id_sucursal))
+
+    @app.patch("/api/sucursales/<int:id_sucursal>/productos/<int:id_producto>")
+    def cambiar_habilitacion_producto(id_sucursal, id_producto):
+        if (g.usuario["tipo"] != "LOCAL"
+                or id_sucursal != g.usuario["sucursal_id"]):
+            raise AccesoDenegadoError(
+                "Cada local solo puede cambiar las habilitaciones de su sucursal")
+        datos = cuerpo_json()
+        return jsonify(catalogo.cambiar_habilitacion_producto(
+            id_sucursal, id_producto, datos.get("habilitado")))
 
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):
@@ -307,6 +356,10 @@ def crear_app(cargar_demo=True):
         return jsonify(logistica.listar_ordenes(
             g.usuario["sucursal_id"], solicitante_id=g.usuario["id"]))
 
+    @app.get("/api/notificaciones")
+    def listar_notificaciones():
+        return jsonify(logistica.notificaciones(g.usuario["sucursal_id"]))
+
     @app.get("/api/sucursales/<int:local_id>/sugerencia")
     def sugerir_orden(local_id):
         if (g.usuario["tipo"] != "CD"
@@ -333,23 +386,44 @@ def crear_app(cargar_demo=True):
     @app.post("/api/ordenes/<int:orden_id>/bultos")
     @requiere_cd
     def crear_bulto(orden_id):
-        return jsonify(logistica.crear_bulto(orden_id, request.get_json()["items"])), 201
+        return jsonify(logistica.crear_bulto(
+            orden_id, request.get_json()["items"], g.usuario["id"])), 201
+
+    @app.post("/api/ordenes/<int:orden_id>/resolver")
+    def resolver_orden(orden_id):
+        datos = cuerpo_json()
+        orden = logistica.obtener_orden(orden_id)
+        accion = (datos.get("accion") or "").upper()
+        if g.usuario["tipo"] != "CD":
+            if orden["destino_id"] != g.usuario["sucursal_id"]:
+                raise AccesoDenegadoError("Solo podés resolver órdenes de tu local")
+            if accion != "CANCELAR":
+                raise AccesoDenegadoError("El local solo puede cancelar su solicitud")
+        return jsonify(logistica.resolver_orden(
+            orden_id, accion, datos.get("motivo"), g.usuario["id"]))
 
     @app.post("/api/bultos/<int:bulto_id>/precintar")
     @requiere_cd
     def precintar(bulto_id):
-        return jsonify(logistica.precintar(bulto_id))
+        return jsonify(logistica.precintar(bulto_id, g.usuario["id"]))
+
+    @app.post("/api/bultos/<int:bulto_id>/reabrir")
+    @requiere_cd
+    def reabrir_bulto(bulto_id):
+        motivo = cuerpo_json().get("motivo")
+        return jsonify(logistica.reabrir_bulto(
+            bulto_id, motivo, g.usuario["id"]))
 
     @app.post("/api/bultos/<int:bulto_id>/despachar")
     @requiere_cd
     def despachar(bulto_id):
-        return jsonify(logistica.despachar(bulto_id))
+        return jsonify(logistica.despachar(bulto_id, g.usuario["id"]))
 
     @app.post("/api/bultos/<int:bulto_id>/anular")
     @requiere_cd
     def anular(bulto_id):
         motivo = request.get_json().get("motivo")
-        return jsonify(logistica.anular_bulto(bulto_id, motivo))
+        return jsonify(logistica.anular_bulto(bulto_id, motivo, g.usuario["id"]))
 
     @app.post("/api/bultos/<int:bulto_id>/recibir")
     def recibir(bulto_id):
@@ -359,7 +433,14 @@ def crear_app(cargar_demo=True):
         orden = logistica.obtener_orden_de_bulto(bulto_id)
         if orden["destino_id"] != g.usuario["sucursal_id"]:
             raise AccesoDenegadoError("Solo podés recibir bultos enviados a tu sucursal")
-        return jsonify(logistica.recibir(bulto_id))
+        return jsonify(logistica.recibir(bulto_id, g.usuario["id"]))
+
+    @app.post("/api/bultos/<int:bulto_id>/perdido")
+    @requiere_cd
+    def marcar_bulto_perdido(bulto_id):
+        motivo = cuerpo_json().get("motivo")
+        return jsonify(logistica.marcar_perdido(
+            bulto_id, motivo, g.usuario["id"]))
 
     @app.post("/api/bultos/<int:bulto_id>/verificar")
     def verificar_recepcion(bulto_id):
@@ -374,7 +455,8 @@ def crear_app(cargar_demo=True):
         aprobado = datos.get("aprobado")
         if not isinstance(aprobado, bool):
             raise ReglaNegocioError("aprobado debe ser verdadero o falso")
-        return jsonify(logistica.verificar_recepcion(bulto_id, aprobado))
+        return jsonify(logistica.verificar_recepcion(
+            bulto_id, aprobado, datos.get("motivo"), g.usuario["id"]))
 
     @app.get("/api/bultos/<int:bulto_id>/historial")
     def historial(bulto_id):
@@ -474,9 +556,9 @@ def crear_app(cargar_demo=True):
         return jsonify(reportes.bultos_rechazados(desde, hasta))
 
     @app.get("/api/reportes/transito")
-    @requiere_cd
     def rep_transito():
-        return jsonify(reportes.tiempo_promedio_transito())
+        sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
+        return jsonify(reportes.tiempo_promedio_transito(sucursal_id))
 
     @app.get("/api/reportes/existencias")
     def rep_existencias():

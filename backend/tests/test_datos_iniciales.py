@@ -28,6 +28,14 @@ def test_carga_datos_demo_utiles_y_no_duplica_al_reiniciar(tmp_path):
     assert antes["devoluciones"] == 1
     assert {fila["nombre"] for fila in db.consultar(
         "SELECT nombre FROM sucursal WHERE tipo='CD'")} == {"CD Central", "CD Norte"}
+    assert db.consultar_uno("""
+        SELECT COUNT(*) AS discrepancias
+        FROM stock s
+        LEFT JOIN movimiento_stock m
+          ON m.sucursal_id=s.sucursal_id AND m.producto_id=s.producto_id
+        GROUP BY s.sucursal_id, s.producto_id
+        HAVING s.disponible != COALESCE(SUM(m.cantidad), 0)
+    """) is None
 
     cargar()
     despues = {

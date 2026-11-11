@@ -7,7 +7,7 @@ class AuthDAO:
 
     def tipo_sucursal(self, sucursal_id):
         return self.db.consultar_uno(
-            "SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))
+            "SELECT tipo, activo FROM sucursal WHERE id=?", (sucursal_id,))
 
     def obtener_id_por_email(self, email):
         return self.db.consultar_uno(
@@ -25,7 +25,7 @@ class AuthDAO:
             """SELECT u.id, u.email, u.password_hash, u.sucursal_id,
                       s.nombre AS sucursal, s.tipo
                FROM usuario u JOIN sucursal s ON s.id = u.sucursal_id
-               WHERE u.email=?""",
+               WHERE u.email=? AND s.activo=1""",
             (email,))
 
     def obtener_usuario(self, usuario_id):
@@ -33,5 +33,5 @@ class AuthDAO:
             """SELECT u.id, u.email, u.sucursal_id,
                       s.nombre AS sucursal, s.tipo
                FROM usuario u JOIN sucursal s ON s.id = u.sucursal_id
-               WHERE u.id=?""",
+               WHERE u.id=? AND s.activo=1""",
             (usuario_id,))

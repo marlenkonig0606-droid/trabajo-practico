@@ -6,6 +6,7 @@ export default function Solicitudes({ usuario }) {
   const [productos, setProductos] = useState([])
   const [sucursales, setSucursales] = useState([])
   const [ordenes, setOrdenes] = useState([])
+  const [notificaciones, setNotificaciones] = useState([])
   const [origenId, setOrigenId] = useState('')
   const [cantidades, setCantidades] = useState({})
   const [error, setError] = useState('')
@@ -13,12 +14,13 @@ export default function Solicitudes({ usuario }) {
   const [cargando, setCargando] = useState(true)
 
   const recargar = async () => {
-    const [listaOrdenes, listaProductos, listaSucursales] = await Promise.all([
-      api.ordenes(), api.productos(), api.sucursales(),
+    const [listaOrdenes, listaProductos, listaSucursales, avisos] = await Promise.all([
+      api.ordenes(), api.productos(), api.sucursales(), api.notificaciones(),
     ])
     setOrdenes(listaOrdenes)
     setProductos(listaProductos)
     setSucursales(listaSucursales)
+    setNotificaciones(avisos)
   }
 
   useEffect(() => {
@@ -63,15 +65,27 @@ export default function Solicitudes({ usuario }) {
     }
   }
 
-  const verificar = async (bultoId, aprobado) => {
+  const verificar = async (bultoId, aprobado, motivo) => {
     setError('')
     setMensaje('')
     try {
-      const resultado = await api.verificarRecepcion(bultoId, aprobado)
+      const resultado = await api.verificarRecepcion(bultoId, aprobado, motivo)
       await recargar()
       setMensaje(resultado.estado === 'VERIFICADO'
         ? 'Bulto verificado. El stock se actualizará al finalizar la verificación de todos los bultos.'
-        : 'Bulto rechazado. Sus productos no se suman al stock.')
+        : 'Bulto rechazado. La mercadería vuelve al CD y no se suma al stock local.')
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  const cancelar = async (ordenId) => {
+    setError('')
+    setMensaje('')
+    try {
+      await api.resolverOrden(ordenId, 'CANCELAR', 'Cancelada por el local')
+      await recargar()
+      setMensaje('Solicitud cancelada; las reservas previas fueron liberadas.')
     } catch (e) {
       setError(e.message)
     }
@@ -94,6 +108,11 @@ export default function Solicitudes({ usuario }) {
     <section>
       {error && <div className="error">{error}</div>}
       {mensaje && <div className="exito">{mensaje}</div>}
+      {notificaciones.filter((aviso) => !aviso.leida).map((aviso) => (
+        <div className="exito" key={aviso.id}>
+          {aviso.fecha} · {aviso.mensaje}
+        </div>
+      ))}
       <div className="tarjeta">
         <h2>Solicitar reposición</h2>
         <p className="ayuda">
@@ -130,13 +149,16 @@ export default function Solicitudes({ usuario }) {
       {ordenes.map((orden) => (
         <OrdenLocal key={orden.id} orden={orden} productos={productos}
                     sucursalId={usuario.sucursal_id}
-                    onRecibir={recibir} onVerificar={verificar} />
+                    onRecibir={recibir} onVerificar={verificar}
+                    onCancelar={() => cancelar(orden.id)} />
       ))}
     </section>
   )
 }
 
-function OrdenLocal({ orden, productos, sucursalId, onRecibir, onVerificar }) {
+function OrdenLocal({
+  orden, productos, sucursalId, onRecibir, onVerificar, onCancelar,
+}) {
   const puedeRecibir = orden.destino_id === sucursalId
 
   return (
@@ -145,6 +167,7 @@ function OrdenLocal({ orden, productos, sucursalId, onRecibir, onVerificar }) {
         <strong>Solicitud #{orden.id}</strong>
         <span>{orden.origen} → {orden.destino}</span>
         <span className={`estado ${orden.estado}`}>{orden.estado}</span>
+        {orden.resolucion && <span>{orden.resolucion}: {orden.motivo_resolucion}</span>}
         {orden.remito_numero && (
           <span>Remito {orden.remito_numero} · {orden.remito_estado}</span>
         )}
@@ -167,6 +190,9 @@ function OrdenLocal({ orden, productos, sucursalId, onRecibir, onVerificar }) {
                     puedeRecibir={puedeRecibir}
                     onRecibir={onRecibir} onVerificar={onVerificar} />
       ))}
+      {puedeRecibir && ['PENDIENTE', 'EN_PREPARACION'].includes(orden.estado) && (
+        <button className="peligro" onClick={onCancelar}>Cancelar solicitud</button>
+      )}
       {!puedeRecibir && (
         <p className="ayuda">La recepción y verificación corresponden al local destinatario.</p>
       )}
@@ -205,9 +231,10 @@ function BultoLocal({
           <p>Recepción confirmada. Compará el remito y el precinto con los datos esperados y elegí:</p>
           <div className="acciones-verificacion">
             <button onClick={() => onVerificar(bulto.id, true)}>Verificar</button>
-            <button className="peligro" onClick={() => onVerificar(bulto.id, false)}>
-              Rechazar
-            </button>
+            <button className="peligro" onClick={() => {
+              const motivo = window.prompt('Motivo del rechazo del bulto')
+              if (motivo !== null) onVerificar(bulto.id, false, motivo)
+            }}>Rechazar</button>
           </div>
         </div>
       )}

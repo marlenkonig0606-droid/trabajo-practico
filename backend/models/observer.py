@@ -22,9 +22,12 @@ Fijate que StockObserver, al mover el stock, hace que StockService avise a su ve
 STOCK_MODIFICADO: los eventos se encadenan sin que ninguna clase conozca a las otras.
 """
 from abc import ABC, abstractmethod
+import logging
 
 
 class Observador(ABC):
+    critico = False
+
     @abstractmethod
     def actualizar(self, evento: str, datos: dict):
         ...
@@ -39,11 +42,22 @@ class Sujeto:
             self._observadores.append(observador)
 
     def desuscribir(self, observador: Observador):
-        self._observadores.remove(observador)
+        if observador in self._observadores:
+            self._observadores.remove(observador)
 
     def notificar(self, evento: str, datos: dict):
-        for observador in self._observadores:
-            observador.actualizar(evento, datos)
+        for observador in tuple(self._observadores):
+            for intento in range(3):
+                try:
+                    observador.actualizar(evento, datos)
+                    break
+                except Exception:
+                    if intento == 2:
+                        logging.getLogger(__name__).exception(
+                            "Falló el observador %s para el evento %s tras 3 intentos",
+                            type(observador).__name__, evento)
+                        if observador.critico:
+                            raise
 
 
 # Nombres de eventos (constantes para no escribir strings sueltos)
@@ -52,5 +66,6 @@ class Eventos:
     BULTO_DESPACHADO = "BULTO_DESPACHADO"
     REMITO_VERIFICADO = "REMITO_VERIFICADO"
     BULTO_RECHAZADO = "BULTO_RECHAZADO"
+    BULTO_PERDIDO = "BULTO_PERDIDO"
     # lo notifica StockService cada vez que cambia el stock de un producto en una sucursal
     STOCK_MODIFICADO = "STOCK_MODIFICADO"

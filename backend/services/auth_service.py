@@ -29,6 +29,8 @@ class AuthService:
         sucursal = self.dao.tipo_sucursal(sucursal_id)
         if sucursal is None or sucursal["tipo"] != tipo_requerido:
             raise ReglaNegocioError(f"Elegí una sucursal de tipo {tipo_requerido}")
+        if not sucursal["activo"]:
+            raise ReglaNegocioError("No se pueden registrar cuentas en una sucursal inactiva")
         if self.dao.obtener_id_por_email(email):
             raise ReglaNegocioError("Ya existe una cuenta con ese correo")
 

@@ -29,7 +29,7 @@ const CAMPOS = {
   ],
   sucursales: [
     { id: 'nombre', titulo: 'Nombre', requerido: true },
-    { id: 'direccion', titulo: 'Dirección' },
+    { id: 'direccion', titulo: 'Dirección', requerido: true },
     { id: 'tipo', titulo: 'Tipo', tipo: 'tipo_sucursal', requerido: true },
   ],
 }
@@ -38,11 +38,16 @@ const COLUMNAS = {
   productos: [
     ['codigo', 'Código'], ['nombre', 'Nombre'], ['categoria_id', 'Categoría'],
     ['proveedor_id', 'Proveedor'], ['precio_costo', 'Costo'],
-    ['precio_venta', 'Venta'], ['stock_minimo', 'Stock mínimo'],
+    ['precio_venta', 'Venta'], ['stock_minimo', 'Stock mínimo'], ['activo', 'Estado'],
   ],
-  categorias: [['nombre', 'Nombre'], ['descripcion', 'Descripción']],
-  proveedores: [['nombre', 'Nombre'], ['razon_social', 'Razón social'], ['cuit', 'CUIT']],
-  sucursales: [['nombre', 'Nombre'], ['direccion', 'Dirección'], ['tipo', 'Tipo']],
+  categorias: [['nombre', 'Nombre'], ['descripcion', 'Descripción'], ['activo', 'Estado']],
+  proveedores: [
+    ['nombre', 'Nombre'], ['razon_social', 'Razón social'], ['cuit', 'CUIT'], ['activo', 'Estado'],
+  ],
+  sucursales: [
+    ['codigo', 'Código'], ['nombre', 'Nombre'], ['direccion', 'Dirección'],
+    ['tipo', 'Tipo'], ['activo', 'Estado'],
+  ],
 }
 
 const OPERACIONES = {
@@ -65,10 +70,9 @@ const OPERACIONES = {
     eliminar: api.eliminarProveedor,
   },
   sucursales: {
-    listar: api.sucursales,
+    listar: api.sucursalesCatalogo,
     crear: api.crearSucursal,
     actualizar: api.actualizarSucursal,
-    eliminar: api.eliminarSucursal,
   },
 }
 
@@ -93,7 +97,7 @@ export default function Catalogo() {
 
   const recargar = async () => {
     const [productos, categorias, proveedores, sucursales] = await Promise.all([
-      api.productos(), api.categorias(), api.proveedores(), api.sucursales(),
+      api.productos(), api.categorias(), api.proveedores(), api.sucursalesCatalogo(),
     ])
     setDatos({ productos, categorias, proveedores, sucursales })
   }
@@ -177,6 +181,42 @@ export default function Catalogo() {
     }
   }
 
+  const cambiarEstado = async (fila) => {
+    const activo = !Boolean(fila.activo)
+    const entidades = {
+      productos: 'el producto',
+      categorias: 'la categoría',
+      proveedores: 'el proveedor',
+      sucursales: 'la sucursal',
+    }
+    const detalles = {
+      productos: 'Se conserva su historial. No podrá venderse ni solicitarse mientras esté inactivo.',
+      categorias: 'Los productos existentes conservan la categoría; no se podrán asignar productos nuevos.',
+      proveedores: 'Se conserva el historial y no podrá elegirse para nuevos productos.',
+      sucursales: 'Se conservan stock e historial; una sucursal inactiva no puede operar.',
+    }
+    if (!window.confirm(
+      `${activo ? '¿Activar' : '¿Desactivar'} ${entidades[seccion]} "${fila.nombre}"? ${detalles[seccion]}`,
+    )) return
+    setError('')
+    setMensaje('')
+    try {
+      if (seccion === 'sucursales') {
+        await api.cambiarEstadoSucursal(fila.id, activo)
+      } else if (seccion === 'proveedores') {
+        await api.cambiarEstadoProveedor(fila.id, activo)
+      } else if (seccion === 'categorias') {
+        await api.cambiarEstadoCategoria(fila.id, activo)
+      } else {
+        await api.cambiarEstadoProducto(fila.id, activo)
+      }
+      await recargar()
+      setMensaje(`${entidades[seccion]} ${activo ? 'activado' : 'desactivado'}.`)
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   const mostrarValor = (fila, campo) => {
     if (campo === 'categoria_id') {
       return datos.categorias.find((categoria) => categoria.id === fila.categoria_id)?.nombre ?? '—'
@@ -187,6 +227,7 @@ export default function Catalogo() {
     if (campo === 'precio_costo' || campo === 'precio_venta') {
       return `$${Number(fila[campo]).toFixed(2)}`
     }
+    if (campo === 'activo') return fila.activo ? 'Activo' : 'Inactivo'
     return fila[campo] ?? '—'
   }
 
@@ -197,7 +238,10 @@ export default function Catalogo() {
       <div className="catalogo-cabecera">
         <div>
           <h2>Catálogo</h2>
-          <p className="vacio">Administrá productos, categorías, proveedores y sucursales.</p>
+          <p className="vacio">
+            Administrá productos, categorías, proveedores y sucursales.
+            Las sucursales activas aparecen en el registro de acceso.
+          </p>
         </div>
         <button onClick={abrirNuevo} disabled={Boolean(formulario)}>Nuevo registro</button>
       </div>
@@ -239,10 +283,20 @@ export default function Catalogo() {
                     onChange={(e) => setFormulario({ ...formulario, [campo.id]: e.target.value })}
                   >
                     <option value="">{campo.tipo === 'proveedor' ? 'Sin proveedor' : 'Seleccionar…'}</option>
-                    {campo.tipo === 'categoria' && datos.categorias.map((categoria) => (
+                    {campo.tipo === 'categoria' && datos.categorias
+                      .filter((categoria) => categoria.activo
+                        || (filaEditada !== null
+                          && datos.productos.find((producto) => producto.id === filaEditada)
+                            ?.categoria_id === categoria.id))
+                      .map((categoria) => (
                       <option key={categoria.id} value={categoria.id}>{categoria.nombre}</option>
                     ))}
-                    {campo.tipo === 'proveedor' && datos.proveedores.map((proveedor) => (
+                    {campo.tipo === 'proveedor' && datos.proveedores
+                      .filter((proveedor) => proveedor.activo
+                        || (filaEditada !== null
+                          && datos.productos.find((producto) => producto.id === filaEditada)
+                            ?.proveedor_id === proveedor.id))
+                      .map((proveedor) => (
                       <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
                     ))}
                     {campo.tipo === 'tipo_sucursal' && <>
@@ -290,7 +344,12 @@ export default function Catalogo() {
                   ))}
                   <td className="catalogo-acciones">
                     <button className="link" onClick={() => abrirEdicion(fila)}>Editar</button>
-                    <button className="link peligro" onClick={() => eliminar(fila)}>Eliminar</button>
+                    {(seccion === 'sucursales' || seccion === 'proveedores'
+                      || seccion === 'categorias' || seccion === 'productos') && (
+                      <button className="link" onClick={() => cambiarEstado(fila)}>
+                        {fila.activo ? 'Desactivar' : 'Activar'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

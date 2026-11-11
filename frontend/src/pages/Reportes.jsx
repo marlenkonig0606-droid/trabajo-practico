@@ -16,7 +16,9 @@ export default function Reportes({ usuario }) {
   const [errorResumen, setErrorResumen] = useState('')
   const [cargandoResumen, setCargandoResumen] = useState(true)
   const [rechazados, setRechazados] = useState([])
-  const [transito, setTransito] = useState([])
+  const [transito, setTransito] = useState({
+    promedios_verificados: [], estados: [],
+  })
   const [eventos, setEventos] = useState([])
   const [existencias, setExistencias] = useState([])
   const [movimientos, setMovimientos] = useState([])
@@ -157,8 +159,10 @@ export default function Reportes({ usuario }) {
         <h2>Existencias actuales y stock mínimo</h2>
         <GraficoStock filas={existencias} />
         <Tabla filas={existencias}
-               columnas={['sucursal', 'codigo', 'producto', 'disponible', 'reservado', 'libre', 'stock_minimo', 'estado']}
-               resaltar={(f) => f.estado === 'BAJO MÍNIMO'} />
+               columnas={['sucursal', 'codigo', 'producto', 'disponible', 'reservado', 'libre',
+                 'en_transito', 'recibido_sin_verificar', 'rechazado',
+                 'saldo_segun_movimientos', 'diferencia_movimientos', 'stock_minimo', 'estado']}
+               resaltar={(f) => f.estado !== 'OK'} />
       </div>
       <div className="tarjeta">
         <h2>Movimientos</h2>
@@ -176,8 +180,8 @@ export default function Reportes({ usuario }) {
           ))}
         </div>
         <p className="ayuda">
-          Las ventas se muestran con valor positivo, las devoluciones con valor negativo y
-          las recepciones sin valorización.
+          Las ventas y devoluciones conservan sus precios históricos; las recepciones usan
+          el costo guardado al despachar el bulto.
         </p>
         <TablaMovimientos filas={movimientos}
                           onVerDetalle={setMovimientoDetalle} />
@@ -187,13 +191,26 @@ export default function Reportes({ usuario }) {
                             onCerrar={() => setMovimientoDetalle(null)} />
       )}
       {usuario.tipo === 'CD' && <div className="tarjeta">
-        <h2>Bultos rechazados / merma por precinto</h2>
-        <Tabla filas={rechazados} columnas={['bulto_id', 'remito', 'destino', 'motivo', 'unidades', 'merma_valorizada']} />
+        <h2>Bultos rechazados y valor histórico (no se consideran merma automática)</h2>
+        <Tabla filas={rechazados} columnas={['bulto_id', 'remito', 'destino', 'motivo',
+          'unidades', 'valor_historico', 'costo_faltante']} />
       </div>}
-      {usuario.tipo === 'CD' && <div className="tarjeta">
-        <h2>Tiempo promedio de tránsito CD → local</h2>
-        <Tabla filas={transito} columnas={['local', 'bultos', 'horas_promedio']} />
-      </div>}
+      {(usuario.tipo === 'CD' || transito.alertas_verificacion.length > 0) && (
+        <div className="tarjeta">
+          {usuario.tipo === 'CD' && <>
+            <h2>Tiempo promedio de entregas verificadas CD → local</h2>
+            <Tabla filas={transito.promedios_verificados}
+                   columnas={['local', 'bultos', 'horas_promedio']} />
+            <h3>Bultos pendientes o rechazados</h3>
+            <Tabla filas={transito.estados}
+                   columnas={['local', 'pendientes_verificacion', 'rechazados', 'perdidos']} />
+          </>}
+          <h3>Alertas de bultos sin verificar (24/48 horas)</h3>
+          <Tabla filas={transito.alertas_verificacion}
+                 columnas={['bulto_id', 'remito', 'local', 'estado',
+                   'horas_sin_verificar', 'nivel']} />
+        </div>
+      )}
       {usuario.tipo === 'CD' && <div className="tarjeta">
         <h2>Registro de eventos logísticos</h2>
         <Tabla filas={eventos} columnas={['fecha', 'evento', 'detalle']} />
@@ -296,7 +313,7 @@ function Tabla({ filas, columnas, resaltar }) {
   return (
     <table>
       <thead><tr>{columnas.map((c) => <th key={c}>{c.replaceAll('_', ' ')}</th>)}</tr></thead>
-      <tbody>{filas.map((f, i) => <tr key={i} className={resaltar?.(f) ? 'bajo' : ''}>{columnas.map((c) => <td key={c}>{f[c]}</td>)}</tr>)}</tbody>
+      <tbody>{filas.map((f, i) => <tr key={i} className={resaltar?.(f) ? 'bajo' : ''}>{columnas.map((c) => <td key={c}>{f[c] == null ? 'Dato faltante' : f[c]}</td>)}</tr>)}</tbody>
     </table>
   )
 }
@@ -320,7 +337,9 @@ function GraficoMasVendidos({ filas }) {
                  style={{ width: `${(f.unidades / maximo) * 100}%` }} />
           </div>
           <span className="grafico-valor">
-            {f.unidades} u. · {f.margen < 0 ? '-' : ''}${Math.abs(Number(f.margen)).toFixed(0)}
+            {f.unidades} u. · {f.margen == null
+              ? 'costo faltante'
+              : `${f.margen < 0 ? '-' : ''}$${Math.abs(Number(f.margen)).toFixed(0)}`}
           </span>
         </div>
       ))}

@@ -13,8 +13,10 @@ CREATE TABLE IF NOT EXISTS datos_iniciales (
 CREATE TABLE IF NOT EXISTS sucursal (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre      TEXT NOT NULL UNIQUE,
+    codigo      TEXT UNIQUE,
     direccion   TEXT,
-    tipo        TEXT NOT NULL CHECK (tipo IN ('CD', 'LOCAL'))
+    tipo        TEXT NOT NULL CHECK (tipo IN ('CD', 'LOCAL')),
+    activo      INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS usuario (
@@ -29,14 +31,16 @@ CREATE TABLE IF NOT EXISTS usuario (
 CREATE TABLE IF NOT EXISTS categoria (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre  TEXT NOT NULL UNIQUE,
-    descripcion TEXT
+    descripcion TEXT,
+    activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS proveedor (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     cuit    TEXT NOT NULL UNIQUE,          -- identificador que evita duplicados
     razon_social TEXT NOT NULL,
-    nombre TEXT NOT NULL
+    nombre TEXT NOT NULL,
+    activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS producto (
@@ -47,7 +51,15 @@ CREATE TABLE IF NOT EXISTS producto (
     proveedor_id  INTEGER REFERENCES proveedor(id),
     precio_costo  REAL NOT NULL CHECK (precio_costo >= 0),
     precio_venta  REAL NOT NULL CHECK (precio_venta >= 0),
-    stock_minimo  INTEGER NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0)
+    stock_minimo  INTEGER NOT NULL DEFAULT 0 CHECK (stock_minimo >= 0),
+    activo        INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS producto_sucursal (
+    sucursal_id INTEGER NOT NULL REFERENCES sucursal(id),
+    producto_id INTEGER NOT NULL REFERENCES producto(id),
+    habilitado  INTEGER NOT NULL DEFAULT 1 CHECK (habilitado IN (0, 1)),
+    PRIMARY KEY (sucursal_id, producto_id)
 );
 
 -- Stock DISPONIBLE (vendible) por sucursal y producto.
@@ -70,6 +82,7 @@ CREATE TABLE IF NOT EXISTS movimiento_stock (
     cantidad     INTEGER NOT NULL,          -- positivo = entra, negativo = sale
     motivo       TEXT NOT NULL,             -- DESPACHO, RECEPCION, VENTA, DEVOLUCION, AJUSTE
     referencia   TEXT,
+    costo_unitario REAL,
     fecha        TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -80,6 +93,10 @@ CREATE TABLE IF NOT EXISTS orden_reposicion (
     destino_id                INTEGER NOT NULL REFERENCES sucursal(id),   -- un local
     solicitado_por_usuario_id INTEGER REFERENCES usuario(id),
     fecha                     TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    fecha_vencimiento         TEXT NOT NULL DEFAULT (datetime('now', 'localtime', '+30 days')),
+    resolucion                TEXT CHECK (resolucion IN ('RECHAZADA', 'CANCELADA', 'VENCIDA')),
+    motivo_resolucion         TEXT,
+    aviso_vencimiento_enviado INTEGER NOT NULL DEFAULT 0 CHECK (aviso_vencimiento_enviado IN (0, 1)),
     estado                    TEXT NOT NULL DEFAULT 'PENDIENTE'
                 CHECK (estado IN ('PENDIENTE', 'EN_PREPARACION', 'DESPACHADA', 'CERRADA'))
 );
@@ -106,13 +123,24 @@ CREATE TABLE IF NOT EXISTS bulto (
     precinto        TEXT UNIQUE,            -- se asigna al precintar
     estado          TEXT NOT NULL DEFAULT 'PREPARADO',
     fecha_despacho  TEXT,
-    fecha_recepcion TEXT
+    fecha_recepcion TEXT,
+    intento         INTEGER NOT NULL DEFAULT 1 CHECK (intento > 0),
+    usuario_despacho_id INTEGER REFERENCES usuario(id),
+    observacion_rechazo TEXT
+);
+
+CREATE TABLE IF NOT EXISTS precinto_anulado (
+    precinto TEXT PRIMARY KEY,
+    bulto_id INTEGER NOT NULL REFERENCES bulto(id),
+    motivo TEXT NOT NULL,
+    fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS detalle_bulto (
     bulto_id     INTEGER NOT NULL REFERENCES bulto(id),
     producto_id  INTEGER NOT NULL REFERENCES producto(id),
     cantidad     INTEGER NOT NULL CHECK (cantidad > 0),
+    costo_unitario REAL,
     PRIMARY KEY (bulto_id, producto_id)
 );
 
@@ -122,7 +150,10 @@ CREATE TABLE IF NOT EXISTS historial_bulto (
     bulto_id     INTEGER NOT NULL REFERENCES bulto(id),
     estado       TEXT NOT NULL,
     fecha        TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-    observacion  TEXT
+    observacion  TEXT,
+    desde_estado TEXT,
+    usuario_id   INTEGER REFERENCES usuario(id),
+    intento      INTEGER NOT NULL DEFAULT 1 CHECK (intento > 0)
 );
 
 CREATE TRIGGER IF NOT EXISTS historial_sin_update
@@ -160,6 +191,16 @@ CREATE TABLE IF NOT EXISTS evento_log (
     fecha    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS notificacion (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    sucursal_id INTEGER NOT NULL REFERENCES sucursal(id),
+    evento      TEXT NOT NULL,
+    referencia  TEXT,
+    mensaje     TEXT NOT NULL,
+    fecha       TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    leida       INTEGER NOT NULL DEFAULT 0 CHECK (leida IN (0, 1))
+);
+
 -- ---------- Ventas, cobros y devoluciones ----------
 CREATE TABLE IF NOT EXISTS venta (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,6 +215,7 @@ CREATE TABLE IF NOT EXISTS detalle_venta (
     producto_id     INTEGER NOT NULL REFERENCES producto(id),
     cantidad        INTEGER NOT NULL CHECK (cantidad > 0),
     precio_unitario REAL NOT NULL CHECK (precio_unitario >= 0),
+    costo_unitario  REAL,
     PRIMARY KEY (venta_id, producto_id)
 );
 
@@ -208,6 +250,7 @@ CREATE TABLE IF NOT EXISTS detalle_devolucion (
     producto_id     INTEGER NOT NULL REFERENCES producto(id),
     cantidad        INTEGER NOT NULL CHECK (cantidad > 0),
     precio_unitario REAL NOT NULL CHECK (precio_unitario >= 0),
+    costo_unitario  REAL,
     PRIMARY KEY (devolucion_id, producto_id)
 );
 

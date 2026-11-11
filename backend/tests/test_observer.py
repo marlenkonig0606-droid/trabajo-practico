@@ -32,7 +32,9 @@ def enviar_y_recibir(logistica, cantidad, intacto=True):
     bulto = logistica.precintar(bulto["id"])
     logistica.despachar(bulto["id"])
     logistica.recibir(bulto["id"])
-    logistica.verificar_recepcion(bulto["id"], intacto)
+    logistica.verificar_recepcion(
+        bulto["id"], intacto,
+        None if intacto else "Precinto dañado al recibir")
     return bulto
 
 
@@ -45,6 +47,21 @@ class Espia(Observador):
         self.recibidos.append(evento)
 
 
+class FallaUnaVez(Observador):
+    def __init__(self):
+        self.intentos = 0
+
+    def actualizar(self, evento, datos):
+        self.intentos += 1
+        if self.intentos == 1:
+            raise RuntimeError("error transitorio")
+
+
+class FallaSiempre(Observador):
+    def actualizar(self, evento, datos):
+        raise RuntimeError("error permanente")
+
+
 def test_sujeto_avisa_a_todos_los_suscriptos_y_no_a_los_desuscriptos():
     sujeto, a, b = Sujeto(), Espia(), Espia()
     sujeto.suscribir(a)
@@ -55,6 +72,18 @@ def test_sujeto_avisa_a_todos_los_suscriptos_y_no_a_los_desuscriptos():
     sujeto.notificar("Y", {})
     assert a.recibidos == ["X", "Y"]
     assert b.recibidos == ["X"]
+    sujeto.desuscribir(b)
+
+
+def test_sujeto_reintenta_fallas_y_registra_las_persistentes(caplog):
+    sujeto, transitorio, permanente = Sujeto(), FallaUnaVez(), FallaSiempre()
+    sujeto.suscribir(transitorio)
+    sujeto.suscribir(permanente)
+
+    sujeto.notificar("X", {})
+
+    assert transitorio.intentos == 2
+    assert "tras 3 intentos" in caplog.text
 
 
 def test_stock_service_notifica_cada_cambio(app_svc):
@@ -118,4 +147,4 @@ def test_auditoria_registra_rechazos_con_motivo(app_svc):
     enviar_y_recibir(logistica, 10, intacto=False)
     ultimo = alertas.eventos()[0]
     assert ultimo["evento"] == Eventos.BULTO_RECHAZADO
-    assert "rechazado por el local destinatario" in ultimo["detalle"]
+    assert "Precinto dañado al recibir" in ultimo["detalle"]

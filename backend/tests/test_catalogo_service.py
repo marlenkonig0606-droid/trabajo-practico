@@ -56,14 +56,14 @@ def test_catalogo_usa_las_operaciones_de_los_dao(catalogo):
 
     assert producto["nombre"] == "Agua mineral"
     assert categoria["descripcion"] == "Agua envasada"
-    assert proveedor["cuit"] == "30-87654321-0"
+    assert proveedor["cuit"] == "30876543210"
 
     catalogo.eliminar_producto(producto["id"])
     catalogo.eliminar_categoria(categoria["id"])
     catalogo.eliminar_proveedor(proveedor["id"])
-    assert catalogo.listar_productos() == []
-    assert catalogo.listar_categorias() == []
-    assert catalogo.listar_proveedores() == []
+    assert catalogo.obtener_producto(producto["id"])["activo"] == 0
+    assert catalogo.obtener_categoria(categoria["id"])["activo"] == 0
+    assert catalogo.obtener_proveedor(proveedor["id"])["activo"] == 0
 
 
 def test_catalogo_convierte_duplicados_en_errores_de_negocio(catalogo):

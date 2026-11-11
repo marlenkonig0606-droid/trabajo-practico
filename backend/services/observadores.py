@@ -49,6 +49,8 @@ class AuditoriaObserver(Observador):
             detalle = f"Bulto {datos['bulto_id']} despachado desde el CD ({unidades} unidades)"
         elif evento == Eventos.BULTO_RECHAZADO:
             detalle = f"Bulto {datos['bulto_id']} rechazado: {datos['motivo']}"
+        elif evento == Eventos.BULTO_PERDIDO:
+            detalle = f"Bulto {datos['bulto_id']} declarado perdido: {datos['motivo']}"
         elif evento == Eventos.REMITO_VERIFICADO:
             unidades = sum(i["cantidad"] for i in datos["items_verificados"])
             detalle = (f"Remito {datos['remito_numero']} verificado: "
