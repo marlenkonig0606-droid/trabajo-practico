@@ -1,13 +1,6 @@
-"""
-Procesos obligatorios 3, 4, 5 y 6:
-  3. Orden de reposición CD -> local
-  4. Empaquetar en bultos con remito y precinto
-  5. Despachar
-  6. Recibir y verificar precinto
 
-Este módulo está COMPLETO: usalo como modelo para escribir ventas.
-"""
 from database.conexion import BaseDeDatos
+from dao.logistica_dao import LogisticaDAO
 from models.bulto import Bulto, EstadoBulto
 from models.sucursal import Sucursal
 from models.observer import Sujeto, Eventos
@@ -20,6 +13,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
     def __init__(self, stock: StockService| None = None):
         super().__init__()
         self.db = BaseDeDatos()
+        self.dao = LogisticaDAO(self.db)
         # Se recibe el MISMO StockService que usa el resto de la app, así sus
         # observadores (alertas) se enteran también de las reservas que hace logística.
         self.stock = stock or StockService()
@@ -38,8 +32,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         self._validar_items(items)
 
         if origen_id is None:
-            cd = self.db.consultar_uno(
-                "SELECT id FROM sucursal WHERE tipo='CD' ORDER BY id LIMIT 1")
+            cd = self.dao.primer_cd()
             origen_id = cd["id"] if cd else None
         origen = self._obtener_sucursal(origen_id) if origen_id is not None else None
         if origen is None:
@@ -47,62 +40,20 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         if origen.tipo != "CD":
             raise ReglaNegocioError("El origen de una orden de reposición debe ser un CD")
 
-        with self.db.transaccion():
-            orden_id = self.db.ejecutar(
-                """INSERT INTO orden_reposicion
-                   (origen_id, destino_id, solicitado_por_usuario_id)
-                   VALUES (?, ?, ?)""",
-                (origen_id, destino_id, solicitado_por_usuario_id))
-            for it in items:
-                self.db.ejecutar(
-                    "INSERT INTO detalle_orden (orden_id, producto_id, cantidad) VALUES (?, ?, ?)",
-                    (orden_id, it["producto_id"], it["cantidad"]))
+        orden_id = self.dao.crear_orden(
+            origen_id, destino_id, solicitado_por_usuario_id, items)
         return self.obtener_orden(orden_id)
 
     def obtener_orden(self, orden_id):
-        orden = self.db.consultar_uno(
-            """SELECT o.*, so.nombre AS origen, sd.nombre AS destino,
-                      r.id AS remito_id, r.numero AS remito_numero, r.estado AS remito_estado
-               FROM orden_reposicion o
-               JOIN sucursal so ON so.id = o.origen_id
-               JOIN sucursal sd ON sd.id = o.destino_id
-               LEFT JOIN remito r ON r.orden_id = o.id
-               WHERE o.id = ?""", (orden_id,))
+        orden = self.dao.obtener_orden(orden_id)
         if orden is None:
             raise NoEncontradoError(f"No existe la orden {orden_id}")
-        orden["items"] = self.db.consultar(
-            """SELECT d.producto_id, p.nombre, d.cantidad,
-                      COALESCE((SELECT SUM(db.cantidad) FROM detalle_bulto db
-                                JOIN bulto b ON b.id = db.bulto_id
-                                JOIN remito r ON r.id = b.remito_id
-                                WHERE r.orden_id = d.orden_id AND db.producto_id = d.producto_id AND b.estado != 'ANULADO'), 0)
-                      AS empaquetado
-               FROM detalle_orden d JOIN producto p ON p.id = d.producto_id
-               WHERE d.orden_id = ?""", (orden_id,))
+        orden["items"] = self.dao.items_orden(orden_id)
         orden["bultos"] = [b.to_dict() for b in self._bultos_de_orden(orden_id)]
         return orden
 
     def listar_ordenes(self, destino_id=None, solicitante_id=None):
-        if destino_id is None and solicitante_id is None:
-            ids = self.db.consultar("SELECT id FROM orden_reposicion ORDER BY id DESC")
-        elif destino_id is None:
-            ids = self.db.consultar(
-                """SELECT id FROM orden_reposicion
-                   WHERE solicitado_por_usuario_id=? ORDER BY id DESC""",
-                (solicitante_id,),
-            )
-        elif solicitante_id is None:
-            ids = self.db.consultar(
-                "SELECT id FROM orden_reposicion WHERE destino_id=? ORDER BY id DESC",
-                (destino_id,),
-            )
-        else:
-            ids = self.db.consultar(
-                """SELECT id FROM orden_reposicion
-                   WHERE destino_id=? OR solicitado_por_usuario_id=?
-                   ORDER BY id DESC""",
-                (destino_id, solicitante_id),
-            )
+        ids = self.dao.listar_orden_ids(destino_id, solicitante_id)
         return [self.obtener_orden(f["id"]) for f in ids]
 
     def sugerir_orden(self, local_id):
@@ -121,9 +72,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                                    "cantidad": faltante})
         return sugerencia
 
-    # ================================================================
-    # 4. EMPAQUETAR (crear bulto) + asignar remito y precinto
-    # ================================================================
+
     def crear_bulto(self, orden_id, items):
         """Al hacer clic en "Empaquetar" el stock del CD queda RESERVADO para este bulto.
         Si dos usuarios empaquetan el mismo producto a la vez, el bloqueo hace que
@@ -154,41 +103,35 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                     f"Producto {it['producto_id']}: quedan {pendientes[it['producto_id']]} "
                     f"por empaquetar y se intentó empaquetar {it['cantidad']}")
 
-        with self.db.transaccion():                # 2) recién ahora la transacción
-            remito_id = orden["remito_id"] or self.db.ejecutar(
-                "INSERT INTO remito (numero, orden_id) VALUES (?, ?)",
-                (f"R-{orden_id:06d}", orden_id))
-            bulto_id = self.db.ejecutar("INSERT INTO bulto (remito_id) VALUES (?)", (remito_id,))
+        with self.dao.transaccion():                # 2) recién ahora la transacción
+            remito_id = orden["remito_id"] or self.dao.crear_remito(
+                f"R-{orden_id:06d}", orden_id)
+            bulto_id = self.dao.crear_bulto(remito_id)
             for it in items:
-                self.db.ejecutar(
-                    "INSERT INTO detalle_bulto (bulto_id, producto_id, cantidad) VALUES (?, ?, ?)",
-                    (bulto_id, it["producto_id"], it["cantidad"]))
+                self.dao.agregar_item_bulto(
+                    bulto_id, it["producto_id"], it["cantidad"])
                 # Si no alcanza, lanza error y la transacción deshace TODO el bulto
                 self.stock.reservar(orden["origen_id"], it["producto_id"], it["cantidad"],
                                     f"bulto {bulto_id}")
             self._registrar_historial(bulto_id, EstadoBulto.PREPARADO, "Bulto armado en CD")
-            self.db.ejecutar("UPDATE orden_reposicion SET estado='EN_PREPARACION' WHERE id=?",
-                             (orden_id,))
+            self.dao.marcar_orden_en_preparacion(orden_id)
         return self.obtener_bulto(bulto_id).to_dict()
 
     def precintar(self, bulto_id):
         bulto = self.obtener_bulto(bulto_id)
-        with self.db.transaccion():
+        with self.dao.transaccion():
             siguiente = bulto.id
             while True:
                 precinto = f"P-{siguiente:06d}"
-                existente = self.db.consultar_uno(
-                    "SELECT id FROM bulto WHERE precinto=?", (precinto,))
+                existente = self.dao.precinto_existente(precinto)
                 if existente is None:
                     break
                 siguiente += 1
             self._transicionar(bulto, EstadoBulto.PRECINTADO, f"Precinto {precinto}")
-            self.db.ejecutar("UPDATE bulto SET precinto=? WHERE id=?", (precinto, bulto_id))
+            self.dao.asignar_precinto(bulto_id, precinto)
         return self.obtener_bulto(bulto_id).to_dict()
 
-    # ================================================================
-    # 5. DESPACHO
-    # ================================================================
+
     def anular_bulto(self, bulto_id, motivo):
         """Solo antes de despachar: el bulto se cancela y su stock vuelve a estar libre en el CD."""
         motivo = (motivo or "").strip()
@@ -200,7 +143,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         claves = [(orden["origen_id"], it["producto_id"]) for it in bulto.items]
 
         with self.bloqueos.bloquear(claves):
-            with self.db.transaccion():
+            with self.dao.transaccion():
                 self._transicionar(bulto, EstadoBulto.ANULADO, f"Anulado: {motivo}")
                 for item in bulto.items:
                     self.stock.liberar_reserva(orden["origen_id"], item["producto_id"], item["cantidad"])
@@ -210,30 +153,22 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         bulto = self.obtener_bulto(bulto_id)
         orden = self._orden_de_remito(bulto.remito_id)
 
-        with self.db.transaccion():
+        with self.dao.transaccion():
             self._transicionar(bulto, EstadoBulto.EN_TRANSITO, "Despachado desde CD")
-            self.db.ejecutar(
-                "UPDATE bulto SET fecha_despacho=datetime('now','localtime') WHERE id=?",
-                (bulto_id,))
-            self.db.ejecutar("UPDATE remito SET estado='DESPACHADO' WHERE id=?", (bulto.remito_id,))
-            self.db.ejecutar("UPDATE orden_reposicion SET estado='DESPACHADA' WHERE id=?",
-                             (orden["id"],))
+            self.dao.fijar_fecha_despacho(bulto_id)
+            self.dao.marcar_remito_despachado(bulto.remito_id)
+            self.dao.marcar_orden_despachada(orden["id"])
             # Observer: StockObserver descuenta del CD (y si no alcanza, lanza error -> rollback)
             self.notificar(Eventos.BULTO_DESPACHADO, {
                 "bulto_id": bulto_id, "origen_id": orden["origen_id"], "items": bulto.items})
         return self.obtener_bulto(bulto_id).to_dict()
 
-    # ================================================================
-    # 6. RECEPCIÓN + VERIFICACIÓN DE PRECINTO
-    # ================================================================
     def recibir(self, bulto_id):
         """Registra que el local recibió físicamente el bulto, sin habilitar el stock."""
         bulto = self.obtener_bulto(bulto_id)
-        with self.db.transaccion():
+        with self.dao.transaccion():
             self._transicionar(bulto, EstadoBulto.RECIBIDO, "Bulto recibido en el local")
-            self.db.ejecutar(
-                "UPDATE bulto SET fecha_recepcion=datetime('now','localtime') WHERE id=?",
-                (bulto_id,))
+            self.dao.fijar_fecha_recepcion(bulto_id)
         return self.obtener_bulto(bulto_id).to_dict()
 
     def verificar_recepcion(self, bulto_id, aprobado):
@@ -241,7 +176,7 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         bulto = self.obtener_bulto(bulto_id)
         if not isinstance(aprobado, bool):
             raise ReglaNegocioError("aprobado debe ser verdadero o falso")
-        with self.db.transaccion():
+        with self.dao.transaccion():
             if aprobado:
                 self._transicionar(
                     bulto, EstadoBulto.VERIFICADO, "Remito y precinto verificados")
@@ -262,9 +197,9 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
 
         verificados = [b for b in bultos if b.estado == EstadoBulto.VERIFICADO]
         estado_remito = "VERIFICADO" if verificados else "RECHAZADO"
-        self.db.ejecutar("UPDATE remito SET estado=? WHERE id=?", (estado_remito, remito_id))
+        self.dao.cerrar_remito(remito_id, estado_remito)
         orden = self._orden_de_remito(remito_id)
-        self.db.ejecutar("UPDATE orden_reposicion SET estado='CERRADA' WHERE id=?", (orden["id"],))
+        self.dao.cerrar_orden(orden["id"])
 
         if verificados:
             self.notificar(Eventos.REMITO_VERIFICADO, {
@@ -273,15 +208,11 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
                 "items_verificados": [it for b in verificados for it in b.items],
             })
 
-    # ================================================================
-    # Consultas y helpers
-    # ================================================================
     def obtener_bulto(self, bulto_id):
-        fila = self.db.consultar_uno("SELECT * FROM bulto WHERE id=?", (bulto_id,))
+        fila = self.dao.obtener_bulto(bulto_id)
         if fila is None:
             raise NoEncontradoError(f"No existe el bulto {bulto_id}")
-        items = self.db.consultar(
-            "SELECT producto_id, cantidad FROM detalle_bulto WHERE bulto_id=?", (bulto_id,))
+        items = self.dao.items_bulto(bulto_id)
         return Bulto.desde_fila(fila, items)
 
     def obtener_orden_de_bulto(self, bulto_id):
@@ -293,38 +224,32 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
 
     def historial(self, bulto_id):
         self.obtener_bulto(bulto_id)   # valida que exista
-        return self.db.consultar(
-            "SELECT estado, fecha, observacion FROM historial_bulto WHERE bulto_id=? ORDER BY id",
-            (bulto_id,))
+        return self.dao.listar_historial(bulto_id)
 
     def _transicionar(self, bulto: Bulto, nuevo_estado, observacion):
         try:
             bulto.cambiar_estado(nuevo_estado)    # el modelo valida la transición
         except ValueError as e:
             raise ReglaNegocioError(str(e))
-        self.db.ejecutar("UPDATE bulto SET estado=? WHERE id=?", (nuevo_estado, bulto.id))
+        self.dao.actualizar_estado_bulto(bulto.id, nuevo_estado)
         self._registrar_historial(bulto.id, nuevo_estado, observacion)
 
     def _registrar_historial(self, bulto_id, estado, observacion):
-        self.db.ejecutar(
-            "INSERT INTO historial_bulto (bulto_id, estado, observacion) VALUES (?, ?, ?)",
-            (bulto_id, estado, observacion))
+        self.dao.registrar_historial(bulto_id, estado, observacion)
 
     def _bultos_de_remito(self, remito_id):
-        ids = self.db.consultar("SELECT id FROM bulto WHERE remito_id=? ORDER BY id", (remito_id,))
+        ids = self.dao.listar_bulto_ids_remito(remito_id)
         return [self.obtener_bulto(f["id"]) for f in ids]
 
     def _bultos_de_orden(self, orden_id):
-        remito = self.db.consultar_uno("SELECT id FROM remito WHERE orden_id=?", (orden_id,))
+        remito = self.dao.remito_de_orden(orden_id)
         return self._bultos_de_remito(remito["id"]) if remito else []
 
     def _orden_de_remito(self, remito_id):
-        return self.db.consultar_uno(
-            """SELECT o.*, r.numero AS remito_numero FROM remito r
-               JOIN orden_reposicion o ON o.id = r.orden_id WHERE r.id=?""", (remito_id,))
+        return self.dao.orden_de_remito(remito_id)
 
     def _obtener_sucursal(self, sucursal_id):
-        fila = self.db.consultar_uno("SELECT * FROM sucursal WHERE id=?", (sucursal_id,))
+        fila = self.dao.obtener_sucursal(sucursal_id)
         if fila is None:
             raise NoEncontradoError(f"No existe la sucursal {sucursal_id}")
         return Sucursal.desde_fila(fila)
@@ -337,5 +262,5 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
             if it["producto_id"] in vistos:
                 raise ReglaNegocioError(f"Producto {it['producto_id']} repetido")
             vistos.add(it["producto_id"])
-            if not self.db.consultar_uno("SELECT id FROM producto WHERE id=?", (it["producto_id"],)):
+            if not self.dao.existe_producto(it["producto_id"]):
                 raise NoEncontradoError(f"No existe el producto {it['producto_id']}")

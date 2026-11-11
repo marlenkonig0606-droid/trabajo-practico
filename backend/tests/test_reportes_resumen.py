@@ -11,7 +11,7 @@ from services.ventas_service import VentasService
 def reportes(tmp_path):
     BaseDeDatos.reiniciar()
     BaseDeDatos(str(tmp_path / "reportes_resumen.db"))
-    cargar()
+    cargar(incluir_demo=False)
     stock = StockService()
     ventas = VentasService(stock)
     stock.sumar(2, 1, 10, "TEST")

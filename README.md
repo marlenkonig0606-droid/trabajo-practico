@@ -32,9 +32,9 @@ backend/
   database/
     conexion.py             ★ SINGLETON: una sola conexión para toda la app
     schema.sql              tablas + triggers que hacen inmutable el historial
-    datos_iniciales.py      1 CD, 2 locales, 4 productos, stock solo en el CD
+    datos_iniciales.py      catálogo, 2 CD, 2 locales y operaciones demo
+  dao/                      Auth, catálogo, logística, stock, ventas, reportes y eventos
   models/                   clases del dominio (incluye medios de pago)
-  patrones/
     observer.py             ★ OBSERVER: Sujeto / Observador / Eventos
   services/                 reglas de negocio (acá viven las validaciones)
     auth_service.py         cuentas locales/CD y contraseñas hasheadas
@@ -76,6 +76,11 @@ En producción, configurá `FLASK_SECRET_KEY` con un valor secreto persistente y
 aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo local, la app genera una
 clave temporal al iniciarse.
 
+Al iniciar, la base recibe datos de demostración si todavía no fueron cargados: dos CD,
+dos locales, seis productos, tres proveedores, stock local, cuatro ventas y una devolución.
+La carga tiene una marca de versión y no duplica ni vuelve a completar el stock al reiniciar.
+No se crean usuarios de demostración; registrá una cuenta para el local que quieras probar.
+
 ## Qué ya está resuelto (y cómo defenderlo)
 
 **Ciclo de vida del bulto** (`models/bulto.py`): `PREPARADO → PRECINTADO → EN_TRANSITO → RECIBIDO →
@@ -108,6 +113,5 @@ se suma lo de los bultos verificados. Un bulto con precinto roto o con número d
 ## Estado de funcionalidades y documentación
 
 La descripción funcional completa —permisos, solicitudes, recepción, ventas, devoluciones,
-reportes y patrones— está en [documentacion/README.md](./documentacion/README.md). El ABM de
-sucursales, productos, categorías y proveedores sigue pendiente; la pantalla Catálogo es
-todavía un marcador de posición.
+reportes y patrones— está en [documentacion/README.md](./documentacion/README.md). El CD
+puede administrar sucursales, productos, categorías y proveedores desde Catálogo.

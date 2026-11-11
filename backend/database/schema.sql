@@ -4,6 +4,11 @@
 -- =========================================================
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS datos_iniciales (
+    nombre TEXT PRIMARY KEY,
+    fecha  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 -- ---------- 1. Sucursales (locales + Centro de Distribución) ----------
 CREATE TABLE IF NOT EXISTS sucursal (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

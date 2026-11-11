@@ -1,9 +1,6 @@
-"""
-Observadores concretos del patrón Observer (el tercero, StockObserver, está en
-stock_service.py). Ninguno de estos conoce a LogisticaService ni a StockService:
-solo reciben (evento, datos) y deciden qué hacer.
-"""
+
 from database.conexion import BaseDeDatos
+from dao.observadores_dao import ObservadoresDAO
 from models.observer import Observador, Eventos
 
 
@@ -18,33 +15,24 @@ class AlertaStockMinimoObserver(Observador):
 
     def __init__(self):
         self.db = BaseDeDatos()
+        self.dao = ObservadoresDAO(self.db)
 
     def actualizar(self, evento, datos):
         if evento != Eventos.STOCK_MODIFICADO:
             return      # un observador puede ignorar los eventos que no le interesan
 
         sucursal_id, producto_id, libre = datos["sucursal_id"], datos["producto_id"], datos["libre"]
-        producto = self.db.consultar_uno(
-            "SELECT stock_minimo FROM producto WHERE id=?", (producto_id,))
+        producto = self.dao.stock_minimo(producto_id)
         minimo = producto["stock_minimo"]
-        abierta = self.db.consultar_uno(
-            """SELECT id FROM alerta_stock
-               WHERE sucursal_id=? AND producto_id=? AND resuelta=0""",
-            (sucursal_id, producto_id))
+        abierta = self.dao.alerta_pendiente(sucursal_id, producto_id)
 
         if libre < minimo:
             if abierta:
-                self.db.ejecutar("UPDATE alerta_stock SET libre=? WHERE id=?",
-                                 (libre, abierta["id"]))
+                self.dao.actualizar_alerta(abierta["id"], libre)
             else:
-                self.db.ejecutar(
-                    """INSERT INTO alerta_stock (sucursal_id, producto_id, libre, minimo)
-                       VALUES (?, ?, ?, ?)""", (sucursal_id, producto_id, libre, minimo))
+                self.dao.crear_alerta(sucursal_id, producto_id, libre, minimo)
         elif abierta:
-            self.db.ejecutar(
-                """UPDATE alerta_stock
-                   SET resuelta=1, fecha_resolucion=datetime('now','localtime') WHERE id=?""",
-                (abierta["id"],))
+            self.dao.resolver_alerta(abierta["id"])
 
 
 class AuditoriaObserver(Observador):
@@ -53,6 +41,7 @@ class AuditoriaObserver(Observador):
 
     def __init__(self):
         self.db = BaseDeDatos()
+        self.dao = ObservadoresDAO(self.db)
 
     def actualizar(self, evento, datos):
         if evento == Eventos.BULTO_DESPACHADO:
@@ -66,8 +55,7 @@ class AuditoriaObserver(Observador):
                        f"{unidades} unidades disponibles en el local")
         else:
             detalle = str(datos)
-        self.db.ejecutar("INSERT INTO evento_log (evento, detalle) VALUES (?, ?)",
-                         (evento, detalle))
+        self.dao.registrar_evento(evento, detalle)
 
 
 class AlertasService:
@@ -75,6 +63,7 @@ class AlertasService:
 
     def __init__(self):
         self.db = BaseDeDatos()
+        self.dao = ObservadoresDAO(self.db)
 
     def alertas(self, solo_pendientes=True, sucursal_id=None):
         filtros = []
@@ -85,15 +74,7 @@ class AlertasService:
             filtros.append("a.sucursal_id = ?")
             params.append(sucursal_id)
         filtro = f"WHERE {' AND '.join(filtros)}" if filtros else ""
-        return self.db.consultar(f"""
-            SELECT a.id, s.nombre AS sucursal, p.codigo, p.nombre AS producto,
-                   a.libre, a.minimo, a.fecha, a.resuelta, a.fecha_resolucion
-            FROM alerta_stock a
-            JOIN sucursal s ON s.id = a.sucursal_id
-            JOIN producto p ON p.id = a.producto_id
-            {filtro}
-            ORDER BY a.id DESC""", tuple(params))
+        return self.dao.listar_alertas(filtro, tuple(params))
 
     def eventos(self, limite=50):
-        return self.db.consultar(
-            "SELECT evento, detalle, fecha FROM evento_log ORDER BY id DESC LIMIT ?", (limite,))
+        return self.dao.listar_eventos(limite)

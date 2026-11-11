@@ -27,7 +27,7 @@ AGUA = 1
 def svc(tmp_path):
     BaseDeDatos.reiniciar()
     BaseDeDatos(str(tmp_path / "ventas_service.db"))
-    cargar()
+    cargar(incluir_demo=False)
     stock = StockService()
     ventas = VentasService(stock)
     yield ventas, stock

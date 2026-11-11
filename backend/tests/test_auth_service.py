@@ -11,7 +11,7 @@ def test_registro_local_guarda_hash_y_persiste_tras_reabrir_db(tmp_path):
     BaseDeDatos.reiniciar()
     try:
         db = BaseDeDatos(ruta)
-        cargar()
+        cargar(incluir_demo=False)
         servicio = AuthService()
         usuario = servicio.registrar_local(
             "LOCAL@EXAMPLE.COM", "contraseña-segura", 2)
@@ -36,7 +36,7 @@ def test_registro_no_permite_asignar_tipo_de_sucursal_incorrecto(tmp_path):
     BaseDeDatos.reiniciar()
     try:
         BaseDeDatos(str(tmp_path / "auth_roles.db"))
-        cargar()
+        cargar(incluir_demo=False)
         servicio = AuthService()
 
         with pytest.raises(ReglaNegocioError, match="tipo LOCAL"):

@@ -39,8 +39,7 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 - ↩️ **Devoluciones** con impacto en stock y caja.
 - 📈 **Reportes** de ventas, productos más vendidos, existencias, movimientos filtrables por tipo y bultos rechazados.
 
-> El ABM completo de sucursales, productos, categorías y proveedores todavía no está
-> implementado en la interfaz; no forma parte de las funcionalidades disponibles actualmente.
+> El ABM de sucursales, productos, categorías y proveedores está disponible para cuentas CD.
 
 ---
 
@@ -131,6 +130,14 @@ una ventana con su detalle de productos y precios.
 | 👀 **Observer** | `LogisticaService` → `StockObserver` | Al verificar un remito, el stock se actualiza sin acoplar logística con inventario |
 | 💳 **Creación delegada** | `CreadorMedioDePago` y sus creadores concretos | Cada creador construye un medio concreto y ventas trabaja con `IMedioDePago` |
 
+## 🧪 **Datos de demostración**
+
+Al iniciar la aplicación se cargan dos CD, dos locales, tres proveedores, seis productos,
+stock para los locales, cuatro ventas y una devolución. La carga se ejecuta una sola vez por
+base de datos para no duplicar operaciones ni reponer stock de demostración en cada reinicio.
+No se generan usuarios ni contraseñas de prueba: registrá una cuenta en el local que quieras
+probar. Para crear una cuenta CD sigue siendo necesario configurar el código de invitación.
+
 ---
 
 ## 🛠️ **Tecnologías**
@@ -152,8 +159,8 @@ tp-cd-locales/
 ├── backend/
 │   ├── app.py          → rutas de la API
 │   ├── database/       → conexión (Singleton), esquema y datos iniciales
-│   ├── models/         → clases del dominio
-│   ├── patrones/       → Observer
+│   ├── dao/            → acceso a datos por dominio
+│   ├── models/         → clases del dominio y contratos Observer
 │   ├── services/       → reglas de negocio y creadores de medios de pago
 │   └── tests/          → pruebas automáticas
 ├── frontend/           → interfaz en React

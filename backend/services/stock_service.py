@@ -1,4 +1,5 @@
 from database.conexion import BaseDeDatos
+from dao.stock_dao import StockDAO
 from models.observer import Observador, Sujeto, Eventos
 from services.excepciones import ReglaNegocioError
 
@@ -9,6 +10,7 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
     def __init__(self):
         super().__init__()
         self.db = BaseDeDatos()          # Singleton: siempre la misma conexión
+        self.dao = StockDAO(self.db)
 
     def _avisar_cambio(self, sucursal_id, producto_id):
         self.notificar(Eventos.STOCK_MODIFICADO, {
@@ -16,15 +18,11 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
             "libre": self.libre(sucursal_id, producto_id)})
 
     def disponible(self, sucursal_id, producto_id):
-        fila = self.db.consultar_uno(
-            "SELECT disponible FROM stock WHERE sucursal_id=? AND producto_id=?",
-            (sucursal_id, producto_id))
+        fila = self.dao.disponible(sucursal_id, producto_id)
         return fila["disponible"] if fila else 0
 
     def reservado(self, sucursal_id, producto_id):
-        fila = self.db.consultar_uno(
-            "SELECT reservado FROM stock WHERE sucursal_id=? AND producto_id=?",
-            (sucursal_id, producto_id))
+        fila = self.dao.reservado(sucursal_id, producto_id)
         return fila["reservado"] if fila else 0
 
     def libre(self, sucursal_id, producto_id):
@@ -38,10 +36,7 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
 
         El WHERE hace el control y la reserva en una sola sentencia atómica:
         si otro usuario se adelantó, no se cumple la condición y rowcount = 0."""
-        filas = self.db.ejecutar_contando(
-            """UPDATE stock SET reservado = reservado + ?
-               WHERE sucursal_id=? AND producto_id=? AND disponible - reservado >= ?""",
-            (cantidad, sucursal_id, producto_id, cantidad))
+        filas = self.dao.reservar(sucursal_id, producto_id, cantidad)
         if filas == 0:
             raise ReglaNegocioError(
                 f"Stock insuficiente del producto {producto_id}: hay "
@@ -51,10 +46,7 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
 
     def consumir_reserva(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
         """Al despachar: la mercadería reservada sale físicamente del CD."""
-        filas = self.db.ejecutar_contando(
-            """UPDATE stock SET disponible = disponible - ?, reservado = reservado - ?
-               WHERE sucursal_id=? AND producto_id=? AND reservado >= ?""",
-            (cantidad, cantidad, sucursal_id, producto_id, cantidad))
+        filas = self.dao.consumir_reserva(sucursal_id, producto_id, cantidad)
         if filas == 0:
             raise ReglaNegocioError(
                 f"No hay una reserva de {cantidad} unidades del producto {producto_id}")
@@ -63,21 +55,14 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
 
     def liberar_reserva(self, sucursal_id, producto_id, cantidad):
         """Al anular un bulto: las unidades vuelven a estar libres en el CD."""
-        filas = self.db.ejecutar_contando(
-            """UPDATE stock SET reservado = reservado - ?
-               WHERE sucursal_id=? AND producto_id=? AND reservado >= ?""",
-            (cantidad, sucursal_id, producto_id, cantidad))
+        filas = self.dao.liberar_reserva(sucursal_id, producto_id, cantidad)
         if filas == 0:
             raise ReglaNegocioError(
                 f"No hay una reserva de {cantidad} unidades del producto {producto_id}")
         self._avisar_cambio(sucursal_id, producto_id)
 
     def sumar(self, sucursal_id, producto_id, cantidad, motivo, referencia=None):
-        self.db.ejecutar(
-            """INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (?, ?, ?)
-               ON CONFLICT(sucursal_id, producto_id)
-               DO UPDATE SET disponible = disponible + excluded.disponible""",
-            (sucursal_id, producto_id, cantidad))
+        self.dao.sumar(sucursal_id, producto_id, cantidad)
         self._registrar_movimiento(sucursal_id, producto_id, cantidad, motivo, referencia)
         self._avisar_cambio(sucursal_id, producto_id)
 
@@ -85,26 +70,18 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
         if (isinstance(disponible, bool) or not isinstance(disponible, int)
                 or disponible < 0):
             raise ReglaNegocioError("El stock disponible debe ser un entero no negativo")
-        producto = self.db.consultar_uno(
-            "SELECT id FROM producto WHERE id=?", (producto_id,))
+        producto = self.dao.obtener_producto(producto_id)
         if producto is None:
             raise ReglaNegocioError(f"No existe el producto {producto_id}")
 
-        with self.db.transaccion():
-            fila = self.db.consultar_uno(
-                """SELECT disponible, reservado FROM stock
-                   WHERE sucursal_id=? AND producto_id=?""",
-                (sucursal_id, producto_id))
+        with self.dao.transaccion():
+            fila = self.dao.obtener_existencia(sucursal_id, producto_id)
             anterior = fila["disponible"] if fila else 0
             reservado = fila["reservado"] if fila else 0
             if disponible < reservado:
                 raise ReglaNegocioError(
                     f"El stock no puede quedar por debajo de las {reservado} unidades reservadas")
-            self.db.ejecutar(
-                """INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (?, ?, ?)
-                   ON CONFLICT(sucursal_id, producto_id)
-                   DO UPDATE SET disponible=excluded.disponible""",
-                (sucursal_id, producto_id, disponible))
+            self.dao.fijar_disponible(sucursal_id, producto_id, disponible)
             diferencia = disponible - anterior
             if diferencia:
                 self._registrar_movimiento(
@@ -116,10 +93,7 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
         """Descuenta stock LIBRE en una sola sentencia atómica. Lo van a reusar en ventas:
         igual que en crear_bulto, bloquear los productos con GestorBloqueos antes de
         abrir la transacción."""
-        filas = self.db.ejecutar_contando(
-            """UPDATE stock SET disponible = disponible - ?
-               WHERE sucursal_id=? AND producto_id=? AND disponible - reservado >= ?""",
-            (cantidad, sucursal_id, producto_id, cantidad))
+        filas = self.dao.restar(sucursal_id, producto_id, cantidad)
         if filas == 0:
             raise ReglaNegocioError(
                 f"Stock insuficiente del producto {producto_id}: "
@@ -128,21 +102,11 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
         self._avisar_cambio(sucursal_id, producto_id)
 
     def _registrar_movimiento(self, sucursal_id, producto_id, cantidad, motivo, referencia):
-        self.db.ejecutar(
-            """INSERT INTO movimiento_stock (sucursal_id, producto_id, cantidad, motivo, referencia)
-               VALUES (?, ?, ?, ?, ?)""",
-            (sucursal_id, producto_id, cantidad, motivo, referencia))
+        self.dao.registrar_movimiento(
+            sucursal_id, producto_id, cantidad, motivo, referencia)
 
     def listar(self, sucursal_id):
-        return self.db.consultar(
-            """SELECT p.id AS producto_id, p.codigo, p.nombre, p.precio_venta,
-                      p.stock_minimo,
-                      COALESCE(s.disponible, 0) AS disponible,
-                      COALESCE(s.reservado, 0) AS reservado,
-                      COALESCE(s.disponible, 0) - COALESCE(s.reservado, 0) AS libre
-               FROM producto p
-               LEFT JOIN stock s ON s.producto_id = p.id AND s.sucursal_id = ?
-               ORDER BY p.nombre""", (sucursal_id,))
+        return self.dao.listar(sucursal_id)
 
 
 class StockObserver(Observador):

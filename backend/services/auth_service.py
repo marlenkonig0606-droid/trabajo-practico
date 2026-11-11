@@ -1,15 +1,14 @@
 import re
 import sqlite3
-
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from database.conexion import BaseDeDatos
+from dao.auth_dao import AuthDAO
 from services.excepciones import ReglaNegocioError
 
 
 class AuthService:
     def __init__(self):
-        self.db = BaseDeDatos()
+        self.dao = AuthDAO()
 
     def registrar_local(self, email, password, sucursal_id):
         return self._registrar(email, password, sucursal_id, "LOCAL")
@@ -27,24 +26,17 @@ class AuthService:
         if isinstance(sucursal_id, bool) or not isinstance(sucursal_id, int) or sucursal_id <= 0:
             raise ReglaNegocioError("Elegí un local válido")
 
-        sucursal = self.db.consultar_uno(
-            "SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))
+        sucursal = self.dao.tipo_sucursal(sucursal_id)
         if sucursal is None or sucursal["tipo"] != tipo_requerido:
             raise ReglaNegocioError(f"Elegí una sucursal de tipo {tipo_requerido}")
-        if self.db.consultar_uno(
-                "SELECT id FROM usuario WHERE email=?", (email,)):
+        if self.dao.obtener_id_por_email(email):
             raise ReglaNegocioError("Ya existe una cuenta con ese correo")
 
         try:
-            with self.db.transaccion():
-                usuario_id = self.db.ejecutar(
-                    """INSERT INTO usuario (email, password_hash, sucursal_id)
-                       VALUES (?, ?, ?)""",
-                    (email, generate_password_hash(password), sucursal_id),
-                )
+            usuario_id = self.dao.crear_usuario(
+                email, generate_password_hash(password), sucursal_id)
         except sqlite3.IntegrityError as error:
-            if self.db.consultar_uno(
-                    "SELECT id FROM usuario WHERE email=?", (email,)):
+            if self.dao.obtener_id_por_email(email):
                 raise ReglaNegocioError(
                     "Ya existe una cuenta con ese correo") from error
             raise
@@ -52,13 +44,7 @@ class AuthService:
 
     def autenticar(self, email, password):
         email = email.strip().lower() if isinstance(email, str) else ""
-        usuario = self.db.consultar_uno(
-            """SELECT u.id, u.email, u.password_hash, u.sucursal_id,
-                      s.nombre AS sucursal, s.tipo
-               FROM usuario u JOIN sucursal s ON s.id = u.sucursal_id
-               WHERE u.email=?""",
-            (email,),
-        )
+        usuario = self.dao.obtener_credenciales(email)
         if usuario is None or not isinstance(password, str) or not check_password_hash(
                 usuario["password_hash"], password):
             return None
@@ -71,10 +57,7 @@ class AuthService:
         }
 
     def obtener_usuario(self, usuario_id):
-        return self.db.consultar_uno(
-            """SELECT u.id, u.email, u.sucursal_id,
-                      s.nombre AS sucursal, s.tipo
-               FROM usuario u JOIN sucursal s ON s.id = u.sucursal_id
-               WHERE u.id=?""",
-            (usuario_id,),
-        )
+        return self.dao.obtener_usuario(usuario_id)
+
+    def obtener_sucursal(self, sucursal_id):
+        return self.dao.tipo_sucursal(sucursal_id)

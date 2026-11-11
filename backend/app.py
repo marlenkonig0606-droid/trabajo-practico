@@ -1,11 +1,3 @@
-"""
-API REST (Flask).  Ejecutar:  python app.py   ->  http://localhost:5000
-
-Capas (igual que el repo de referencia, pero separadas en carpetas):
-  routes (este archivo)  ->  services (reglas de negocio)  ->  database (Singleton)
-                                    │
-                                 models (clases del dominio)
-"""
 import os
 import hmac
 import secrets
@@ -15,7 +7,6 @@ from functools import wraps
 from flask import Flask, g, jsonify, request, session
 from flask_cors import CORS
 
-from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar as cargar_datos_iniciales
 from services.excepciones import (
     AccesoDenegadoError,
@@ -31,7 +22,7 @@ from services.ventas_service import VentasService
 from services.catalogo_service import CatalogoService
 
 
-def crear_app():
+def crear_app(cargar_demo=True):
     app = Flask(__name__)
     app.config.update(
         SECRET_KEY=os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32),
@@ -41,8 +32,7 @@ def crear_app():
     )
     CORS(app)
 
-    db = BaseDeDatos()
-    cargar_datos_iniciales()
+    cargar_datos_iniciales(incluir_demo=cargar_demo)
 
     # ---------- Patrón Observer: acá se conectan sujetos y observadores ----------
     stock = StockService()                            # sujeto 1
@@ -143,8 +133,7 @@ def crear_app():
     def api_registrar():
         datos = cuerpo_json()
         sucursal_id = entero_positivo(datos.get("sucursal_id"), "sucursal_id")
-        sucursal = db.consultar_uno(
-            "SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))
+        sucursal = auth.obtener_sucursal(sucursal_id)
         if sucursal is None:
             raise ReglaNegocioError("La sucursal seleccionada no existe")
         if sucursal["tipo"] == "CD":
@@ -457,8 +446,7 @@ def crear_app():
         if g.usuario["tipo"] == "CD":
             raise AccesoDenegadoError(
                 "El CD solo distribuye: las devoluciones las registran los locales")
-        venta = db.consultar_uno(
-            "SELECT sucursal_id FROM venta WHERE id=?", (venta_id,))
+        venta = ventas.sucursal_de_venta(venta_id)
         if venta is None:
             raise NoEncontradoError(f"No existe la venta {venta_id}")
         if venta["sucursal_id"] != g.usuario["sucursal_id"]:

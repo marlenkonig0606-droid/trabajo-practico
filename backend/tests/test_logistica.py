@@ -18,7 +18,7 @@ AGUA, YERBA = 1, 3
 def svc(tmp_path):
     BaseDeDatos.reiniciar()
     BaseDeDatos(str(tmp_path / "test.db"))
-    cargar()
+    cargar(incluir_demo=False)
     stock = StockService()
     stock.suscribir(AlertaStockMinimoObserver())
     logistica = LogisticaService(stock)

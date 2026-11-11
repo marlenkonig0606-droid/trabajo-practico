@@ -11,12 +11,12 @@ from database.datos_iniciales import cargar
 def cliente_api(tmp_path):
     BaseDeDatos.reiniciar()
     db = BaseDeDatos(str(tmp_path / "ventas_api.db"))
-    cargar()
+    cargar(incluir_demo=False)
     with db.transaccion():
         db.ejecutar(
             "INSERT INTO stock (sucursal_id, producto_id, disponible) VALUES (2, 1, 5)"
         )
-    app = crear_app()
+    app = crear_app(cargar_demo=False)
     app.config.update(TESTING=True)
     cliente = app.test_client()
     respuesta = cliente.post(
@@ -263,7 +263,7 @@ def test_local_solo_solicita_para_su_sucursal_y_ve_sus_ordenes(cliente_api):
     assert [orden_publica["id"] for orden_publica in
             cliente_api.get("/api/ordenes").get_json()] == [orden["id"]]
 
-    otra_sucursal = crear_app().test_client()
+    otra_sucursal = crear_app(cargar_demo=False).test_client()
     assert otra_sucursal.post(
         "/api/auth/register",
         json={
@@ -315,7 +315,7 @@ def test_local_solicita_a_cualquier_cd_y_cd_no_puede_crear_orden(cliente_api, mo
     assert solicitud.get_json()["destino_id"] == 2
 
     monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
-    cd = crear_app().test_client()
+    cd = crear_app(cargar_demo=False).test_client()
     assert cd.post(
         "/api/auth/register",
         json={
@@ -340,7 +340,7 @@ def test_cd_ajusta_solo_el_stock_de_su_centro_y_respeta_reservas(
     cliente_api, monkeypatch
 ):
     monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
-    cd = crear_app().test_client()
+    cd = crear_app(cargar_demo=False).test_client()
     assert cd.post(
         "/api/auth/register",
         json={
@@ -403,7 +403,7 @@ def test_reporte_movimientos_filtra_y_valoriza_ventas_devoluciones_y_recepciones
 
 def test_flujo_api_cd_despacha_local_verifica_y_actualiza_stock(cliente_api, monkeypatch):
     monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
-    cd = crear_app().test_client()
+    cd = crear_app(cargar_demo=False).test_client()
     alta_cd = cd.post(
         "/api/auth/register",
         json={
@@ -486,7 +486,7 @@ def test_flujo_api_cd_despacha_local_verifica_y_actualiza_stock(cliente_api, mon
 
 def test_local_rechaza_bulto_si_precinto_roto_sin_sumar_stock(cliente_api, monkeypatch):
     monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
-    cd = crear_app().test_client()
+    cd = crear_app(cargar_demo=False).test_client()
     cd.post(
         "/api/auth/register",
         json={
@@ -530,7 +530,7 @@ def test_local_rechaza_bulto_si_precinto_roto_sin_sumar_stock(cliente_api, monke
 
 def test_local_rechaza_manualmente_bulto_y_no_suma_stock(cliente_api, monkeypatch):
     monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
-    cd = crear_app().test_client()
+    cd = crear_app(cargar_demo=False).test_client()
     assert cd.post(
         "/api/auth/register",
         json={
@@ -590,7 +590,7 @@ def test_local_no_consulta_ventas_ni_reportes_de_otro_local(cliente_api):
         },
     ).status_code == 201
 
-    otra_sucursal = crear_app().test_client()
+    otra_sucursal = crear_app(cargar_demo=False).test_client()
     registro = otra_sucursal.post(
         "/api/auth/register",
         json={
@@ -616,9 +616,9 @@ def test_cuenta_cd_se_crea_fuera_del_registro_publico_y_tiene_acceso_global(tmp_
     BaseDeDatos.reiniciar()
     try:
         BaseDeDatos(str(tmp_path / "cuenta_cd.db"))
-        cargar()
+        cargar(incluir_demo=False)
         AuthService().registrar_cd("cd@example.com", "contraseña-segura", 1)
-        cliente = crear_app().test_client()
+        cliente = crear_app(cargar_demo=False).test_client()
         respuesta = cliente.post(
             "/api/auth/login",
             json={"email": "cd@example.com", "password": "contraseña-segura"},
