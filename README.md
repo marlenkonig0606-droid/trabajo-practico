@@ -69,6 +69,8 @@ El reporte de movimientos permite filtrar ventas, devoluciones y recepciones. La
 muestran su valorización positiva a precio de venta, las devoluciones la valorización negativa
 y las recepciones no se valorizan. Ventas y devoluciones incluyen una ventana emergente con el
 detalle de productos y precios.
+La pantalla de reportes comienza con un resumen ejecutivo filtrable por fecha: el CD ve los
+resultados globales y el local solo los de su propia sucursal.
 
 En producción, configurá `FLASK_SECRET_KEY` con un valor secreto persistente y serví la
 aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo local, la app genera una

@@ -71,6 +71,7 @@ export const api = {
   alertas: () => pedir('GET', '/alertas'),
   eventos: () => pedir('GET', '/eventos'),
 
+  reporteResumen: (f = {}) => pedir('GET', `/reportes/resumen${conFechas(f)}`),
   reporteRechazados: (f = {}) => pedir('GET', `/reportes/bultos-rechazados${conFechas(f)}`),
   reporteTransito: () => pedir('GET', '/reportes/transito'),
   reporteExistencias: () => pedir('GET', '/reportes/existencias'),

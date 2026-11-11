@@ -9,6 +9,87 @@ class ReportesService:
     def __init__(self):
         self.db = BaseDeDatos()
 
+    def resumen(self, desde=None, hasta=None, sucursal_id=None):
+        where_ventas, params_ventas = self._filtro_fechas("v.fecha", desde, hasta)
+        parametros = list(params_ventas)
+        filtro_sucursal = ""
+        if sucursal_id is not None:
+            filtro_sucursal = " AND v.sucursal_id = ?"
+            parametros.append(sucursal_id)
+
+        ventas = self.db.consultar_uno(f"""
+            SELECT COUNT(*) AS cantidad,
+                   COALESCE(ROUND(SUM(v.total), 2), 0) AS ingresos,
+                   COALESCE(SUM(v.unidades), 0) AS unidades
+            FROM (
+                SELECT venta.id, venta.sucursal_id, venta.fecha, venta.total,
+                       COALESCE(SUM(detalle_venta.cantidad), 0) AS unidades
+                FROM venta
+                LEFT JOIN detalle_venta ON detalle_venta.venta_id = venta.id
+                GROUP BY venta.id
+            ) v
+            WHERE {where_ventas}{filtro_sucursal}""", tuple(parametros))
+
+        where_devoluciones, params_devoluciones = self._filtro_fechas(
+            "d.fecha", desde, hasta)
+        parametros_devoluciones = list(params_devoluciones)
+        filtro_sucursal_devoluciones = ""
+        if sucursal_id is not None:
+            filtro_sucursal_devoluciones = " AND v.sucursal_id = ?"
+            parametros_devoluciones.append(sucursal_id)
+        devoluciones = self.db.consultar_uno(f"""
+            SELECT COUNT(DISTINCT d.id) AS cantidad,
+                   COALESCE(ROUND(SUM(d.total), 2), 0) AS importe
+            FROM devolucion d
+            JOIN venta v ON v.id = d.venta_id
+            WHERE {where_devoluciones}{filtro_sucursal_devoluciones}""",
+            tuple(parametros_devoluciones))
+
+        locales = []
+        if sucursal_id is None:
+            locales = self.db.consultar(f"""
+                SELECT s.id, s.nombre,
+                       ROUND(SUM(v.total) - COALESCE(SUM(devoluciones.importe), 0), 2)
+                           AS ingresos_netos,
+                       COUNT(DISTINCT v.id) AS cantidad_ventas
+                FROM venta v
+                JOIN sucursal s ON s.id = v.sucursal_id
+                LEFT JOIN (
+                    SELECT d.venta_id, SUM(d.total) AS importe
+                    FROM devolucion d
+                    WHERE {where_devoluciones}
+                    GROUP BY d.venta_id
+                ) devoluciones ON devoluciones.venta_id = v.id
+                WHERE {where_ventas}
+                GROUP BY s.id
+                ORDER BY ingresos_netos DESC, cantidad_ventas DESC, s.nombre
+                LIMIT 1""", tuple(params_devoluciones) + tuple(params_ventas))
+        producto_mas_vendido = next(
+            (producto for producto in self.mas_vendidos(desde, hasta, sucursal_id)
+             if producto["unidades"] > 0),
+            None,
+        )
+        existencias_bajas = sum(
+            fila["estado"] == "BAJO MÍNIMO"
+            for fila in self.existencias(sucursal_id)
+        )
+        cantidad_ventas = ventas["cantidad"]
+        importe_devuelto = devoluciones["importe"]
+        ingresos_netos = round(ventas["ingresos"] - importe_devuelto, 2)
+        return {
+            "ventas": cantidad_ventas,
+            "ingresos": ventas["ingresos"],
+            "unidades_vendidas": ventas["unidades"],
+            "ticket_promedio": round(ventas["ingresos"] / cantidad_ventas, 2)
+                if cantidad_ventas else 0,
+            "devoluciones": devoluciones["cantidad"],
+            "importe_devuelto": importe_devuelto,
+            "ingresos_netos": ingresos_netos,
+            "local_mas_vendio": locales[0] if locales else None,
+            "producto_mas_vendido": producto_mas_vendido,
+            "productos_bajo_minimo": existencias_bajas,
+        }
+
     def bultos_rechazados(self, desde=None, hasta=None):
         filtros, params = ["b.estado = 'RECHAZADO'"], []
         if desde:
