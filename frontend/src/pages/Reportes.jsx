@@ -1,7 +1,20 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
 
+function fechaLocalHoy() {
+  const hoy = new Date()
+  const anio = hoy.getFullYear()
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0')
+  const dia = String(hoy.getDate()).padStart(2, '0')
+  return `${anio}-${mes}-${dia}`
+}
+
 export default function Reportes({ usuario }) {
+  const hoy = fechaLocalHoy()
+  const [resumen, setResumen] = useState(null)
+  const [fechasResumen, setFechasResumen] = useState({ desde: '', hasta: '' })
+  const [errorResumen, setErrorResumen] = useState('')
+  const [cargandoResumen, setCargandoResumen] = useState(true)
   const [rechazados, setRechazados] = useState([])
   const [transito, setTransito] = useState([])
   const [eventos, setEventos] = useState([])
@@ -14,6 +27,17 @@ export default function Reportes({ usuario }) {
     'VENTA', 'DEVOLUCION', 'RECEPCION',
   ])
   const [movimientoDetalle, setMovimientoDetalle] = useState(null)
+
+  useEffect(() => {
+    let activa = true
+    setCargandoResumen(true)
+    setErrorResumen('')
+    api.reporteResumen(fechasResumen)
+      .then((datos) => { if (activa) setResumen(datos) })
+      .catch((e) => { if (activa) setErrorResumen(e.message) })
+      .finally(() => { if (activa) setCargandoResumen(false) })
+    return () => { activa = false }
+  }, [fechasResumen, usuario.tipo, usuario.sucursal_id])
 
   // Reportes que dependen del período: se recargan cada vez que cambian las fechas
   useEffect(() => {
@@ -42,11 +66,76 @@ export default function Reportes({ usuario }) {
 
   return (
     <section>
+      <div className="tarjeta resumen-reportes">
+        <div className="resumen-cabecera">
+          <div>
+            <h2>Resumen general · {usuario.tipo === 'CD' ? 'todas las sucursales' : usuario.sucursal}</h2>
+            <p className="ayuda">
+              {usuario.tipo === 'CD'
+                ? 'Una vista rápida del rendimiento de todos los locales.'
+                : 'Una vista rápida de las ventas y el stock de tu local.'}
+            </p>
+          </div>
+          <div className="filtro-resumen">
+            <label>Desde
+              <input type="date" value={fechasResumen.desde}
+                max={fechasResumen.hasta || hoy}
+                onChange={(e) => setFechasResumen({ ...fechasResumen, desde: e.target.value })} />
+            </label>
+            <label>Hasta
+              <input type="date" value={fechasResumen.hasta}
+                max={hoy}
+                min={fechasResumen.desde || undefined}
+                onChange={(e) => setFechasResumen({ ...fechasResumen, hasta: e.target.value })} />
+            </label>
+            <button className="link" onClick={() => setFechasResumen({ desde: '', hasta: '' })}>
+              Todo el período
+            </button>
+          </div>
+        </div>
+        {errorResumen && <div className="error">{errorResumen}</div>}
+        {cargandoResumen && <p className="vacio">Calculando resumen…</p>}
+        {!cargandoResumen && resumen && <>
+          <div className="resumen-indicadores">
+            <div><span>Ventas</span><strong>{resumen.ventas}</strong></div>
+            <div><span>Ingresos por ventas</span><strong>${Number(resumen.ingresos).toFixed(2)}</strong></div>
+            <div><span>Devoluciones</span><strong>{resumen.devoluciones} · ${Number(resumen.importe_devuelto).toFixed(2)}</strong></div>
+            <div><span>Ingresos netos</span><strong>${Number(resumen.ingresos_netos).toFixed(2)}</strong></div>
+          </div>
+          {resumen.ventas === 0 && (
+            <p className="resumen-mensaje">No hay ventas en el período seleccionado.</p>
+          )}
+          <div className="resumen-hallazgos">
+            {usuario.tipo === 'CD' && (
+              <p>
+                <b>Local que más vendió:</b>{' '}
+                {resumen.local_mas_vendio
+                  ? `${resumen.local_mas_vendio.nombre}, con $${Number(resumen.local_mas_vendio.ingresos_netos).toFixed(2)} netos en ${resumen.local_mas_vendio.cantidad_ventas} ventas.`
+                  : 'No hay ventas para comparar.'}
+              </p>
+            )}
+            <p>
+              <b>Producto más vendido:</b>{' '}
+              {resumen.producto_mas_vendido
+                ? `${resumen.producto_mas_vendido.producto}, ${resumen.producto_mas_vendido.unidades} unidades netas.`
+                : 'No hay unidades netas vendidas en este período.'}
+            </p>
+            <p>
+              <b>Ticket promedio:</b> ${Number(resumen.ticket_promedio).toFixed(2)}.
+              {' '}<b>Unidades vendidas:</b> {resumen.unidades_vendidas}.
+            </p>
+            <p>
+              <b>Stock bajo el mínimo actualmente:</b> {resumen.productos_bajo_minimo} referencias.
+            </p>
+          </div>
+        </>}
+      </div>
       <div className="tarjeta filtro-fechas">
         <h2>Período</h2>
-        <label>Desde <input type="date" value={fechas.desde}
+        <label>Desde <input type="date" value={fechas.desde} max={fechas.hasta || hoy}
           onChange={(e) => setFechas({ ...fechas, desde: e.target.value })} /></label>
-        <label>Hasta <input type="date" value={fechas.hasta}
+        <label>Hasta <input type="date" value={fechas.hasta} max={hoy}
+          min={fechas.desde || undefined}
           onChange={(e) => setFechas({ ...fechas, hasta: e.target.value })} /></label>
         <button className="link" onClick={() => setFechas({ desde: '', hasta: '' })}>Todo</button>
         <span className="vacio">

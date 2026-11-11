@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import pytest
 
 from app import crear_app
@@ -60,6 +62,83 @@ def test_api_registra_lista_y_consulta_venta(cliente_api):
         "precio_unitario": 700,
     }]
     assert detalle.get_json()["devoluciones"] == []
+
+
+def test_api_resumen_filtra_local_y_cd_compara_todas_las_sucursales(
+        cliente_api, monkeypatch):
+    cliente_api.post(
+        "/api/ventas",
+        json={
+            "sucursal_id": 2,
+            "items": [{"producto_id": 1, "cantidad": 1}],
+            "medio_pago": "TARJETA_DEBITO",
+        },
+    )
+
+    resumen_local = cliente_api.get("/api/reportes/resumen").get_json()
+    assert resumen_local["ventas"] == 1
+    assert resumen_local["local_mas_vendio"] is None
+
+    cliente_api.post("/api/auth/logout")
+    monkeypatch.setenv("CD_REGISTRATION_CODE", "codigo-prueba")
+    registro_cd = cliente_api.post(
+        "/api/auth/register",
+        json={
+            "email": "cd@example.com",
+            "password": "contraseña-segura",
+            "sucursal_id": 1,
+            "codigo_cd": "codigo-prueba",
+        },
+    )
+    assert registro_cd.status_code == 201
+
+    resumen_cd = cliente_api.get("/api/reportes/resumen").get_json()
+    assert resumen_cd["ventas"] == 1
+    assert resumen_cd["local_mas_vendio"]["nombre"] == "Local Centro"
+
+
+def test_api_resumen_aplica_el_rango_completo_de_fechas(cliente_api):
+    venta = cliente_api.post(
+        "/api/ventas",
+        json={
+            "sucursal_id": 2,
+            "items": [{"producto_id": 1, "cantidad": 1}],
+            "medio_pago": "TARJETA_DEBITO",
+        },
+    ).get_json()
+    db = BaseDeDatos()
+    with db.transaccion():
+        db.ejecutar(
+            "UPDATE venta SET fecha='2024-11-10 12:00:00' WHERE id=?",
+            (venta["id"],),
+        )
+
+    en_rango = cliente_api.get(
+        "/api/reportes/resumen?desde=2024-11-09&hasta=2024-11-11"
+    )
+    fuera_de_rango = cliente_api.get(
+        "/api/reportes/resumen?desde=2024-11-11&hasta=2024-11-12"
+    )
+
+    assert en_rango.status_code == 200
+    assert en_rango.get_json()["ventas"] == 1
+    assert fuera_de_rango.status_code == 200
+    assert fuera_de_rango.get_json()["ventas"] == 0
+
+
+def test_api_reportes_rechaza_fechas_futuras_y_rangos_invertidos(cliente_api):
+    manana = (date.today() + timedelta(days=1)).isoformat()
+    fecha_futura = cliente_api.get(
+        f"/api/reportes/resumen?hasta={manana}"
+    )
+    fechas_invertidas = cliente_api.get(
+        "/api/reportes/resumen?desde=2024-11-11&hasta=2024-11-09"
+    )
+
+    assert fecha_futura.status_code == 400
+    assert "no puede ser posterior a hoy" in fecha_futura.get_json()["error"]
+    assert fechas_invertidas.status_code == 400
+    assert "desde no puede ser posterior" in fechas_invertidas.get_json()["error"]
 
 
 def test_api_registra_devolucion_y_refleja_en_detalle(cliente_api):

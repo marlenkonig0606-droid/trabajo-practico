@@ -41,6 +41,13 @@ export default function Acceso({ onAuthenticated }) {
   return (
     <main className="acceso">
       <form className="tarjeta acceso-formulario" onSubmit={enviar}>
+        <div className="acceso-marca">
+          <span className="marca-indicador" aria-hidden="true" />
+          <div>
+            <h1>CYBER-WAREHOUSE</h1>
+            <p>CENTRO DE DISTRIBUCIÓN <span>·</span> SISTEMA OPERATIVO</p>
+          </div>
+        </div>
         <h2>{modo === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}</h2>
         <p className="vacio">
           Ingresá para consultar la información habilitada para tu sucursal.

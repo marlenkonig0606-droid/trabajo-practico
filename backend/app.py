@@ -9,6 +9,7 @@ Capas (igual que el repo de referencia, pero separadas en carpetas):
 import os
 import hmac
 import secrets
+from datetime import date
 from functools import wraps
 
 from flask import Flask, g, jsonify, request, session
@@ -67,6 +68,23 @@ def crear_app():
         if isinstance(valor, bool) or not isinstance(valor, int) or valor <= 0:
             raise ReglaNegocioError(f"{campo} debe ser un entero positivo")
         return valor
+
+    def fechas_de_reporte():
+        desde = request.args.get("desde") or None
+        hasta = request.args.get("hasta") or None
+        try:
+            fecha_desde = date.fromisoformat(desde) if desde else None
+            fecha_hasta = date.fromisoformat(hasta) if hasta else None
+        except ValueError as error:
+            raise ReglaNegocioError("Las fechas deben tener el formato AAAA-MM-DD") from error
+        hoy = date.today()
+        if fecha_desde and fecha_desde > hoy:
+            raise ReglaNegocioError("La fecha desde no puede ser posterior a hoy")
+        if fecha_hasta and fecha_hasta > hoy:
+            raise ReglaNegocioError("La fecha hasta no puede ser posterior a hoy")
+        if fecha_desde and fecha_hasta and fecha_desde > fecha_hasta:
+            raise ReglaNegocioError("La fecha desde no puede ser posterior a la fecha hasta")
+        return desde, hasta
 
     def requiere_cd(fn):
         @wraps(fn)
@@ -454,11 +472,18 @@ def crear_app():
         ), 201
 
     # ---------- reportes ----------
+    @app.get("/api/reportes/resumen")
+    def rep_resumen():
+        sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
+        desde, hasta = fechas_de_reporte()
+        return jsonify(reportes.resumen(
+            desde, hasta, sucursal_id))
+
     @app.get("/api/reportes/bultos-rechazados")
     @requiere_cd
     def rep_rechazados():
-        return jsonify(reportes.bultos_rechazados(request.args.get("desde"),
-                                                  request.args.get("hasta")))
+        desde, hasta = fechas_de_reporte()
+        return jsonify(reportes.bultos_rechazados(desde, hasta))
 
     @app.get("/api/reportes/transito")
     @requiere_cd
@@ -484,14 +509,14 @@ def crear_app():
     @app.get("/api/reportes/ventas")
     def rep_ventas():
         sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
-        return jsonify(reportes.ventas(
-            request.args.get("desde"), request.args.get("hasta"), sucursal_id))
+        desde, hasta = fechas_de_reporte()
+        return jsonify(reportes.ventas(desde, hasta, sucursal_id))
 
     @app.get("/api/reportes/mas-vendidos")
     def rep_mas_vendidos():
         sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
-        return jsonify(reportes.mas_vendidos(
-            request.args.get("desde"), request.args.get("hasta"), sucursal_id))
+        desde, hasta = fechas_de_reporte()
+        return jsonify(reportes.mas_vendidos(desde, hasta, sucursal_id))
 
     return app
 

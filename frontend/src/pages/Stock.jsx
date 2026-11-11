@@ -29,6 +29,10 @@ export default function Stock({ usuario }) {
   const puedeEditar = usuario.tipo === 'CD'
     && Number(sucursal) === usuario.sucursal_id
     && sucursales.find((s) => s.id === Number(sucursal))?.tipo === 'CD'
+  const maximoLibre = filas.reduce(
+    (maximo, fila) => Math.max(maximo, Number(fila.libre)),
+    1,
+  )
 
   const guardarStock = async (productoId) => {
     setError('')
@@ -67,6 +71,28 @@ export default function Stock({ usuario }) {
         {sucursales.filter((s) => usuario.tipo === 'CD' || s.id === usuario.sucursal_id)
           .map((s) => <option key={s.id} value={s.id}>{s.nombre} ({s.tipo})</option>)}
       </select>
+      {filas.length > 0 && (
+        <div className="stock-visual" aria-label="Gráfico de stock libre por producto">
+          <div className="stock-visual-cabecera">
+            <span>VOLUMEN DE STOCK LIBRE</span>
+            <small>{filas.length} referencias monitorizadas</small>
+          </div>
+          <div className="stock-barras">
+            {filas.map((fila) => {
+              const porcentaje = Math.min(100, Math.max(0, Number(fila.libre) / maximoLibre * 100))
+              return (
+                <div className="stock-barra-item" key={fila.producto_id}>
+                  <span title={fila.nombre}>{fila.nombre}</span>
+                  <div className="stock-barra-pista">
+                    <i style={{ width: `${porcentaje}%` }} />
+                  </div>
+                  <b>{fila.libre}</b>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
       <table>
         <thead><tr><th>Código</th><th>Producto</th><th>Precio de venta</th><th>Disponible</th><th>Reservado</th><th>Libre</th><th>Mínimo</th>{puedeEditar && <th>Acción</th>}</tr></thead>
         <tbody>

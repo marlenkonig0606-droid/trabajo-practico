@@ -109,6 +109,7 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 
 ## 📊 **Reportes y Estadísticas**
 
+- 🧾 **Resumen ejecutivo** al inicio de la pantalla, filtrable por fecha: el CD ve datos de todos los locales y cada local ve únicamente los suyos.
 - 💰 **Ventas e ingresos** por período, local y medio de pago.
 - 🏆 **Productos más vendidos** con margen estimado.
 - 📋 **Existencias actuales** y productos en stock mínimo.

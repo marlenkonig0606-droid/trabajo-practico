@@ -65,14 +65,20 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
-        <h1>CD → Locales</h1>
+      <header className="topbar">
+        <div className="marca">
+          <span className="marca-indicador" aria-hidden="true" />
+          <div>
+            <h1>CYBER-WAREHOUSE</h1>
+            <p>CENTRO DE DISTRIBUCIÓN <span>·</span> SISTEMA OPERATIVO</p>
+          </div>
+        </div>
         <nav>
           {secciones.map((s) => (
             <button key={s.id} className={actual === s.id ? 'activo' : ''}
                     onClick={() => setActual(s.id)}>{s.titulo}</button>
           ))}
-          <span className="sesion-usuario">{usuario.email} · {usuario.sucursal}</span>
+          <span className="sesion-usuario"><i aria-hidden="true" />{usuario.email} · {usuario.sucursal}</span>
           <button className="secundario" onClick={cerrarSesion}>Cerrar sesión</button>
         </nav>
       </header>
