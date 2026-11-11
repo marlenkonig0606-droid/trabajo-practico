@@ -14,7 +14,7 @@ from models.venta import DetalleVenta, Venta
 def db(tmp_path):
     BaseDeDatos.reiniciar()
     database = BaseDeDatos(str(tmp_path / "ventas.db"))
-    cargar()
+    cargar(incluir_demo=False)
     yield database
     BaseDeDatos.reiniciar()
 

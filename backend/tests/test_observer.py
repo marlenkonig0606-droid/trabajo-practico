@@ -16,7 +16,7 @@ AGUA = 1            # stock_minimo = 20 en los datos iniciales
 def app_svc(tmp_path):
     BaseDeDatos.reiniciar()
     BaseDeDatos(str(tmp_path / "test.db"))
-    cargar()
+    cargar(incluir_demo=False)
     stock = StockService()
     stock.suscribir(AlertaStockMinimoObserver())
     logistica = LogisticaService(stock)

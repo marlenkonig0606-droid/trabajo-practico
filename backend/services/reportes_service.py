@@ -1,69 +1,24 @@
-"""
-La consigna pide AL MENOS 4 reportes no triviales.
-Hay 2 hechos (ambos de logística). Te quedan los de ventas/stock (ver README, paso 6).
-"""
-from database.conexion import BaseDeDatos
+from dao.reportes_dao import ReportesDAO
 
 
 class ReportesService:
     def __init__(self):
-        self.db = BaseDeDatos()
+        self.dao = ReportesDAO()
 
     def resumen(self, desde=None, hasta=None, sucursal_id=None):
-        where_ventas, params_ventas = self._filtro_fechas("v.fecha", desde, hasta)
-        parametros = list(params_ventas)
-        filtro_sucursal = ""
-        if sucursal_id is not None:
-            filtro_sucursal = " AND v.sucursal_id = ?"
-            parametros.append(sucursal_id)
+        where_ventas, params_ventas = self.dao.filtro_fechas("v.fecha", desde, hasta)
+        ventas = self.dao.resumen_ventas(where_ventas, params_ventas, sucursal_id)
 
-        ventas = self.db.consultar_uno(f"""
-            SELECT COUNT(*) AS cantidad,
-                   COALESCE(ROUND(SUM(v.total), 2), 0) AS ingresos,
-                   COALESCE(SUM(v.unidades), 0) AS unidades
-            FROM (
-                SELECT venta.id, venta.sucursal_id, venta.fecha, venta.total,
-                       COALESCE(SUM(detalle_venta.cantidad), 0) AS unidades
-                FROM venta
-                LEFT JOIN detalle_venta ON detalle_venta.venta_id = venta.id
-                GROUP BY venta.id
-            ) v
-            WHERE {where_ventas}{filtro_sucursal}""", tuple(parametros))
-
-        where_devoluciones, params_devoluciones = self._filtro_fechas(
+        where_devoluciones, params_devoluciones = self.dao.filtro_fechas(
             "d.fecha", desde, hasta)
-        parametros_devoluciones = list(params_devoluciones)
-        filtro_sucursal_devoluciones = ""
-        if sucursal_id is not None:
-            filtro_sucursal_devoluciones = " AND v.sucursal_id = ?"
-            parametros_devoluciones.append(sucursal_id)
-        devoluciones = self.db.consultar_uno(f"""
-            SELECT COUNT(DISTINCT d.id) AS cantidad,
-                   COALESCE(ROUND(SUM(d.total), 2), 0) AS importe
-            FROM devolucion d
-            JOIN venta v ON v.id = d.venta_id
-            WHERE {where_devoluciones}{filtro_sucursal_devoluciones}""",
-            tuple(parametros_devoluciones))
+        devoluciones = self.dao.resumen_devoluciones(
+            where_devoluciones, params_devoluciones, sucursal_id)
 
         locales = []
         if sucursal_id is None:
-            locales = self.db.consultar(f"""
-                SELECT s.id, s.nombre,
-                       ROUND(SUM(v.total) - COALESCE(SUM(devoluciones.importe), 0), 2)
-                           AS ingresos_netos,
-                       COUNT(DISTINCT v.id) AS cantidad_ventas
-                FROM venta v
-                JOIN sucursal s ON s.id = v.sucursal_id
-                LEFT JOIN (
-                    SELECT d.venta_id, SUM(d.total) AS importe
-                    FROM devolucion d
-                    WHERE {where_devoluciones}
-                    GROUP BY d.venta_id
-                ) devoluciones ON devoluciones.venta_id = v.id
-                WHERE {where_ventas}
-                GROUP BY s.id
-                ORDER BY ingresos_netos DESC, cantidad_ventas DESC, s.nombre
-                LIMIT 1""", tuple(params_devoluciones) + tuple(params_ventas))
+            locales = self.dao.local_lider(
+                where_devoluciones, params_devoluciones,
+                where_ventas, params_ventas)
         producto_mas_vendido = next(
             (producto for producto in self.mas_vendidos(desde, hasta, sucursal_id)
              if producto["unidades"] > 0),
@@ -91,189 +46,44 @@ class ReportesService:
         }
 
     def bultos_rechazados(self, desde=None, hasta=None):
-        filtros, params = ["b.estado = 'RECHAZADO'"], []
+        filtros, parametros = ["b.estado = 'RECHAZADO'"], []
         if desde:
-            filtros.append("date(b.fecha_recepcion) >= date(?)"); params.append(desde)
+            filtros.append("date(b.fecha_recepcion) >= date(?)")
+            parametros.append(desde)
         if hasta:
-            filtros.append("date(b.fecha_recepcion) <= date(?)"); params.append(hasta)
+            filtros.append("date(b.fecha_recepcion) <= date(?)")
+            parametros.append(hasta)
+        return self.dao.rechazados(filtros, parametros)
 
-        return self.db.consultar(f"""
-            SELECT b.id AS bulto_id, b.precinto, r.numero AS remito, s.nombre AS destino,
-                   b.fecha_recepcion,
-                   (SELECT h.observacion FROM historial_bulto h
-                    WHERE h.bulto_id = b.id AND h.estado = 'RECHAZADO') AS motivo,
-                   SUM(db.cantidad) AS unidades,
-                   ROUND(SUM(db.cantidad * p.precio_costo), 2) AS merma_valorizada
-            FROM bulto b
-            JOIN remito r ON r.id = b.remito_id
-            JOIN orden_reposicion o ON o.id = r.orden_id
-            JOIN sucursal s ON s.id = o.destino_id
-            JOIN detalle_bulto db ON db.bulto_id = b.id
-            JOIN producto p ON p.id = db.producto_id
-            WHERE {' AND '.join(filtros)}
-            GROUP BY b.id
-            ORDER BY b.fecha_recepcion DESC""", tuple(params))
-
-    # ✅ HECHO: tiempo promedio de tránsito CD -> cada local (en horas)
     def tiempo_promedio_transito(self):
-        return self.db.consultar("""
-            SELECT s.nombre AS local, COUNT(*) AS bultos,
-                   ROUND(AVG((julianday(b.fecha_recepcion) - julianday(b.fecha_despacho)) * 24), 2)
-                       AS horas_promedio
-            FROM bulto b
-            JOIN remito r ON r.id = b.remito_id
-            JOIN orden_reposicion o ON o.id = r.orden_id
-            JOIN sucursal s ON s.id = o.destino_id
-            WHERE b.fecha_despacho IS NOT NULL AND b.fecha_recepcion IS NOT NULL
-            GROUP BY s.id ORDER BY horas_promedio DESC""")
+        return self.dao.tiempo_promedio_transito()
 
-    # Reporte: existencias actuales y productos en stock mínimo
     def existencias(self, sucursal_id=None):
-        # CROSS JOIN = todas las combinaciones sucursal x producto.
-        # LEFT JOIN stock = trae el stock si existe; si no hay fila, las columnas quedan NULL
-        # y COALESCE las convierte en 0 (así aparecen los productos que el local NO tiene).
-        return self.db.consultar("""
-            SELECT s.nombre AS sucursal, p.codigo, p.nombre AS producto,
-                   COALESCE(st.disponible, 0) AS disponible,
-                   COALESCE(st.reservado, 0) AS reservado,
-                   COALESCE(st.disponible - st.reservado, 0) AS libre,
-                   p.stock_minimo,
-                   CASE WHEN COALESCE(st.disponible - st.reservado, 0) < p.stock_minimo
-                        THEN 'BAJO MÍNIMO' ELSE 'OK' END AS estado
-            FROM sucursal s
-            CROSS JOIN producto p
-            LEFT JOIN stock st ON st.sucursal_id = s.id AND st.producto_id = p.id
-            WHERE (? IS NULL OR s.id = ?)
-            ORDER BY estado = 'OK', s.nombre, p.nombre""",
-            (sucursal_id, sucursal_id))
+        return self.dao.existencias(sucursal_id)
 
-    # Reporte: movimientos y valorización del inventario
     def movimientos(self, sucursal_id=None, tipos=None):
         if tipos is None:
             tipos = ("VENTA", "DEVOLUCION", "RECEPCION")
-        if not tipos:
-            return []
+        return self.dao.movimientos(sucursal_id, tipos)
 
-        ramas = {
-            "VENTA": """
-                SELECT 'VENTA' AS tipo, v.id AS operacion_id, v.id AS venta_id,
-                       NULL AS devolucion_id, date(v.fecha) AS fecha, s.nombre AS sucursal,
-                       'Venta #' || v.id AS referencia,
-                       SUM(dv.cantidad) AS unidades,
-                       ROUND(SUM(dv.cantidad * dv.precio_unitario), 2) AS valor
-                FROM venta v
-                JOIN sucursal s ON s.id = v.sucursal_id
-                JOIN detalle_venta dv ON dv.venta_id = v.id
-                WHERE (? IS NULL OR v.sucursal_id = ?)
-                GROUP BY v.id
-            """,
-            "DEVOLUCION": """
-                SELECT 'DEVOLUCION' AS tipo, d.id AS operacion_id, d.venta_id,
-                       d.id AS devolucion_id, date(d.fecha) AS fecha, s.nombre AS sucursal,
-                       'Devolución #' || d.id AS referencia,
-                       SUM(dd.cantidad) AS unidades,
-                       -ROUND(SUM(dd.cantidad * dd.precio_unitario), 2) AS valor
-                FROM devolucion d
-                JOIN venta v ON v.id = d.venta_id
-                JOIN sucursal s ON s.id = v.sucursal_id
-                JOIN detalle_devolucion dd ON dd.devolucion_id = d.id
-                WHERE (? IS NULL OR v.sucursal_id = ?)
-                GROUP BY d.id
-            """,
-            "RECEPCION": """
-                SELECT 'RECEPCION' AS tipo, m.referencia AS operacion_id,
-                       NULL AS venta_id, NULL AS devolucion_id, date(MAX(m.fecha)) AS fecha,
-                       s.nombre AS sucursal, m.referencia AS referencia,
-                       SUM(m.cantidad) AS unidades, NULL AS valor
-                FROM movimiento_stock m
-                JOIN sucursal s ON s.id = m.sucursal_id
-                WHERE m.motivo='RECEPCION' AND (? IS NULL OR m.sucursal_id = ?)
-                GROUP BY s.id, m.referencia
-            """,
-        }
-        consulta = " UNION ALL ".join(ramas[tipo] for tipo in tipos)
-        params = tuple(
-            valor
-            for _ in tipos
-            for valor in (sucursal_id, sucursal_id)
-        )
-        return self.db.consultar(
-            f"SELECT * FROM ({consulta}) ORDER BY fecha DESC, sucursal, tipo",
-            params)
-
-    # Filtro de fechas reutilizable: arma "date(columna) >= ? AND date(columna) <= ?"
-    @staticmethod
-    def _filtro_fechas(columna, desde, hasta):
-        filtros, params = ["1 = 1"], []      # 1 = 1: así el WHERE nunca queda vacío
-        if desde:
-            filtros.append(f"date({columna}) >= date(?)"); params.append(desde)
-        if hasta:
-            filtros.append(f"date({columna}) <= date(?)"); params.append(hasta)
-        return " AND ".join(filtros), tuple(params)
-
-    # Reporte: ventas e ingresos por período, local y medio de pago
     def ventas(self, desde=None, hasta=None, sucursal_id=None):
-        where, params = self._filtro_fechas("v.fecha", desde, hasta)
+        where, parametros = self.dao.filtro_fechas("v.fecha", desde, hasta)
         if sucursal_id is not None:
             where += " AND v.sucursal_id = ?"
-            params += (sucursal_id,)
-        return self.db.consultar(f"""
-            SELECT date(v.fecha) AS dia, s.nombre AS local, pg.medio_pago,
-                   COUNT(*) AS ventas,
-                   ROUND(SUM(v.total), 2) AS ingresos,
-                   ROUND(AVG(v.total), 2) AS ticket_promedio
-            FROM venta v
-            JOIN sucursal s ON s.id = v.sucursal_id
-            JOIN pago pg ON pg.venta_id = v.id
-            WHERE {where}
-            GROUP BY dia, s.id, pg.medio_pago
-            ORDER BY dia DESC, ingresos DESC""", params)
+            parametros += (sucursal_id,)
+        return self.dao.ventas(where, parametros)
 
-    # Reporte: productos más vendidos y margen de ganancia / pérdida
     def mas_vendidos(self, desde=None, hasta=None, sucursal_id=None):
-        """Se descuentan las devoluciones. Ingresos al precio del momento de la venta,
-        costo al precio de costo actual del producto."""
-        where, params = self._filtro_fechas("v.fecha", desde, hasta)
+        where, parametros = self.dao.filtro_fechas("v.fecha", desde, hasta)
         where_vendido = where
-        params_vendido = params
+        params_vendido = parametros
         if sucursal_id is not None:
             where_vendido += " AND v.sucursal_id = ?"
             params_vendido += (sucursal_id,)
         where_devuelto = where
-        params_devuelto = params
+        params_devuelto = parametros
         if sucursal_id is not None:
             where_devuelto += " AND v.sucursal_id = ?"
             params_devuelto += (sucursal_id,)
-        return self.db.consultar(f"""
-            WITH vendido AS (
-                SELECT dv.producto_id,
-                       SUM(dv.cantidad) AS unidades,
-                       SUM(dv.cantidad * dv.precio_unitario) AS ingresos
-                FROM detalle_venta dv
-                JOIN venta v ON v.id = dv.venta_id
-                WHERE {where_vendido}
-                GROUP BY dv.producto_id
-            ),
-            devuelto AS (
-                SELECT dd.producto_id,
-                       SUM(dd.cantidad) AS unidades,
-                       SUM(dd.cantidad * dd.precio_unitario) AS importe
-                FROM detalle_devolucion dd
-                JOIN devolucion d ON d.id = dd.devolucion_id
-                JOIN venta v ON v.id = d.venta_id
-                WHERE {where_devuelto}
-                GROUP BY dd.producto_id
-            )
-            SELECT p.codigo, p.nombre AS producto,
-                   ve.unidades - COALESCE(de.unidades, 0) AS unidades,
-                   ROUND(ve.ingresos - COALESCE(de.importe, 0), 2) AS ingresos,
-                   ROUND((ve.unidades - COALESCE(de.unidades, 0)) * p.precio_costo, 2) AS costo,
-                   ROUND(ve.ingresos - COALESCE(de.importe, 0)
-                         - (ve.unidades - COALESCE(de.unidades, 0)) * p.precio_costo, 2) AS margen,
-                   ROUND(100.0 * (ve.ingresos - COALESCE(de.importe, 0)
-                         - (ve.unidades - COALESCE(de.unidades, 0)) * p.precio_costo)
-                         / NULLIF(ve.ingresos - COALESCE(de.importe, 0), 0), 1) AS margen_pct
-            FROM vendido ve
-            JOIN producto p ON p.id = ve.producto_id
-            LEFT JOIN devuelto de ON de.producto_id = ve.producto_id
-            ORDER BY unidades DESC, margen DESC""", params_vendido + params_devuelto)
+        return self.dao.mas_vendidos(
+            where_vendido, params_vendido, where_devuelto, params_devuelto)

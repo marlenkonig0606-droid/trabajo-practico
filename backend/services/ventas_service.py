@@ -1,3 +1,4 @@
+from dao.ventas_dao import VentasDAO
 from database.conexion import BaseDeDatos
 from services.excepciones import NoEncontradoError, ReglaNegocioError
 from services.medio_pago_service import obtener_creador_medio_de_pago
@@ -7,60 +8,26 @@ from services.stock_service import StockService
 class VentasService:
     def __init__(self, stock_service=None):
         self.db = BaseDeDatos()
+        self.dao = VentasDAO(self.db)
         self.stock = stock_service if stock_service is not None else StockService()
 
     def listar_ventas(self, sucursal_id=None):
-        return self.db.consultar(
-            """SELECT v.id, v.sucursal_id, s.nombre AS sucursal, v.fecha,
-                      v.subtotal, v.total, p.medio_pago, p.importe AS importe_pagado,
-                      c.numero AS comprobante_numero
-               FROM venta v
-               JOIN sucursal s ON s.id = v.sucursal_id
-               JOIN pago p ON p.venta_id = v.id
-               JOIN comprobante c ON c.venta_id = v.id
-               WHERE (? IS NULL OR v.sucursal_id = ?)
-               ORDER BY v.id DESC""",
-            (sucursal_id, sucursal_id),
-        )
+        return self.dao.listar(sucursal_id)
 
     def obtener_venta(self, venta_id):
-        venta = self.db.consultar_uno(
-            """SELECT v.id, v.sucursal_id, s.nombre AS sucursal, v.fecha,
-                      v.subtotal, v.total, p.medio_pago, p.importe AS importe_pagado,
-                      p.cuotas, p.referencia, c.numero AS comprobante_numero
-               FROM venta v
-               JOIN sucursal s ON s.id = v.sucursal_id
-               JOIN pago p ON p.venta_id = v.id
-               JOIN comprobante c ON c.venta_id = v.id
-               WHERE v.id=?""",
-            (venta_id,),
-        )
+        venta = self.dao.obtener(venta_id)
         if venta is None:
             raise NoEncontradoError(f"No existe la venta {venta_id}")
 
-        venta["items"] = self.db.consultar(
-            """SELECT dv.producto_id, p.nombre, dv.cantidad, dv.precio_unitario
-               FROM detalle_venta dv
-               JOIN producto p ON p.id = dv.producto_id
-               WHERE dv.venta_id=?
-               ORDER BY p.nombre""",
-            (venta_id,),
-        )
-        venta["devoluciones"] = self.db.consultar(
-            """SELECT d.id, d.fecha, d.motivo, d.total AS total_devolucion,
-                      dd.producto_id, p.nombre, dd.cantidad, dd.precio_unitario
-               FROM devolucion d
-               JOIN detalle_devolucion dd ON dd.devolucion_id = d.id
-               JOIN producto p ON p.id = dd.producto_id
-               WHERE d.venta_id=?
-               ORDER BY d.id, p.nombre""",
-            (venta_id,),
-        )
+        venta["items"] = self.dao.items_venta(venta_id)
+        venta["devoluciones"] = self.dao.devoluciones_venta(venta_id)
         return venta
 
+    def sucursal_de_venta(self, venta_id):
+        return self.dao.sucursal_de_venta(venta_id)
+
     def registrar_venta(self, sucursal_id, items, medio_pago, **datos_pago):
-        sucursal = self.db.consultar_uno(
-            "SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))
+        sucursal = self.dao.tipo_sucursal(sucursal_id)
         if sucursal is None:
             raise ReglaNegocioError(f"No existe la sucursal {sucursal_id}")
         if sucursal["tipo"] != "LOCAL":
@@ -86,8 +53,7 @@ class VentasService:
             if producto_id in productos_vistos:
                 raise ReglaNegocioError(f"El producto {producto_id} está repetido")
 
-            producto = self.db.consultar_uno(
-                "SELECT precio_venta FROM producto WHERE id=?", (producto_id,))
+            producto = self.dao.precio_producto(producto_id)
             if producto is None:
                 raise ReglaNegocioError(f"No existe el producto {producto_id}")
             precio_unitario = producto["precio_venta"]
@@ -104,38 +70,21 @@ class VentasService:
         cuotas = getattr(medio_pago_concreto, "cuotas", 1)
         referencia = datos_pago.get("referencia")
 
-        with self.db.transaccion():
-            venta_id = self.db.ejecutar(
-                """INSERT INTO venta (sucursal_id, subtotal, total)
-                   VALUES (?, ?, ?)""",
-                (sucursal_id, subtotal, total),
-            )
+        with self.dao.transaccion():
+            venta_id = self.dao.crear_venta(sucursal_id, subtotal, total)
             for item in items_validados:
-                self.db.ejecutar(
-                    """INSERT INTO detalle_venta
-                       (venta_id, producto_id, cantidad, precio_unitario)
-                       VALUES (?, ?, ?, ?)""",
-                    (venta_id, item["producto_id"], item["cantidad"],
-                     item["precio_unitario"]),
-                )
+                self.dao.crear_detalle_venta(
+                    venta_id, item["producto_id"], item["cantidad"],
+                    item["precio_unitario"])
                 self.stock.restar(
                     sucursal_id, item["producto_id"], item["cantidad"],
                     "VENTA", f"venta {venta_id}",
                 )
 
-            pago_id = self.db.ejecutar(
-                """INSERT INTO pago (venta_id, medio_pago, importe, cuotas, referencia)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (venta_id, medio_pago_concreto.nombre, total, cuotas, referencia),
-            )
-            numero_comprobante = self.db.consultar_uno(
-                "SELECT COALESCE(MAX(numero), 0) + 1 AS numero FROM comprobante"
-            )["numero"]
-            comprobante_id = self.db.ejecutar(
-                """INSERT INTO comprobante (venta_id, numero)
-                   VALUES (?, ?)""",
-                (venta_id, numero_comprobante),
-            )
+            pago_id = self.dao.crear_pago(
+                venta_id, medio_pago_concreto.nombre, total, cuotas, referencia)
+            numero_comprobante = self.dao.siguiente_numero_comprobante()
+            comprobante_id = self.dao.crear_comprobante(venta_id, numero_comprobante)
 
         return {
             "id": venta_id,
@@ -151,13 +100,7 @@ class VentasService:
 
     def registrar_devolucion(self, venta_id, items, motivo):
         #valida que existe la venta
-        venta = self.db.consultar_uno(
-            """SELECT v.id, v.sucursal_id, v.subtotal, p.importe AS importe_pagado
-               FROM venta v
-               JOIN pago p ON p.venta_id = v.id
-               WHERE v.id=?""",
-            (venta_id,),
-        )
+        venta = self.dao.obtener_para_devolucion(venta_id)
         if venta is None:
             raise NoEncontradoError(f"No existe la venta {venta_id}")
         if not isinstance(items, list) or not items:
@@ -166,19 +109,9 @@ class VentasService:
             raise ReglaNegocioError("El motivo de la devolución es obligatorio")
 
   #valida que los items pertenezcan a la venta
-        detalles_venta = self.db.consultar(
-            """SELECT producto_id, cantidad, precio_unitario
-               FROM detalle_venta WHERE venta_id=?""",
-            (venta_id,),
-        )
+        detalles_venta = self.dao.detalles_para_devolucion(venta_id)
         vendidos = {item["producto_id"]: item for item in detalles_venta}
-        devoluciones_previas = self.db.consultar(
-            """SELECT dd.producto_id, dd.cantidad, dd.precio_unitario
-               FROM detalle_devolucion dd
-               JOIN devolucion d ON d.id = dd.devolucion_id
-               WHERE d.venta_id=?""",
-            (venta_id,),
-        )
+        devoluciones_previas = self.dao.devoluciones_previas(venta_id)
         cantidades_devueltas = {}
         subtotal_previamente_devuelto = 0
         for detalle in devoluciones_previas:
@@ -246,32 +179,21 @@ class VentasService:
         else:
             total_devolucion = 0
 
-        with self.db.transaccion():
-            devolucion_id = self.db.ejecutar(
-                """INSERT INTO devolucion (venta_id, motivo, total)
-                   VALUES (?, ?, ?)""",
-                (venta_id, motivo.strip(), total_devolucion),
-            )
+        with self.dao.transaccion():
+            devolucion_id = self.dao.crear_devolucion(
+                venta_id, motivo.strip(), total_devolucion)
             for item in items_validados:
-                self.db.ejecutar(
-                    """INSERT INTO detalle_devolucion
-                       (devolucion_id, producto_id, cantidad, precio_unitario)
-                       VALUES (?, ?, ?, ?)""",
-                    (devolucion_id, item["producto_id"], item["cantidad"],
-                     item["precio_unitario"]),
-                )
+                self.dao.crear_detalle_devolucion(
+                    devolucion_id, item["producto_id"], item["cantidad"],
+                    item["precio_unitario"])
                 #repone stock de productos devueltos
                 self.stock.sumar(
                     venta["sucursal_id"], item["producto_id"], item["cantidad"],
                     "DEVOLUCION", f"devolucion {devolucion_id}",
                 )
                 #registra la devolucion de dinero como EGRESO en movimiento_caja
-            movimiento_caja_id = self.db.ejecutar(
-                """INSERT INTO movimiento_caja
-                   (sucursal_id, devolucion_id, tipo, importe)
-                   VALUES (?, ?, 'EGRESO', ?)""",
-                (venta["sucursal_id"], devolucion_id, total_devolucion),
-            )
+            movimiento_caja_id = self.dao.crear_movimiento_caja(
+                venta["sucursal_id"], devolucion_id, total_devolucion)
 
         return {
             "id": devolucion_id,
