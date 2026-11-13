@@ -6,8 +6,7 @@ Problema: cuando un remito queda VERIFICADO tienen que pasar varias cosas
 Si LogisticaService hiciera todo eso directamente quedaría acoplado a todo.
 
 Solución:
-- El SUJETO mantiene una lista de observadores y les avisa.
-- Cada OBSERVADOR implementa `actualizar(evento, datos)` y decide qué hacer.
+- El SUJETO mantiene una lista de observadores y les avisa a los observadores cuando pasa algo.
 - Agregar una reacción nueva = crear un observador y suscribirlo. No se toca el sujeto.
 
 En este sistema hay DOS sujetos y TRES observadores (se conectan en app.py):

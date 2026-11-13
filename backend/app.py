@@ -15,9 +15,14 @@ from services.excepciones import (
 )
 from services.auth_service import AuthService
 from services.logistica_service import LogisticaService
-from services.stock_service import StockService, StockObserver
+from services.stock_service import StockService
 from services.reportes_service import ReportesService
-from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService
+from services.observadores import (
+    AlertaStockMinimoObserver,
+    AlertasService,
+    AuditoriaObserver,
+    StockObserver,
+)
 from services.ventas_service import VentasService
 from services.catalogo_service import CatalogoService
 

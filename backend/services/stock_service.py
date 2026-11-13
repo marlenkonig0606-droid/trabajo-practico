@@ -1,6 +1,6 @@
 from database.conexion import BaseDeDatos
 from dao.stock_dao import StockDAO
-from models.observer import Observador, Sujeto, Eventos
+from models.observer import Sujeto, Eventos
 from services.excepciones import ReglaNegocioError
 
 _COSTO_NO_INDICADO = object()
@@ -149,38 +149,3 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
 
     def listar(self, sucursal_id):
         return self.dao.listar(sucursal_id)
-
-
-class StockObserver(Observador):
-    """Reacciona a los eventos de logística moviendo el stock."""
-
-    critico = True
-
-    def __init__(self, stock_service: StockService):
-        self.stock = stock_service
-
-    def actualizar(self, evento, datos):
-        if evento == Eventos.BULTO_DESPACHADO:
-            # Sale del CD la mercadería que se había reservado al armar el bulto
-            for item in datos["items"]:
-                self.stock.consumir_reserva(datos["origen_id"], item["producto_id"],
-                                            item["cantidad"], "DESPACHO",
-                                            f"bulto {datos['bulto_id']}",
-                                            item["costo_unitario"])
-
-        elif evento == Eventos.REMITO_VERIFICADO:
-            # Recién ahora entra como DISPONIBLE en el local, y solo lo de bultos verificados
-            for item in datos["items_verificados"]:
-                self.stock.sumar(datos["destino_id"], item["producto_id"], item["cantidad"],
-                                 "RECEPCION", f"remito {datos['remito_numero']}",
-                                 item["costo_unitario"])
-
-        elif evento == Eventos.BULTO_RECHAZADO:
-            for item in datos["items"]:
-                self.stock.sumar(
-                    datos["origen_id"], item["producto_id"], item["cantidad"],
-                    "RECHAZO_REINGRESO", f"bulto {datos['bulto_id']}",
-                    item["costo_unitario"])
-
-
-# Los otros dos observadores están en services/observadores.py

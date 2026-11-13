@@ -5,8 +5,13 @@ from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
 from models.observer import Observador, Sujeto, Eventos
 from services.logistica_service import LogisticaService
-from services.stock_service import StockService, StockObserver
-from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver, AlertasService
+from services.stock_service import StockService
+from services.observadores import (
+    AlertaStockMinimoObserver,
+    AlertasService,
+    AuditoriaObserver,
+    StockObserver,
+)
 
 CD, LOCAL = 1, 2
 AGUA = 1            # stock_minimo = 20 en los datos iniciales
