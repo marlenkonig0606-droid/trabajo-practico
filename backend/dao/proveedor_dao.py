@@ -31,7 +31,9 @@ class ProveedorDAO:
 
     def obtener_por_cuit(self, cuit):
         with self._conn() as cx:
-            filas = cx.execute('SELECT * FROM proveedor').fetchall()
+            filas = cx.execute(
+                'SELECT * FROM proveedor ORDER BY activo DESC, id'
+            ).fetchall()
             cuit_normalizado = normalizar_cuit(cuit)
             return next(
                 (dict(fila) for fila in filas
@@ -62,11 +64,20 @@ class ProveedorDAO:
         try:
             with self._conn() as cx:
                 cuit = normalizar_cuit(cuit)
-                existentes = cx.execute(
-                    "SELECT id, cuit FROM proveedor WHERE id != ?", (proveedor_id,)
-                ).fetchall()
-                if any(normalizar_cuit(fila["cuit"]) == cuit for fila in existentes):
-                    return False, 'Ya existe un proveedor con ese CUIT'
+                actual = cx.execute(
+                    "SELECT cuit FROM proveedor WHERE id=?", (proveedor_id,)
+                ).fetchone()
+                if actual is None:
+                    return 0
+                if normalizar_cuit(actual["cuit"]) != cuit:
+                    existentes = cx.execute(
+                        "SELECT cuit FROM proveedor WHERE id != ?", (proveedor_id,)
+                    ).fetchall()
+                    if any(
+                        normalizar_cuit(fila["cuit"]) == cuit
+                        for fila in existentes
+                    ):
+                        return False, 'Ya existe un proveedor con ese CUIT'
                 cursor = cx.execute(
                     '''UPDATE proveedor
                        SET razon_social = ?, cuit = ?, nombre = ?

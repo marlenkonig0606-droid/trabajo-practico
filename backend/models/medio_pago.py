@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
 
-class IMedioDePago(ABC):   #IProducto
+class IMedioDePago(ABC):   #IProducto  - interface
     def __init__(self, nombre: str):
-        self.nombre = nombre
+        self.nombre = nombre   #todos los medios de pago tienen un nombre
 
     @abstractmethod
-    def calcular_total(self, importe: float) -> float:
+    def calcular_total(self, importe: float) -> float:    
         ...
+ #todos los medios de pago deben implementar el metodo: calcular_total, que recibe un importe y devuelve el total a pagar según el medio de pago.
 
 
 class Efectivo(IMedioDePago):  #ProductoConcreto

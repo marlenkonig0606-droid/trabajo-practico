@@ -6,9 +6,13 @@ import pytest
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
 from services.logistica_service import LogisticaService
-from services.stock_service import StockService, StockObserver
+from services.stock_service import StockService
 from services.excepciones import NoEncontradoError, ReglaNegocioError
-from services.observadores import AlertaStockMinimoObserver, AuditoriaObserver
+from services.observadores import (
+    AlertaStockMinimoObserver,
+    AuditoriaObserver,
+    StockObserver,
+)
 from services.catalogo_service import CatalogoService
 
 CD, LOCAL = 1, 2

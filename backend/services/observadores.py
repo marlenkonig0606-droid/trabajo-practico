@@ -2,6 +2,7 @@
 from database.conexion import BaseDeDatos
 from dao.observadores_dao import ObservadoresDAO
 from models.observer import Observador, Eventos
+from services.stock_service import StockService
 
 
 class AlertaStockMinimoObserver(Observador):
@@ -10,7 +11,7 @@ class AlertaStockMinimoObserver(Observador):
     Cada vez que cambia el stock de un producto en una sucursal:
       - si el stock LIBRE quedó por debajo del mínimo  -> abre una alerta
         (o actualiza la que ya estaba abierta, para no duplicarla)
-      - si volvió a llegar al mínimo                     -> resuelve la alerta abierta
+      - si volvió a llegar al mínimo -> resuelve la alerta abierta
     """
 
     def __init__(self):
@@ -58,6 +59,36 @@ class AuditoriaObserver(Observador):
         else:
             detalle = str(datos)
         self.dao.registrar_evento(evento, detalle)
+
+
+class StockObserver(Observador):
+    """Reacciona a los eventos de logística moviendo el stock."""
+
+    critico = True
+
+    def __init__(self, stock_service: StockService):
+        self.stock = stock_service
+
+    def actualizar(self, evento, datos):
+        if evento == Eventos.BULTO_DESPACHADO:
+            for item in datos["items"]:
+                self.stock.consumir_reserva(
+                    datos["origen_id"], item["producto_id"], item["cantidad"],
+                    "DESPACHO", f"bulto {datos['bulto_id']}", item["costo_unitario"])
+
+        elif evento == Eventos.REMITO_VERIFICADO:
+            for item in datos["items_verificados"]:
+                self.stock.sumar(
+                    datos["destino_id"], item["producto_id"], item["cantidad"],
+                    "RECEPCION", f"remito {datos['remito_numero']}",
+                    item["costo_unitario"])
+
+        elif evento == Eventos.BULTO_RECHAZADO:
+            for item in datos["items"]:
+                self.stock.sumar(
+                    datos["origen_id"], item["producto_id"], item["cantidad"],
+                    "RECHAZO_REINGRESO", f"bulto {datos['bulto_id']}",
+                    item["costo_unitario"])
 
 
 class AlertasService:
