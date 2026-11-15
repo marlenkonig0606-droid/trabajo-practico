@@ -42,6 +42,7 @@ class BaseDeDatos:
         # Es RLock (reentrante) porque un mismo hilo puede volver a pedirlo
         # (por ejemplo: transaccion() -> ejecutar()).
         self._candado = threading.RLock()
+        self._nivel_transaccion = 0      # cuántas transacciones anidadas hay abiertas
         with open(RUTA_SCHEMA, encoding="utf-8") as f:
             self._conexion.executescript(f.read())
         self._migrar()
@@ -325,10 +326,25 @@ class BaseDeDatos:
     def transaccion(self):
         """Uso:  with db.transaccion():  ...
         - Mientras dura, ningún otro hilo puede usar la base (candado tomado).
-        - Si algo falla adentro, se hace rollback de todo; si no, commit."""
+        - Si algo falla adentro, se hace rollback de todo; si no, commit.
+        - Se puede anidar (ej. registrar_venta -> stock.restar): las transacciones
+          internas se suman a la externa y SOLO la más externa hace commit o
+          rollback. Antes, cada 'with' interno hacía commit al terminar, y si un
+          paso posterior fallaba quedaban datos a medio guardar."""
         with self._candado:
-            with self._conexion:
-                yield self._conexion
+            if self._nivel_transaccion:
+                self._nivel_transaccion += 1
+                try:
+                    yield self._conexion
+                finally:
+                    self._nivel_transaccion -= 1
+                return
+            self._nivel_transaccion = 1
+            try:
+                with self._conexion:
+                    yield self._conexion
+            finally:
+                self._nivel_transaccion = 0
 
     @classmethod
     def reiniciar(cls):
