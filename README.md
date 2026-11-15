@@ -150,6 +150,21 @@ ticket promedio, unidades y producto más vendido; para el CD también indica el
 mayores ingresos netos. Las fechas futuras y los rangos invertidos se rechazan tanto en la
 interfaz como en la API. Debajo se conservan los reportes detallados y sus filtros.
 
+### Reporte gerencial del local
+
+Los locales (solo el Administrador) tienen una pantalla propia (`ReportesLocal.jsx`) que se
+alimenta de `GET /api/reportes/local?anio=AAAA` o `?desde=&hasta=`. Se filtra por **año completo**
+o por **período** y se recalcula al cambiar el filtro. Tiene 7 secciones: resumen anual (ventas,
+facturado, ticket promedio = facturado ÷ ventas, unidades, mes de mayor facturación y de más
+ventas, facturación y ticket mensual), medios de pago (importe y %), productos (podio, ranking y
+comparación mensual de dos productos), estadística de tickets (media, mediana, desvío, cuartiles,
+atípicos por rango intercuartílico, prueba de Jarque-Bera y campana de Gauss solo si la
+distribución lo permite, dispersión), stock (libre vs. mínimo, alertas pendientes y permanencia
+reconstruida con `movimiento_stock`), devoluciones, órdenes, tránsito y rechazos, y logística
+(pedidos, bultos por CD, bultos vs. ventas y relación ventas ÷ bultos). Los gráficos son SVG
+propios (`components/Graficos.jsx`), sin librerías. Los cálculos estadísticos y de permanencia
+están en `services/analisis.py`. El CD conserva su pantalla de reportes.
+
 ## Catálogo, sucursales y proveedores
 
 Desde **Catálogo → Sucursales**, una cuenta CD puede dar de alta locales y otros centros de

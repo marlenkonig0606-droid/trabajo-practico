@@ -323,19 +323,20 @@ class ReportesDAO:
     #EFECTIVO          12              10000
     #TARJETA_CREDITO   34              90000
 
-    def ventas_por_medio_pago(self, sucursal_id):
-        filtro = ""
-        parametros = ()
+    def ventas_por_medio_pago(self, sucursal_id, where="1 = 1", parametros_fecha=()):
+        """where/parametros_fecha: filtro opcional de período (ver filtro_fechas)."""
+        filtro = f"WHERE {where}"
+        parametros = tuple(parametros_fecha)
         if sucursal_id is not None:                 # es un local: solo sus ventas
-            filtro = "WHERE v.sucursal_id = ?"
-            parametros = (sucursal_id,) #LLEVA COMA PORQUE NECESITAMOS UNA TUPLA DE PARAMETROS, sin la coma es un parentesis comun y quedarian numeros sueltos
+            filtro += " AND v.sucursal_id = ?"
+            parametros += (sucursal_id,) #LLEVA COMA PORQUE NECESITAMOS UNA TUPLA DE PARAMETROS, sin la coma es un parentesis comun y quedarian numeros sueltos
         return self.db.consultar(f"""
             SELECT pg.medio_pago,
                    COUNT(*) AS ventas,
                    ROUND(SUM(v.total), 2) AS ingresos
             FROM venta v
             JOIN pago pg ON pg.venta_id = v.id
-            {filtro}   
+            {filtro}
             GROUP BY pg.medio_pago
             ORDER BY ingresos DESC""", parametros)
  #el filtro hace que pythonn rellene lo que tiene guardado en esa variable
@@ -346,21 +347,124 @@ class ReportesDAO:
 #producto   devoluciones      unidades        importe
 #agua 1.5l       3               5             4000
 #yerba 1kg       2               4             9000
-    def devoluciones_por_producto(self, sucursal_id):
-           filtro = ""
-           parametros = ()
-           if sucursal_id is not None:
-               filtro = "WHERE v.sucursal_id = ?"
-               parametros = (sucursal_id,)
-           return self.db.consultar(f"""
-               SELECT p.nombre AS producto,
-                      COUNT(DISTINCT d.id) AS devoluciones,
-                      SUM(dd.cantidad) AS unidades,
-                      ROUND(SUM(dd.cantidad * dd.precio_unitario), 2) AS importe
-               FROM detalle_devolucion dd
-               JOIN devolucion d ON d.id = dd.devolucion_id
-               JOIN venta v ON v.id = d.venta_id
-               JOIN producto p ON p.id = dd.producto_id
-               {filtro}
-               GROUP BY p.id
-               ORDER BY unidades DESC""", parametros)
+    def devoluciones_por_producto(self, sucursal_id, where="1 = 1", parametros_fecha=()):
+        """where/parametros_fecha: filtro opcional de período sobre d.fecha."""
+        filtro = f"WHERE {where}"
+        parametros = tuple(parametros_fecha)
+        if sucursal_id is not None:
+            filtro += " AND v.sucursal_id = ?"
+            parametros += (sucursal_id,)
+        return self.db.consultar(f"""
+            SELECT p.id AS producto_id, p.nombre AS producto,
+                   COUNT(DISTINCT d.id) AS devoluciones,
+                   SUM(dd.cantidad) AS unidades,
+                   ROUND(SUM(dd.cantidad * dd.precio_unitario), 2) AS importe
+            FROM detalle_devolucion dd
+            JOIN devolucion d ON d.id = dd.devolucion_id
+            JOIN venta v ON v.id = d.venta_id
+            JOIN producto p ON p.id = dd.producto_id
+            {filtro}
+            GROUP BY p.id
+            ORDER BY unidades DESC""", parametros)
+
+    # ================================================================
+    #  REPORTE GERENCIAL DE UN LOCAL
+    #  Todas las consultas reciben la sucursal y un filtro de período
+    #  (where + parámetros armados con filtro_fechas).
+    # ================================================================
+
+    def tickets(self, sucursal_id, where, parametros):
+        """Una fila por venta: es la base de los indicadores, la estadística y
+        la evolución mensual (se agrega en Python para no repetir consultas)."""
+        return self.db.consultar(f"""
+            SELECT v.id, v.fecha, strftime('%Y-%m', v.fecha) AS mes,
+                   ROUND(v.total, 2) AS total,
+                   COALESCE((SELECT SUM(dv.cantidad) FROM detalle_venta dv
+                             WHERE dv.venta_id = v.id), 0) AS unidades,
+                   (SELECT pg.medio_pago FROM pago pg WHERE pg.venta_id = v.id)
+                       AS medio_pago
+            FROM venta v
+            WHERE {where} AND v.sucursal_id = ?
+            ORDER BY v.fecha, v.id""", tuple(parametros) + (sucursal_id,))
+
+    def unidades_por_producto_y_mes(self, sucursal_id, where, parametros):
+        return self.db.consultar(f"""
+            SELECT p.id AS producto_id, p.nombre AS producto,
+                   strftime('%Y-%m', v.fecha) AS mes,
+                   SUM(dv.cantidad) AS unidades
+            FROM detalle_venta dv
+            JOIN venta v ON v.id = dv.venta_id
+            JOIN producto p ON p.id = dv.producto_id
+            WHERE {where} AND v.sucursal_id = ?
+            GROUP BY p.id, mes
+            ORDER BY mes, p.nombre""", tuple(parametros) + (sucursal_id,))
+
+    def movimientos_de_stock(self, sucursal_id, hasta=None):
+        """Historial completo de entradas/salidas por producto (para reconstruir
+        cuándo hubo stock). Se toma desde el inicio: el saldo depende de todo
+        lo anterior al período."""
+        return self.db.consultar("""
+            SELECT m.producto_id, p.nombre AS producto, m.fecha, m.cantidad
+            FROM movimiento_stock m
+            JOIN producto p ON p.id = m.producto_id
+            WHERE m.sucursal_id = ? AND (? IS NULL OR date(m.fecha) <= date(?))
+            ORDER BY m.producto_id, m.fecha, m.id""",
+            (sucursal_id, hasta, hasta))
+
+    def alertas_pendientes(self, sucursal_id):
+        return self.db.consultar("""
+            SELECT p.nombre AS producto, a.fecha AS desde,
+                   COALESCE(st.disponible - st.reservado, 0) AS libre,
+                   p.stock_minimo AS minimo,
+                   MAX(p.stock_minimo - COALESCE(st.disponible - st.reservado, 0), 0)
+                       AS faltante
+            FROM alerta_stock a
+            JOIN producto p ON p.id = a.producto_id
+            LEFT JOIN stock st ON st.sucursal_id = a.sucursal_id
+                              AND st.producto_id = a.producto_id
+            WHERE a.sucursal_id = ? AND a.resuelta = 0
+            ORDER BY faltante DESC, p.nombre""", (sucursal_id,))
+
+    def ordenes_del_local(self, sucursal_id, where, parametros):
+        return self.db.consultar(f"""
+            SELECT o.id, o.estado, o.resolucion, o.fecha, s.nombre AS cd
+            FROM orden_reposicion o
+            JOIN sucursal s ON s.id = o.origen_id
+            WHERE {where} AND o.destino_id = ?""",
+            tuple(parametros) + (sucursal_id,))
+
+    def bultos_del_local(self, sucursal_id):
+        """Todos los bultos enviados (o por enviar) al local, con su CD de origen,
+        la fecha del pedido y las fechas reales de despacho y recepción."""
+        return self.db.consultar("""
+            SELECT b.id, b.estado, o.id AS orden_id, o.fecha AS fecha_pedido,
+                   s.nombre AS cd, b.fecha_despacho, b.fecha_recepcion,
+                   COALESCE((SELECT SUM(db.cantidad) FROM detalle_bulto db
+                             WHERE db.bulto_id = b.id), 0) AS unidades
+            FROM bulto b
+            JOIN remito r ON r.id = b.remito_id
+            JOIN orden_reposicion o ON o.id = r.orden_id
+            JOIN sucursal s ON s.id = o.origen_id
+            WHERE o.destino_id = ?""", (sucursal_id,))
+
+    def productos_rechazados(self, sucursal_id, where, parametros):
+        """where filtra por b.fecha_recepcion (el día en que se rechazó)."""
+        return self.db.consultar(f"""
+            SELECT p.nombre AS producto, COUNT(DISTINCT b.id) AS bultos,
+                   SUM(db.cantidad) AS unidades
+            FROM bulto b
+            JOIN remito r ON r.id = b.remito_id
+            JOIN orden_reposicion o ON o.id = r.orden_id
+            JOIN detalle_bulto db ON db.bulto_id = b.id
+            JOIN producto p ON p.id = db.producto_id
+            WHERE b.estado = 'RECHAZADO' AND {where} AND o.destino_id = ?
+            GROUP BY p.id
+            ORDER BY unidades DESC""", tuple(parametros) + (sucursal_id,))
+
+    def anios_con_datos(self, sucursal_id):
+        return [fila["anio"] for fila in self.db.consultar("""
+            SELECT DISTINCT CAST(strftime('%Y', fecha) AS INTEGER) AS anio FROM (
+                SELECT fecha FROM venta WHERE sucursal_id = ?
+                UNION ALL
+                SELECT fecha FROM orden_reposicion WHERE destino_id = ?)
+            ORDER BY anio DESC""", (sucursal_id, sucursal_id))]

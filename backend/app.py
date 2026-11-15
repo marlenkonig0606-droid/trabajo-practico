@@ -660,6 +660,19 @@ def crear_app(cargar_demo=True):
         return jsonify(reportes.resumen(
             desde, hasta, sucursal_id))
 
+    @app.get("/api/reportes/local")
+    def rep_local():
+        """Reporte gerencial del local: período (desde/hasta) o año completo (anio)."""
+        if g.usuario["tipo"] != "LOCAL":
+            raise AccesoDenegadoError("Este reporte es para los locales")
+        anio = request.args.get("anio")
+        if anio:
+            if not anio.isdigit() or not 2000 <= int(anio) <= date.today().year:
+                raise ReglaNegocioError("El año seleccionado no es válido")
+            return jsonify(reportes.reporte_local(g.usuario["sucursal_id"], anio=int(anio)))
+        desde, hasta = fechas_de_reporte()
+        return jsonify(reportes.reporte_local(g.usuario["sucursal_id"], desde, hasta))
+
     @app.get("/api/reportes/bultos-rechazados")
     @requiere_cd
     def rep_rechazados():

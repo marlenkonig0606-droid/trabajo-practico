@@ -98,6 +98,9 @@ export const api = {
   alertas: () => pedir('GET', '/alertas'),
   eventos: () => pedir('GET', '/eventos'),
 
+  // Reporte gerencial del local: { anio } o { desde, hasta }
+  reporteLocal: ({ anio, desde, hasta } = {}) => pedir('GET', `/reportes/local${anio
+    ? `?anio=${anio}` : conFechas({ desde, hasta })}`),
   reporteResumen: (f = {}) => pedir('GET', `/reportes/resumen${conFechas(f)}`),
   reporteRechazados: (f = {}) => pedir('GET', `/reportes/bultos-rechazados${conFechas(f)}`),
   reporteTransito: () => pedir('GET', '/reportes/transito'),

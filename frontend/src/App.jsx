@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Logistica from './pages/Logistica.jsx'
 import Stock from './pages/Stock.jsx'
 import Reportes from './pages/Reportes.jsx'
+import ReportesLocal from './pages/ReportesLocal.jsx'
 import Catalogo from './pages/Catalogo.jsx'
 import Ventas from './pages/Ventas.jsx'
 import Acceso from './pages/Acceso.jsx'
@@ -76,7 +77,14 @@ export default function App() {
     // RBAC: el empleado no ve reportes (el backend también lo bloquea).
     ...(esEmpleado
       ? []
-      : [{ id: 'reportes', titulo: 'Reportes', componente: <Reportes usuario={usuario} /> }]),
+      : [{
+        id: 'reportes',
+        titulo: 'Reportes',
+        // El local tiene su reporte gerencial; el CD conserva su pantalla de reportes.
+        componente: usuario.tipo === 'LOCAL'
+          ? <ReportesLocal usuario={usuario} />
+          : <Reportes usuario={usuario} />,
+      }]),
   ]
   const paginaActual = secciones.find((seccion) => seccion.id === actual) ?? secciones[0]
 
