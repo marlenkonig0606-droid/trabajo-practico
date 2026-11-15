@@ -27,6 +27,20 @@ from services.ventas_service import VentasService
 from services.catalogo_service import CatalogoService
 
 
+RUTA_CODIGO_CD = os.path.join(os.path.dirname(__file__), "cd_registration_code.txt")
+
+
+def codigo_registro_cd():
+    """Código de invitación para registrar cuentas del CD.
+    Se toma de la variable de entorno CD_REGISTRATION_CODE o, si no está, del archivo
+    local cd_registration_code.txt (no se sube al repositorio, ver .gitignore)."""
+    codigo = os.environ.get("CD_REGISTRATION_CODE", "").strip()
+    if not codigo and os.path.exists(RUTA_CODIGO_CD):
+        with open(RUTA_CODIGO_CD, encoding="utf-8") as archivo:
+            codigo = archivo.read().strip()
+    return codigo
+
+
 def crear_app(cargar_demo=True):
     app = Flask(__name__)
     app.config.update(
@@ -142,7 +156,7 @@ def crear_app(cargar_demo=True):
         if sucursal is None:
             raise ReglaNegocioError("La sucursal seleccionada no existe")
         if sucursal["tipo"] == "CD":
-            codigo_configurado = os.environ.get("CD_REGISTRATION_CODE", "")
+            codigo_configurado = codigo_registro_cd()
             codigo_ingresado = datos.get("codigo_cd")
             if not codigo_configurado:
                 raise ReglaNegocioError(

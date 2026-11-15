@@ -254,6 +254,8 @@ def test_api_registro_cd_exige_codigo_de_invitacion(cliente_api, monkeypatch):
 
 def test_api_explica_como_habilitar_registro_cd(cliente_api, monkeypatch):
     monkeypatch.delenv("CD_REGISTRATION_CODE", raising=False)
+    import app as modulo_app
+    monkeypatch.setattr(modulo_app, "RUTA_CODIGO_CD", "no-existe.txt")
     cliente_api.post("/api/auth/logout")
 
     respuesta = cliente_api.post(

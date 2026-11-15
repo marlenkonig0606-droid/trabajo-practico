@@ -3,3 +3,5 @@ dist/
 __pycache__/
 *.db
 .pytest_cache/
+# código de invitación del CD (local, no se sube)
+backend/cd_registration_code.txt

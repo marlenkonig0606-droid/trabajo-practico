@@ -24,6 +24,12 @@ registro permite crear cuentas locales y, con esa variable configurada, cuentas 
 El código no se guarda en el repositorio. Para correr tests, desde `backend/`, ejecutá
 `python -m pytest -v`.
 
+**Código de invitación del CD (alternativa sin variable de entorno):** también se puede crear el
+archivo `backend/cd_registration_code.txt` con el código en la primera línea (por ejemplo
+`dao2026`). El backend lo lee en cada registro, así que no hace falta reiniciarlo. Si la variable
+`CD_REGISTRATION_CODE` está configurada, tiene prioridad sobre el archivo. El archivo está en
+`.gitignore`: cada integrante tiene el suyo y el código no se sube al repositorio.
+
 Para producción, configurá además `FLASK_SECRET_KEY` con un valor secreto persistente y
 serví la aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo se genera una clave
 temporal al iniciar, por lo que las sesiones no sobreviven a un reinicio del servidor.
