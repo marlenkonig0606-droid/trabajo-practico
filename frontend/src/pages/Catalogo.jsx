@@ -31,6 +31,8 @@ const CAMPOS = {
     { id: 'nombre', titulo: 'Nombre', requerido: true },
     { id: 'direccion', titulo: 'Dirección', requerido: true },
     { id: 'tipo', titulo: 'Tipo', tipo: 'tipo_sucursal', requerido: true },
+    // Solo al crear un LOCAL: si se deja vacío, se genera admin.local<id>@cdlocales.local
+    { id: 'email_admin', titulo: 'Correo del administrador (opcional)', soloAltaLocal: true },
   ],
 }
 
@@ -94,6 +96,7 @@ export default function Catalogo() {
   const [mensaje, setMensaje] = useState('')
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
+  const [credencialAdmin, setCredencialAdmin] = useState(null)
 
   const recargar = async () => {
     const [productos, categorias, proveedores, sucursales] = await Promise.all([
@@ -152,8 +155,12 @@ export default function Catalogo() {
     try {
       const operaciones = OPERACIONES[seccion]
       const payload = prepararDatos()
+      setCredencialAdmin(null)
       if (filaEditada === null) {
-        await operaciones.crear(payload)
+        const creado = await operaciones.crear(payload)
+        // Al crear un local, el backend crea su administrador y devuelve la
+        // contraseña temporal UNA sola vez.
+        if (creado?.administrador) setCredencialAdmin({ local: creado.nombre, ...creado.administrador })
       } else {
         await operaciones.actualizar(filaEditada, payload)
       }
@@ -263,6 +270,16 @@ export default function Catalogo() {
 
       {error && <div className="error" role="alert">{error}</div>}
       {mensaje && <div className="exito" role="status">{mensaje}</div>}
+      {credencialAdmin && (
+        <div className="tarjeta credencial-temporal" role="status">
+          <h3>Administrador creado para {credencialAdmin.local}</h3>
+          <p>Usuario: <b>{credencialAdmin.email}</b></p>
+          <p>Contraseña temporal: <code>{credencialAdmin.password_temporal}</code></p>
+          <p className="ayuda">Entregásela al administrador del local: al entrar debe cambiarla.
+            No se vuelve a mostrar.</p>
+          <button className="secundario" type="button" onClick={() => setCredencialAdmin(null)}>Listo</button>
+        </div>
+      )}
 
       {formulario && (
         <form className="catalogo-formulario" onSubmit={guardar}>
@@ -273,7 +290,10 @@ export default function Catalogo() {
             </button>
           </div>
           <div className="grilla">
-            {CAMPOS[seccion].map((campo) => (
+            {CAMPOS[seccion]
+              .filter((campo) => !campo.soloAltaLocal
+                || (filaEditada === null && formulario.tipo === 'LOCAL'))
+              .map((campo) => (
               <label key={campo.id}>
                 {campo.titulo}
                 {campo.tipo === 'categoria' || campo.tipo === 'proveedor' || campo.tipo === 'tipo_sucursal' ? (

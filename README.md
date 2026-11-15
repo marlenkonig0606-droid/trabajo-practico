@@ -89,7 +89,31 @@ Los registros existentes quedan activos y los proveedores sin nombre toman su ra
 El registro desde la pantalla de inicio de sesión crea cuentas para la sucursal seleccionada.
 Para el CD, exige el código configurado en el servidor. Las contraseñas se guardan hasheadas.
 
-Las cuentas locales solo consultan su stock, ventas y reportes. Desde Reposición pueden crear
+### Roles de local: Administrador y Empleado
+
+| | Administrador | Empleado |
+|---|---|---|
+| Pestaña **Mi local** (panel con ventas, stock bajo mínimo, órdenes, bultos y equipo) | ✅ | ❌ |
+| Aprobar o rechazar cuentas y dar de alta perfiles (eligiendo el rol) | ✅ | ❌ |
+| Habilitar productos en el local | ✅ | ❌ (403) |
+| Reportes | ✅ | ❌ (403) |
+| Ventas, devoluciones, reposición, recepción y stock | ✅ | ✅ |
+
+- **Administrador automático:** al crear un local desde Catálogo, en la misma transacción se crea su
+  administrador (correo indicado o `admin.local<id>@cdlocales.local`) con una contraseña temporal que
+  se muestra una sola vez al CD. Si falla la creación del administrador, el local tampoco se crea.
+  Los locales que ya existían reciben uno al iniciar el backend: sus credenciales se muestran en la
+  consola y se guardan en `backend/credenciales_iniciales.txt` (no se sube, está en `.gitignore`).
+- **Aprobación:** quien se registra en un local queda `PENDIENTE` (elige si solicita perfil de
+  Empleado o Administrador). Si intenta entrar, ve el aviso de cuenta pendiente. El administrador
+  la aprueba (confirmando o cambiando el rol) o la rechaza con un motivo.
+- **Contraseña temporal:** al aprobar, el sistema genera una contraseña aleatoria (`secrets`) que el
+  administrador entrega. Con ella la persona entra, pero el backend bloquea todo
+  (`CAMBIO_PASSWORD_OBLIGATORIO`) hasta que elige una propia.
+- **Bases existentes:** la migración deja aprobadas las cuentas que ya había; en cada local la más
+  antigua pasa a Administrador y el resto a Empleado. En el CD no se usan roles.
+
+Las cuentas locales solo consultan su stock, ventas y (si son administradoras) reportes. Desde Reposición pueden crear
 solicitudes para su propia sucursal y elegir cualquier CD como origen; ven las órdenes dirigidas
 a su sucursal y las que solicitaron. La sugerencia automática usa únicamente el stock de su
 propia sucursal. El CD puede consultar todas las órdenes y gestionar su preparación, armado y

@@ -10,6 +10,7 @@ from flask_cors import CORS
 from database.datos_iniciales import cargar as cargar_datos_iniciales
 from services.excepciones import (
     AccesoDenegadoError,
+    CuentaNoHabilitadaError,
     NoEncontradoError,
     ReglaNegocioError,
 )
@@ -25,6 +26,7 @@ from services.observadores import (
 )
 from services.ventas_service import VentasService
 from services.catalogo_service import CatalogoService
+from services.usuarios_service import UsuariosService
 
 
 RUTA_CODIGO_CD = os.path.join(os.path.dirname(__file__), "cd_registration_code.txt")
@@ -66,6 +68,9 @@ def crear_app(cargar_demo=True):
     ventas = VentasService(stock)
     catalogo = CatalogoService()
     auth = AuthService()
+    usuarios = UsuariosService()
+    # Bootstrap: todo local activo que no tenga administrador recibe uno.
+    usuarios.asegurar_administradores()
 
     def cuerpo_json():
         datos = request.get_json(silent=True)
@@ -103,6 +108,24 @@ def crear_app(cargar_demo=True):
             return fn(*args, **kwargs)
         return protegido
 
+    def es_empleado_de_local(usuario):
+        return usuario["tipo"] == "LOCAL" and usuario["rol"] == "EMPLEADO"
+
+    def requiere_admin_local(fn):
+        """Solo el ADMINISTRADOR de un local (gestión de su equipo y panel)."""
+        @wraps(fn)
+        def protegido(*args, **kwargs):
+            if g.usuario["tipo"] != "LOCAL" or g.usuario["rol"] != "ADMINISTRADOR":
+                raise AccesoDenegadoError(
+                    "Esta función está disponible solo para el administrador del local")
+            return fn(*args, **kwargs)
+        return protegido
+
+    # Mientras la cuenta tenga una contraseña temporal, solo puede hacer esto:
+    PERMITIDOS_CON_PASSWORD_TEMPORAL = {"api_cambiar_password", "api_cerrar_sesion"}
+    # Secciones a las que un EMPLEADO de local no tiene acceso (RBAC).
+    PREFIJOS_PROHIBIDOS_EMPLEADO = ("/api/reportes/", "/api/local/")
+
     @app.before_request
     def autenticar_api():
         if not request.path.startswith("/api/"):
@@ -122,6 +145,20 @@ def crear_app(cargar_demo=True):
             return jsonify({"error": "Iniciá sesión para continuar"}), 401
         g.usuario = usuario
 
+        # 1) Contraseña temporal: no puede operar hasta elegir la suya.
+        if (usuario["debe_cambiar_password"]
+                and request.endpoint not in PERMITIDOS_CON_PASSWORD_TEMPORAL):
+            return jsonify({
+                "error": "Tenés que cambiar tu contraseña temporal antes de continuar",
+                "codigo": "CAMBIO_PASSWORD_OBLIGATORIO",
+            }), 403
+        # 2) RBAC: el empleado no accede a reportes ni a la administración del local.
+        if (es_empleado_de_local(usuario)
+                and request.path.startswith(PREFIJOS_PROHIBIDOS_EMPLEADO)):
+            return jsonify({
+                "error": "Tu rol de empleado no tiene acceso a esta sección",
+            }), 403
+
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(ReglaNegocioError)
     def regla_negocio(e):
@@ -134,6 +171,10 @@ def crear_app(cargar_demo=True):
     @app.errorhandler(AccesoDenegadoError)
     def acceso_denegado(e):
         return jsonify({"error": str(e)}), 403
+
+    @app.errorhandler(CuentaNoHabilitadaError)
+    def cuenta_no_habilitada(e):
+        return jsonify({"error": str(e), "estado": e.estado, "motivo": e.motivo}), 403
 
     @app.errorhandler(NotImplementedError)
     def no_implementado(e):
@@ -168,8 +209,19 @@ def crear_app(cargar_demo=True):
             usuario = auth.registrar_cd(
                 datos.get("email"), datos.get("password"), sucursal_id)
         else:
-            usuario = auth.registrar_local(
-                datos.get("email"), datos.get("password"), sucursal_id)
+            # El usuario de local queda PENDIENTE: no se inicia sesión hasta que
+            # el administrador de su local lo apruebe.
+            pendiente = auth.registrar_local(
+                datos.get("email"), datos.get("password"), sucursal_id,
+                datos.get("rol") or "EMPLEADO")
+            session.clear()
+            return jsonify({
+                **pendiente,
+                "pendiente": True,
+                "mensaje": ("Tu cuenta quedó pendiente de validación. El administrador "
+                            "de tu local tiene que aprobarla; cuando lo haga te va a dar "
+                            "una contraseña temporal para entrar."),
+            }), 201
         session.clear()
         session["usuario_id"] = usuario["id"]
         return jsonify(usuario), 201
@@ -182,6 +234,13 @@ def crear_app(cargar_demo=True):
             return jsonify({"error": "Correo o contraseña incorrectos"}), 401
         session.clear()
         session["usuario_id"] = usuario["id"]
+        return jsonify(usuario)
+
+    @app.post("/api/auth/cambiar-password")
+    def api_cambiar_password():
+        datos = cuerpo_json()
+        usuario = auth.cambiar_password(
+            g.usuario["id"], datos.get("actual"), datos.get("nueva"))
         return jsonify(usuario)
 
     @app.post("/api/auth/logout")
@@ -342,6 +401,9 @@ def crear_app(cargar_demo=True):
                 or id_sucursal != g.usuario["sucursal_id"]):
             raise AccesoDenegadoError(
                 "Cada local solo puede cambiar las habilitaciones de su sucursal")
+        if es_empleado_de_local(g.usuario):
+            raise AccesoDenegadoError(
+                "Solo el administrador del local puede habilitar productos")
         datos = cuerpo_json()
         return jsonify(catalogo.cambiar_habilitacion_producto(
             id_sucursal, id_producto, datos.get("habilitado")))
@@ -559,6 +621,36 @@ def crear_app(cargar_demo=True):
         return jsonify(
             ventas.registrar_devolucion(venta_id, items, datos.get("motivo"))
         ), 201
+
+    # ---------- administración del local (solo ADMINISTRADOR) ----------
+    @app.get("/api/local/panel")
+    @requiere_admin_local
+    def panel_local():
+        return jsonify(usuarios.panel(g.usuario))
+
+    @app.get("/api/local/usuarios")
+    @requiere_admin_local
+    def equipo_local():
+        return jsonify(usuarios.equipo(g.usuario))
+
+    @app.post("/api/local/usuarios")
+    @requiere_admin_local
+    def alta_usuario_local():
+        datos = cuerpo_json()
+        return jsonify(usuarios.alta_directa(
+            g.usuario, datos.get("email"), datos.get("rol"))), 201
+
+    @app.post("/api/local/usuarios/<int:usuario_id>/aprobar")
+    @requiere_admin_local
+    def aprobar_usuario_local(usuario_id):
+        datos = request.get_json(silent=True) or {}
+        return jsonify(usuarios.aprobar(g.usuario, usuario_id, datos.get("rol")))
+
+    @app.post("/api/local/usuarios/<int:usuario_id>/rechazar")
+    @requiere_admin_local
+    def rechazar_usuario_local(usuario_id):
+        datos = request.get_json(silent=True) or {}
+        return jsonify(usuarios.rechazar(g.usuario, usuario_id, datos.get("motivo")))
 
     # ---------- reportes ----------
     @app.get("/api/reportes/resumen")

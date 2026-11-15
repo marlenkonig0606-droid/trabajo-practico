@@ -15,6 +15,7 @@ async function pedir(metodo, url, cuerpo) {
   if (!resp.ok) {
     const error = new Error(datos?.error || (texto ? `Error ${resp.status}` : `Sin respuesta del backend (${resp.status}). ¿Está corriendo python app.py?`))
     error.status = resp.status
+    error.datos = datos   // ej. { estado: 'PENDIENTE' } o { codigo: 'CAMBIO_PASSWORD_OBLIGATORIO' }
     throw error
   }
   return datos
@@ -34,6 +35,14 @@ export const api = {
   registrar: (datos) => pedir('POST', '/auth/register', datos),
   iniciarSesion: (datos) => pedir('POST', '/auth/login', datos),
   cerrarSesion: () => pedir('POST', '/auth/logout'),
+  cambiarPassword: (actual, nueva) => pedir('POST', '/auth/cambiar-password', { actual, nueva }),
+
+  // Administración del local (solo ADMINISTRADOR)
+  panelLocal: () => pedir('GET', '/local/panel'),
+  equipoLocal: () => pedir('GET', '/local/usuarios'),
+  altaUsuarioLocal: (email, rol) => pedir('POST', '/local/usuarios', { email, rol }),
+  aprobarUsuario: (id, rol) => pedir('POST', `/local/usuarios/${id}/aprobar`, { rol }),
+  rechazarUsuario: (id, motivo) => pedir('POST', `/local/usuarios/${id}/rechazar`, { motivo }),
   sucursales: () => pedir('GET', '/sucursales'),
   sucursalesCatalogo: () => pedir('GET', '/catalogo/sucursales'),
   crearSucursal: (datos) => pedir('POST', '/sucursales', datos),

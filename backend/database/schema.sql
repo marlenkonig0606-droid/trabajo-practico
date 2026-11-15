@@ -24,7 +24,20 @@ CREATE TABLE IF NOT EXISTS usuario (
     email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash  TEXT NOT NULL,
     sucursal_id    INTEGER NOT NULL REFERENCES sucursal(id),
-    fecha_alta     TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    fecha_alta     TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    -- Roles dentro de un LOCAL: el ADMINISTRADOR ve todo y aprueba empleados.
+    -- Los usuarios del CD se guardan como ADMINISTRADOR (en el CD no se usan roles).
+    rol            TEXT NOT NULL DEFAULT 'EMPLEADO'
+                   CHECK (rol IN ('ADMINISTRADOR', 'EMPLEADO')),
+    -- Un empleado recién registrado queda PENDIENTE hasta que lo valida su administrador.
+    estado         TEXT NOT NULL DEFAULT 'PENDIENTE'
+                   CHECK (estado IN ('PENDIENTE', 'APROBADO', 'RECHAZADO')),
+    -- 1 = tiene una contraseña temporal y debe cambiarla antes de operar.
+    debe_cambiar_password INTEGER NOT NULL DEFAULT 0
+                   CHECK (debe_cambiar_password IN (0, 1)),
+    aprobado_por_usuario_id INTEGER REFERENCES usuario(id),
+    fecha_resolucion TEXT,
+    motivo_rechazo TEXT
 );
 
 -- ---------- 2. Catálogo ----------

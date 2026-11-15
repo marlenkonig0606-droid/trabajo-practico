@@ -6,6 +6,8 @@ import Catalogo from './pages/Catalogo.jsx'
 import Ventas from './pages/Ventas.jsx'
 import Acceso from './pages/Acceso.jsx'
 import Solicitudes from './pages/Solicitudes.jsx'
+import MiLocal from './pages/MiLocal.jsx'
+import CambioPassword from './pages/CambioPassword.jsx'
 import { api } from './api.js'
 
 export default function App() {
@@ -16,7 +18,8 @@ export default function App() {
 
   const iniciar = (sesion) => {
     setUsuario(sesion)
-    setActual(sesion.tipo === 'CD' ? 'logistica' : 'stock')
+    setActual(sesion.tipo === 'CD' ? 'logistica'
+      : sesion.rol === 'ADMINISTRADOR' ? 'milocal' : 'stock')
   }
 
   useEffect(() => {
@@ -46,7 +49,18 @@ export default function App() {
     </>
   }
 
+  // Contraseña temporal: hasta cambiarla no puede usar nada más.
+  if (usuario.debe_cambiar_password) {
+    return <CambioPassword usuario={usuario} onCambiada={iniciar} onSalir={cerrarSesion} />
+  }
+
+  const esAdminLocal = usuario.tipo === 'LOCAL' && usuario.rol === 'ADMINISTRADOR'
+  const esEmpleado = usuario.tipo === 'LOCAL' && usuario.rol === 'EMPLEADO'
+
   const secciones = [
+    ...(esAdminLocal
+      ? [{ id: 'milocal', titulo: 'Mi local', componente: <MiLocal usuario={usuario} /> }]
+      : []),
     ...(usuario.tipo === 'CD'
       ? [
         { id: 'logistica', titulo: 'Logística', componente: <Logistica /> },
@@ -59,7 +73,10 @@ export default function App() {
       },
       { id: 'ventas', titulo: 'Ventas', componente: <Ventas usuario={usuario} /> }]),
     { id: 'stock', titulo: 'Stock', componente: <Stock usuario={usuario} /> },
-    { id: 'reportes', titulo: 'Reportes', componente: <Reportes usuario={usuario} /> },
+    // RBAC: el empleado no ve reportes (el backend también lo bloquea).
+    ...(esEmpleado
+      ? []
+      : [{ id: 'reportes', titulo: 'Reportes', componente: <Reportes usuario={usuario} /> }]),
   ]
   const paginaActual = secciones.find((seccion) => seccion.id === actual) ?? secciones[0]
 
@@ -78,7 +95,12 @@ export default function App() {
             <button key={s.id} className={actual === s.id ? 'activo' : ''}
                     onClick={() => setActual(s.id)}>{s.titulo}</button>
           ))}
-          <span className="sesion-usuario"><i aria-hidden="true" />{usuario.email} · {usuario.sucursal}</span>
+          <span className="sesion-usuario"><i aria-hidden="true" />{usuario.email} · {usuario.sucursal}
+            {usuario.tipo === 'LOCAL' && (
+              <span className={`insignia-rol ${usuario.rol.toLowerCase()}`}>
+                {usuario.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Empleado'}
+              </span>
+            )}</span>
           <button className="secundario" onClick={cerrarSesion}>Cerrar sesión</button>
         </nav>
       </header>

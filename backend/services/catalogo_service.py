@@ -3,6 +3,7 @@ from dao.categoria_dao import CategoriaDAO
 from dao.proveedor_dao import ProveedorDAO
 from dao.sucursal_dao import SucursalDAO
 from services.excepciones import ReglaNegocioError, NoEncontradoError
+from services.usuarios_service import UsuariosService
 from models.producto import normalizar_codigo
 from models.proveedor import normalizar_cuit
 
@@ -13,6 +14,7 @@ class CatalogoService:
         self.categoria_dao = CategoriaDAO()
         self.proveedor_dao = ProveedorDAO()
         self.sucursal_dao = SucursalDAO()
+        self.usuarios = UsuariosService()
 
     def _a_dict(self, fila):
         if fila is None:
@@ -206,9 +208,21 @@ class CatalogoService:
         if datos["tipo"] != "CD" and self._cantidad_cd() == 0:
             raise ReglaNegocioError(
                 "Debe existir al menos un Centro de Distribución: la primera sucursal debe ser CD")
+        administrador = {}
+
+        def crear_administrador(cx, sucursal_id):
+            # Bootstrap: cada local nuevo nace con su administrador (misma transacción).
+            administrador.update(self.usuarios.crear_administrador_local(
+                sucursal_id, datos.get("email_admin") or None, cx=cx))
+
         resultado = self.sucursal_dao.crear(
-            datos["nombre"].strip(), datos["direccion"].strip(), datos["tipo"])
-        return self.obtener_sucursal(self._id_creado(resultado))
+            datos["nombre"].strip(), datos["direccion"].strip(), datos["tipo"],
+            al_crear=crear_administrador if datos["tipo"] == "LOCAL" else None)
+        sucursal = self.obtener_sucursal(self._id_creado(resultado))
+        if administrador:
+            # Se devuelve UNA sola vez para que el CD se la entregue al administrador.
+            sucursal["administrador"] = administrador
+        return sucursal
 
     def eliminar_sucursal(self, id_sucursal):
         self.cambiar_estado_sucursal(id_sucursal, False)

@@ -6,6 +6,7 @@ from app import crear_app
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
 from services.stock_service import StockService
+from tests.ayudas import registrar_local_aprobado
 
 
 @pytest.fixture
@@ -17,15 +18,8 @@ def cliente_api(tmp_path):
     app = crear_app(cargar_demo=False)
     app.config.update(TESTING=True)
     cliente = app.test_client()
-    respuesta = cliente.post(
-        "/api/auth/register",
-        json={
-            "email": "local@example.com",
-            "password": "contraseña-segura",
-            "sucursal_id": 2,
-        },
-    )
-    assert respuesta.status_code == 201
+    # Usuario ADMINISTRADOR del Local Centro, aprobado y con contraseña propia.
+    registrar_local_aprobado(cliente, "local@example.com", 2)
     yield cliente
     BaseDeDatos.reiniciar()
 
@@ -307,14 +301,7 @@ def test_local_solo_solicita_para_su_sucursal_y_ve_sus_ordenes(cliente_api):
             cliente_api.get("/api/ordenes").get_json()] == [orden["id"]]
 
     otra_sucursal = crear_app(cargar_demo=False).test_client()
-    assert otra_sucursal.post(
-        "/api/auth/register",
-        json={
-            "email": "otro-local@example.com",
-            "password": "contraseña-segura",
-            "sucursal_id": 3,
-        },
-    ).status_code == 201
+    registrar_local_aprobado(otra_sucursal, "otro-local@example.com", 3)
     destino_ajeno = otra_sucursal.post(
         "/api/ordenes",
         json={
@@ -634,15 +621,7 @@ def test_local_no_consulta_ventas_ni_reportes_de_otro_local(cliente_api):
     ).status_code == 201
 
     otra_sucursal = crear_app(cargar_demo=False).test_client()
-    registro = otra_sucursal.post(
-        "/api/auth/register",
-        json={
-            "email": "otro-local@example.com",
-            "password": "contraseña-segura",
-            "sucursal_id": 3,
-        },
-    )
-    assert registro.status_code == 201
+    registrar_local_aprobado(otra_sucursal, "otro-local@example.com", 3)
     assert otra_sucursal.get("/api/ventas").get_json() == []
     assert otra_sucursal.get("/api/reportes/ventas").get_json() == []
     assert otra_sucursal.get("/api/reportes/mas-vendidos").get_json() == []

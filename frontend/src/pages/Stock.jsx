@@ -121,7 +121,8 @@ export default function Stock({ usuario }) {
         </tbody>
       </table>
     </section>
-    {usuario.tipo === 'LOCAL' && (
+    {/* Solo el administrador habilita productos en su local */}
+    {usuario.tipo === 'LOCAL' && usuario.rol === 'ADMINISTRADOR' && (
       <HabilitacionesProductos sucursalId={usuario.sucursal_id} />
     )}
     </>

@@ -3,8 +3,13 @@ import pytest
 from database.conexion import BaseDeDatos
 from database.datos_iniciales import cargar
 from services.auth_service import AuthService
-from services.excepciones import ReglaNegocioError
+from services.excepciones import CuentaNoHabilitadaError, ReglaNegocioError
 from services.catalogo_service import CatalogoService
+
+
+def db_usuario(ruta, email):
+    return BaseDeDatos(ruta).consultar_uno(
+        "SELECT rol, estado FROM usuario WHERE email=?", (email,))
 
 
 def test_registro_local_guarda_hash_y_persiste_tras_reabrir_db(tmp_path):
@@ -24,11 +29,14 @@ def test_registro_local_guarda_hash_y_persiste_tras_reabrir_db(tmp_path):
         assert guardado["email"] == "local@example.com"
         assert guardado["password_hash"] != "contraseña-segura"
 
+        # Queda pendiente: con la contraseña correcta igual no puede entrar.
+        with pytest.raises(CuentaNoHabilitadaError) as pendiente:
+            servicio.autenticar("local@example.com", "contraseña-segura")
+        assert pendiente.value.estado == "PENDIENTE"
+
         BaseDeDatos.reiniciar()
         BaseDeDatos(ruta)
-        autenticado = AuthService().autenticar(
-            "local@example.com", "contraseña-segura")
-        assert autenticado["sucursal_id"] == 2
+        assert db_usuario(ruta, "local@example.com")["estado"] == "PENDIENTE"
     finally:
         BaseDeDatos.reiniciar()
 

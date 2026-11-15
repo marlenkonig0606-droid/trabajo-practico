@@ -240,6 +240,8 @@ class BaseDeDatos:
                 self._conexion.execute(
                     f"ALTER TABLE {tabla} ADD COLUMN costo_unitario REAL")
 
+        self._migrar_roles_de_usuario()
+
         self._conexion.execute(
             """INSERT OR IGNORE INTO producto_sucursal (sucursal_id, producto_id, habilitado)
                SELECT s.id, p.id, 1 FROM sucursal s CROSS JOIN producto p
@@ -267,6 +269,32 @@ class BaseDeDatos:
                 INSERT OR IGNORE INTO producto_sucursal (sucursal_id, producto_id, habilitado)
                 SELECT NEW.id, id, 1 FROM producto WHERE activo = 1;
             END;
+        """)
+        self._conexion.commit()
+
+    def _migrar_roles_de_usuario(self):
+        """Agrega rol, estado y cambio obligatorio de contraseña a bases anteriores.
+        Las cuentas que ya existían quedan APROBADAS (ya venían operando):
+          - los usuarios del CD pasan a ADMINISTRADOR,
+          - en cada local, la cuenta más antigua pasa a ADMINISTRADOR y el resto a EMPLEADO."""
+        columnas = [c["name"] for c in self.consultar("PRAGMA table_info(usuario)")]
+        if "rol" in columnas:
+            return
+        self._conexion.executescript("""
+            ALTER TABLE usuario ADD COLUMN rol TEXT NOT NULL DEFAULT 'EMPLEADO'
+                CHECK (rol IN ('ADMINISTRADOR', 'EMPLEADO'));
+            ALTER TABLE usuario ADD COLUMN estado TEXT NOT NULL DEFAULT 'PENDIENTE'
+                CHECK (estado IN ('PENDIENTE', 'APROBADO', 'RECHAZADO'));
+            ALTER TABLE usuario ADD COLUMN debe_cambiar_password INTEGER NOT NULL DEFAULT 0
+                CHECK (debe_cambiar_password IN (0, 1));
+            ALTER TABLE usuario ADD COLUMN aprobado_por_usuario_id INTEGER REFERENCES usuario(id);
+            ALTER TABLE usuario ADD COLUMN fecha_resolucion TEXT;
+            ALTER TABLE usuario ADD COLUMN motivo_rechazo TEXT;
+
+            UPDATE usuario SET estado = 'APROBADO';
+            UPDATE usuario SET rol = 'ADMINISTRADOR'
+            WHERE sucursal_id IN (SELECT id FROM sucursal WHERE tipo = 'CD')
+               OR id IN (SELECT MIN(id) FROM usuario GROUP BY sucursal_id);
         """)
         self._conexion.commit()
 

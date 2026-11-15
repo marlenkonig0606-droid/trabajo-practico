@@ -351,3 +351,49 @@ tr.bajo td { color: #ffad70; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Roles de local: selector, insignias, avisos y credenciales ---------- */
+.selector-rol { margin: 0; padding: 0; border: 0; display: grid; gap: 8px; min-width: 0; }
+.selector-rol legend { margin-bottom: 6px; color: var(--suave); font-size: .85rem; }
+.selector-rol-opciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.selector-rol-opciones label {
+  position: relative; display: grid; gap: 4px; padding: 10px 12px 10px 34px; cursor: pointer;
+  border: 1px solid var(--borde); border-radius: 9px; background: rgb(5 20 36 / 55%);
+  transition: border-color .15s, background .15s;
+}
+.selector-rol-opciones label input { position: absolute; top: 12px; left: 11px; margin: 0; accent-color: var(--acento); }
+.selector-rol-opciones label span { color: var(--suave); font-size: .78rem; line-height: 1.4; }
+.selector-rol-opciones label.elegido { border-color: var(--acento); background: rgb(6 182 212 / 10%); box-shadow: 0 0 0 1px var(--acento-brillo); }
+.selector-rol.compacto legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.selector-rol.compacto .selector-rol-opciones { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+.selector-rol.compacto .selector-rol-opciones label { padding: 6px 8px 6px 28px; }
+.selector-rol.compacto .selector-rol-opciones label input { top: 8px; left: 8px; }
+
+.insignia-rol {
+  display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: .72rem; font-weight: 600; letter-spacing: .03em; vertical-align: middle;
+}
+.insignia-rol.administrador { background: rgb(249 115 22 / 16%); color: #fdba74; border: 1px solid rgb(249 115 22 / 40%); }
+.insignia-rol.empleado { background: rgb(6 182 212 / 12%); color: #a5f3fc; border: 1px solid rgb(6 182 212 / 35%); }
+
+.aviso-cuenta { text-align: left; }
+.aviso-icono {
+  display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%;
+  font-size: 1.5rem; background: rgb(6 182 212 / 12%); border: 1px solid var(--acento-brillo);
+}
+.aviso-cuenta.rechazada .aviso-icono { background: rgb(251 113 133 / 12%); border-color: rgb(251 113 133 / 40%); color: var(--error); }
+.aviso-cuenta p { margin: 0; line-height: 1.55; }
+.aviso-pasos { margin: 0; padding-left: 20px; color: #c1d5e0; line-height: 1.7; }
+
+.credencial-temporal { border-color: rgb(249 115 22 / 45%); background: rgb(249 115 22 / 7%); }
+.credencial-temporal code {
+  display: inline-block; margin: 6px 0; padding: 8px 14px; border-radius: 8px;
+  font-size: 1.15rem; letter-spacing: .08em; color: #fff; background: rgb(0 0 0 / 35%);
+  user-select: all; overflow-wrap: anywhere;
+}
+.alta-perfil { display: grid; gap: 12px; max-width: 640px; }
+td.acciones { white-space: nowrap; }
+td.acciones button + button { margin-left: 6px; }
+.selector-rol input[type="radio"] { width: auto; height: auto; min-height: 0; padding: 0; border: 0; box-shadow: none; }
+.selector-rol.compacto .selector-rol-opciones label { display: flex; align-items: center; min-height: 34px; }
+.selector-rol.compacto .selector-rol-opciones label input { top: 50%; transform: translateY(-50%); }
