@@ -33,7 +33,6 @@ class ProductoDAO:
 
     def obtener_por_id(self, producto_id):
         with self._conn() as cx:
-            cx.row_factory = sqlite3.Row
             cur = cx.execute(
                 'SELECT * FROM producto WHERE id = ?', (producto_id,)
             )
@@ -41,27 +40,23 @@ class ProductoDAO:
 
     def obtener_por_codigo(self, codigo):
         with self._conn() as cx:
-            cx.row_factory = sqlite3.Row
             cur = cx.execute('SELECT * FROM producto WHERE codigo = ?', (codigo,))
             return cur.fetchone()
 
     def listar(self, solo_activos=False):
         with self._conn() as cx:
-            cx.row_factory = sqlite3.Row
             filtro = "WHERE activo=1" if solo_activos else ""
             cur = cx.execute(f'SELECT * FROM producto {filtro} ORDER BY nombre')
             return cur.fetchall()
 
     def obtener_por_categoria(self, categoria_id):
         with self._conn() as cx:
-            cx.row_factory = sqlite3.Row
             cur = cx.execute('SELECT * FROM producto WHERE categoria_id = ?',
                              (categoria_id,))
             return cur.fetchall()
 
     def obtener_por_proveedor(self, proveedor_id):
         with self._conn() as cx:
-            cx.row_factory = sqlite3.Row
             cur = cx.execute('SELECT * FROM producto WHERE proveedor_id = ?',
                              (proveedor_id,))
             return cur.fetchall()
