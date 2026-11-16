@@ -96,10 +96,16 @@ class ProductoDAO:
     def listar_para_sucursal(self, sucursal_id, solo_habilitados=True):
         filtro_habilitado = "AND ps.habilitado=1" if solo_habilitados else ""
         return self.db.consultar(
-            f"""SELECT p.*, COALESCE(ps.habilitado, 0) AS habilitado
+            f"""SELECT p.*, COALESCE(ps.habilitado, 0) AS habilitado,
+                       COALESCE(ps.stock_minimo, p.stock_minimo) AS stock_minimo_local,
+                       c.nombre AS categoria, pr.nombre AS proveedor,
+                       COALESCE(st.disponible - st.reservado, 0) AS libre
                 FROM producto p
                 LEFT JOIN producto_sucursal ps
                   ON ps.producto_id=p.id AND ps.sucursal_id=?
+                LEFT JOIN categoria c ON c.id = p.categoria_id
+                LEFT JOIN proveedor pr ON pr.id = p.proveedor_id
+                LEFT JOIN stock st ON st.producto_id = p.id AND st.sucursal_id = ps.sucursal_id
                 WHERE p.activo=1 {filtro_habilitado}
                 ORDER BY p.nombre""",
             (sucursal_id,),
@@ -121,6 +127,14 @@ class ProductoDAO:
                 """UPDATE producto_sucursal SET habilitado=?
                    WHERE sucursal_id=? AND producto_id=?""",
                 (int(habilitado), sucursal_id, producto_id),
+            ).rowcount
+
+    def cambiar_minimo_local(self, sucursal_id, producto_id, stock_minimo):
+        with self._conn() as cx:
+            return cx.execute(
+                """UPDATE producto_sucursal SET stock_minimo=?
+                   WHERE sucursal_id=? AND producto_id=?""",
+                (stock_minimo, sucursal_id, producto_id),
             ).rowcount
 
     def stock_en_sucursal(self, sucursal_id, producto_id):

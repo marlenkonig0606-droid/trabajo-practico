@@ -10,6 +10,7 @@ from flask_cors import CORS
 from database.datos_iniciales import cargar as cargar_datos_iniciales
 from services.excepciones import (
     AccesoDenegadoError,
+    CuentaNoHabilitadaError,
     NoEncontradoError,
     ReglaNegocioError,
 )
@@ -25,6 +26,22 @@ from services.observadores import (
 )
 from services.ventas_service import VentasService
 from services.catalogo_service import CatalogoService
+from services.usuarios_service import UsuariosService
+from services.paginacion import coincide, leer_paginacion, paginar
+
+
+RUTA_CODIGO_CD = os.path.join(os.path.dirname(__file__), "cd_registration_code.txt")
+
+
+def codigo_registro_cd():
+    """Código de invitación para registrar cuentas del CD.
+    Se toma de la variable de entorno CD_REGISTRATION_CODE o, si no está, del archivo
+    local cd_registration_code.txt (no se sube al repositorio, ver .gitignore)."""
+    codigo = os.environ.get("CD_REGISTRATION_CODE", "").strip()
+    if not codigo and os.path.exists(RUTA_CODIGO_CD):
+        with open(RUTA_CODIGO_CD, encoding="utf-8") as archivo:
+            codigo = archivo.read().strip()
+    return codigo
 
 
 def crear_app(cargar_demo=True):
@@ -50,8 +67,33 @@ def crear_app(cargar_demo=True):
     reportes = ReportesService()
     alertas = AlertasService()
     ventas = VentasService(stock)
-    catalogo = CatalogoService()
+    catalogo = CatalogoService(stock_service=stock)
     auth = AuthService()
+    usuarios = UsuariosService()
+    # Bootstrap: todo local activo que no tenga administrador recibe uno.
+    usuarios.asegurar_administradores()
+    # Al iniciar se recalculan las alertas de stock mínimo con los valores actuales
+    # (corrige alertas viejas que quedaron con datos desactualizados).
+    stock.revisar_alertas()
+
+    # ---------- listados: filtros y paginación en el backend ----------
+    def estado_activo(fila, campo="activo"):
+        """Filtro ?estado=activos|inactivos (vacío = todos)."""
+        estado = request.args.get("estado", "")
+        if estado == "activos":
+            return bool(fila[campo])
+        if estado == "inactivos":
+            return not fila[campo]
+        return True
+
+    def listado(lista, *campos_busqueda, extra=lambda fila: True):
+        """Aplica ?q= (búsqueda parcial en los campos indicados), ?estado= y el
+        filtro extra; si viene ?pagina= devuelve solo esa página y el total."""
+        q = request.args.get("q", "")
+        filtrada = [f for f in lista
+                    if coincide(q, *(f.get(c) for c in campos_busqueda))
+                    and estado_activo(f) and extra(f)]
+        return jsonify(paginar(filtrada, leer_paginacion(request.args)))
 
     def cuerpo_json():
         datos = request.get_json(silent=True)
@@ -89,6 +131,24 @@ def crear_app(cargar_demo=True):
             return fn(*args, **kwargs)
         return protegido
 
+    def es_empleado_de_local(usuario):
+        return usuario["tipo"] == "LOCAL" and usuario["rol"] == "EMPLEADO"
+
+    def requiere_admin_local(fn):
+        """Solo el ADMINISTRADOR de un local (gestión de su equipo y panel)."""
+        @wraps(fn)
+        def protegido(*args, **kwargs):
+            if g.usuario["tipo"] != "LOCAL" or g.usuario["rol"] != "ADMINISTRADOR":
+                raise AccesoDenegadoError(
+                    "Esta función está disponible solo para el administrador del local")
+            return fn(*args, **kwargs)
+        return protegido
+
+    # Mientras la cuenta tenga una contraseña temporal, solo puede hacer esto:
+    PERMITIDOS_CON_PASSWORD_TEMPORAL = {"api_cambiar_password", "api_cerrar_sesion"}
+    # Secciones a las que un EMPLEADO de local no tiene acceso (RBAC).
+    PREFIJOS_PROHIBIDOS_EMPLEADO = ("/api/reportes/", "/api/local/")
+
     @app.before_request
     def autenticar_api():
         if not request.path.startswith("/api/"):
@@ -108,6 +168,20 @@ def crear_app(cargar_demo=True):
             return jsonify({"error": "Iniciá sesión para continuar"}), 401
         g.usuario = usuario
 
+        # 1) Contraseña temporal: no puede operar hasta elegir la suya.
+        if (usuario["debe_cambiar_password"]
+                and request.endpoint not in PERMITIDOS_CON_PASSWORD_TEMPORAL):
+            return jsonify({
+                "error": "Tenés que cambiar tu contraseña temporal antes de continuar",
+                "codigo": "CAMBIO_PASSWORD_OBLIGATORIO",
+            }), 403
+        # 2) RBAC: el empleado no accede a reportes ni a la administración del local.
+        if (es_empleado_de_local(usuario)
+                and request.path.startswith(PREFIJOS_PROHIBIDOS_EMPLEADO)):
+            return jsonify({
+                "error": "Tu rol de empleado no tiene acceso a esta sección",
+            }), 403
+
     # ---------- manejo de errores centralizado ----------
     @app.errorhandler(ReglaNegocioError)
     def regla_negocio(e):
@@ -120,6 +194,10 @@ def crear_app(cargar_demo=True):
     @app.errorhandler(AccesoDenegadoError)
     def acceso_denegado(e):
         return jsonify({"error": str(e)}), 403
+
+    @app.errorhandler(CuentaNoHabilitadaError)
+    def cuenta_no_habilitada(e):
+        return jsonify({"error": str(e), "estado": e.estado, "motivo": e.motivo}), 403
 
     @app.errorhandler(NotImplementedError)
     def no_implementado(e):
@@ -142,7 +220,7 @@ def crear_app(cargar_demo=True):
         if sucursal is None:
             raise ReglaNegocioError("La sucursal seleccionada no existe")
         if sucursal["tipo"] == "CD":
-            codigo_configurado = os.environ.get("CD_REGISTRATION_CODE", "")
+            codigo_configurado = codigo_registro_cd()
             codigo_ingresado = datos.get("codigo_cd")
             if not codigo_configurado:
                 raise ReglaNegocioError(
@@ -154,8 +232,19 @@ def crear_app(cargar_demo=True):
             usuario = auth.registrar_cd(
                 datos.get("email"), datos.get("password"), sucursal_id)
         else:
-            usuario = auth.registrar_local(
-                datos.get("email"), datos.get("password"), sucursal_id)
+            # El usuario de local queda PENDIENTE: no se inicia sesión hasta que
+            # el administrador de su local lo apruebe.
+            pendiente = auth.registrar_local(
+                datos.get("email"), datos.get("password"), sucursal_id,
+                datos.get("rol") or "EMPLEADO")
+            session.clear()
+            return jsonify({
+                **pendiente,
+                "pendiente": True,
+                "mensaje": ("Tu cuenta quedó pendiente de validación. El administrador "
+                            "de tu local tiene que aprobarla; cuando lo haga te va a dar "
+                            "una contraseña temporal para entrar."),
+            }), 201
         session.clear()
         session["usuario_id"] = usuario["id"]
         return jsonify(usuario), 201
@@ -168,6 +257,13 @@ def crear_app(cargar_demo=True):
             return jsonify({"error": "Correo o contraseña incorrectos"}), 401
         session.clear()
         session["usuario_id"] = usuario["id"]
+        return jsonify(usuario)
+
+    @app.post("/api/auth/cambiar-password")
+    def api_cambiar_password():
+        datos = cuerpo_json()
+        usuario = auth.cambiar_password(
+            g.usuario["id"], datos.get("actual"), datos.get("nueva"))
         return jsonify(usuario)
 
     @app.post("/api/auth/logout")
@@ -184,7 +280,9 @@ def crear_app(cargar_demo=True):
     @app.get("/api/catalogo/sucursales")
     @requiere_cd
     def listar_sucursales_catalogo():
-        return jsonify(catalogo.listar_sucursales())
+        tipo = request.args.get("tipo")
+        return listado(catalogo.listar_sucursales(), "nombre", "direccion", "codigo",
+                       extra=lambda f: not tipo or f["tipo"] == tipo)
 
     @app.get("/api/sucursales/<int:id_sucursal>")
     @requiere_cd
@@ -226,7 +324,9 @@ def crear_app(cargar_demo=True):
                     "nombre": producto["nombre"],
                     "precio_venta": producto["precio_venta"],
                 } for producto in productos])
-        return jsonify(catalogo.listar_productos())
+        categoria = request.args.get("categoria_id")
+        return listado(catalogo.listar_productos(), "nombre", "codigo",
+                       extra=lambda f: not categoria or str(f["categoria_id"]) == categoria)
 
     @app.get("/api/productos/<int:id_producto>")
     @requiere_cd
@@ -260,7 +360,7 @@ def crear_app(cargar_demo=True):
     @app.get("/api/categorias")
     @requiere_cd
     def listar_categorias():
-        return jsonify(catalogo.listar_categorias())
+        return listado(catalogo.listar_categorias(), "nombre", "descripcion")
 
     @app.post("/api/categorias")
     @requiere_cd
@@ -289,7 +389,7 @@ def crear_app(cargar_demo=True):
     @app.get("/api/proveedores")
     @requiere_cd
     def listar_proveedores():
-        return jsonify(catalogo.listar_proveedores())
+        return listado(catalogo.listar_proveedores(), "nombre", "razon_social", "cuit")
 
     @app.post("/api/proveedores")
     @requiere_cd
@@ -320,7 +420,10 @@ def crear_app(cargar_demo=True):
                 or id_sucursal != g.usuario["sucursal_id"]):
             raise AccesoDenegadoError(
                 "Cada local solo puede consultar las habilitaciones de su sucursal")
-        return jsonify(catalogo.productos_de_sucursal(id_sucursal))
+        habilitado = request.args.get("habilitado", "")
+        return listado(
+            catalogo.productos_de_sucursal(id_sucursal), "nombre", "codigo", "categoria",
+            extra=lambda f: (habilitado == "" or bool(f["habilitado"]) == (habilitado == "1")))
 
     @app.patch("/api/sucursales/<int:id_sucursal>/productos/<int:id_producto>")
     def cambiar_habilitacion_producto(id_sucursal, id_producto):
@@ -328,16 +431,38 @@ def crear_app(cargar_demo=True):
                 or id_sucursal != g.usuario["sucursal_id"]):
             raise AccesoDenegadoError(
                 "Cada local solo puede cambiar las habilitaciones de su sucursal")
+        if es_empleado_de_local(g.usuario):
+            raise AccesoDenegadoError(
+                "Solo el administrador del local puede habilitar productos")
         datos = cuerpo_json()
         return jsonify(catalogo.cambiar_habilitacion_producto(
             id_sucursal, id_producto, datos.get("habilitado")))
+
+    @app.patch("/api/sucursales/<int:id_sucursal>/productos/<int:id_producto>/minimo")
+    def cambiar_minimo_local(id_sucursal, id_producto):
+        """El administrador del local configura SU stock mínimo para un producto."""
+        if (g.usuario["tipo"] != "LOCAL" or id_sucursal != g.usuario["sucursal_id"]
+                or es_empleado_de_local(g.usuario)):
+            raise AccesoDenegadoError(
+                "Solo el administrador del local puede configurar su stock mínimo")
+        datos = cuerpo_json()
+        return jsonify(catalogo.cambiar_minimo_local(
+            id_sucursal, id_producto, datos.get("stock_minimo")))
 
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):
         if (g.usuario["tipo"] != "CD"
                 and sucursal_id != g.usuario["sucursal_id"]):
             raise AccesoDenegadoError("Solo podés consultar el stock de tu sucursal")
-        return jsonify(stock.listar(sucursal_id))
+        situacion = request.args.get("situacion", "")   # bajo | ok
+        proveedor = request.args.get("proveedor_id", "")
+        def extra(f):
+            if situacion == "bajo" and f["libre"] >= f["stock_minimo"]:
+                return False
+            if situacion == "ok" and f["libre"] < f["stock_minimo"]:
+                return False
+            return not proveedor or str(f["proveedor_id"]) == proveedor
+        return listado(stock.listar(sucursal_id), "nombre", "codigo", "proveedor", extra=extra)
 
     @app.put("/api/stock/<int:sucursal_id>/<int:producto_id>")
     def ajustar_stock_cd(sucursal_id, producto_id):
@@ -357,9 +482,56 @@ def crear_app(cargar_demo=True):
     @app.get("/api/ordenes")
     def listar_ordenes():
         if g.usuario["tipo"] == "CD":
-            return jsonify(logistica.listar_ordenes())
-        return jsonify(logistica.listar_ordenes(
-            g.usuario["sucursal_id"], solicitante_id=g.usuario["id"]))
+            ordenes = logistica.listar_ordenes()
+        else:
+            # El administrador ve todas las solicitudes del local; el empleado, las suyas.
+            ordenes = logistica.listar_ordenes(
+                g.usuario["sucursal_id"],
+                solicitante_id=None if g.usuario["rol"] == "ADMINISTRADOR" else g.usuario["id"])
+        for o in ordenes:          # resumen para el listado compacto
+            o["cantidad_productos"] = len(o["items"])
+            o["unidades"] = sum(i["cantidad"] for i in o["items"])
+        estado = request.args.get("estado_orden", "")
+        local = request.args.get("destino_id", "")
+        desde, hasta = request.args.get("desde", ""), request.args.get("hasta", "")
+        numero = request.args.get("numero", "")
+        def extra(o):
+            fecha = (o.get("fecha") or "")[:10]
+            return ((not estado or o["estado"] == estado)
+                    and (not local or str(o["destino_id"]) == local)
+                    and (not numero or str(o["id"]) == numero)
+                    and (not desde or fecha >= desde) and (not hasta or fecha <= hasta))
+        return jsonify(paginar([o for o in ordenes if extra(o)],
+                               leer_paginacion(request.args)))
+
+    @app.get("/api/recepciones")
+    def listar_recepciones():
+        """Bultos que el CD ya despachó hacia el local (lo que el local recibe y
+        verifica). Filtros: ?estado_bulto=, ?numero= (n.º de bulto o solicitud)."""
+        if g.usuario["tipo"] != "LOCAL":
+            raise AccesoDenegadoError("Las recepciones corresponden a los locales")
+        estado = request.args.get("estado_bulto", "")
+        numero = request.args.get("numero", "")
+        recepciones = []
+        for o in logistica.listar_ordenes(g.usuario["sucursal_id"]):
+            nombres = {i["producto_id"]: i["nombre"] for i in o["items"]}
+            for b in o["bultos"]:
+                if not b["fecha_despacho"]:          # todavía no salió del CD
+                    continue
+                if estado and b["estado"] != estado:
+                    continue
+                if numero and numero not in (str(b["id"]), str(o["id"])):
+                    continue
+                recepciones.append({
+                    **b, "orden_id": o["id"], "origen": o["origen"],
+                    "remito_numero": o["remito_numero"],
+                    "unidades": sum(i["cantidad"] for i in b["items"]),
+                    "items": [{**i, "nombre": nombres.get(i["producto_id"])} for i in b["items"]],
+                })
+        # Primero lo que falta recibir o verificar; dentro de cada grupo, lo más nuevo.
+        recepciones.sort(key=lambda r: r["fecha_despacho"] or "", reverse=True)
+        recepciones.sort(key=lambda r: r["estado"] not in ("EN_TRANSITO", "RECIBIDO"))
+        return jsonify(paginar(recepciones, leer_paginacion(request.args)))
 
     @app.get("/api/notificaciones")
     def listar_notificaciones():
@@ -492,7 +664,12 @@ def crear_app(cargar_demo=True):
     @app.get("/api/ventas")
     def listar_ventas():
         sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
-        return jsonify(ventas.listar_ventas(sucursal_id))
+        paginacion = leer_paginacion(request.args)
+        if paginacion is None:                    # compatibilidad: lista completa
+            return jsonify(ventas.listar_ventas(sucursal_id))
+        filtros = {clave: request.args.get(clave, "").strip()
+                   for clave in ("desde", "hasta", "numero", "medio_pago", "producto")}
+        return jsonify(ventas.buscar_ventas(sucursal_id, filtros, *paginacion))
 
     @app.get("/api/ventas/<int:venta_id>")
     def obtener_venta(venta_id):
@@ -546,6 +723,36 @@ def crear_app(cargar_demo=True):
             ventas.registrar_devolucion(venta_id, items, datos.get("motivo"))
         ), 201
 
+    # ---------- administración del local (solo ADMINISTRADOR) ----------
+    @app.get("/api/local/panel")
+    @requiere_admin_local
+    def panel_local():
+        return jsonify(usuarios.panel(g.usuario))
+
+    @app.get("/api/local/usuarios")
+    @requiere_admin_local
+    def equipo_local():
+        return jsonify(usuarios.equipo(g.usuario))
+
+    @app.post("/api/local/usuarios")
+    @requiere_admin_local
+    def alta_usuario_local():
+        datos = cuerpo_json()
+        return jsonify(usuarios.alta_directa(
+            g.usuario, datos.get("email"), datos.get("rol"))), 201
+
+    @app.post("/api/local/usuarios/<int:usuario_id>/aprobar")
+    @requiere_admin_local
+    def aprobar_usuario_local(usuario_id):
+        datos = request.get_json(silent=True) or {}
+        return jsonify(usuarios.aprobar(g.usuario, usuario_id, datos.get("rol")))
+
+    @app.post("/api/local/usuarios/<int:usuario_id>/rechazar")
+    @requiere_admin_local
+    def rechazar_usuario_local(usuario_id):
+        datos = request.get_json(silent=True) or {}
+        return jsonify(usuarios.rechazar(g.usuario, usuario_id, datos.get("motivo")))
+
     # ---------- reportes ----------
     @app.get("/api/reportes/resumen")
     def rep_resumen():
@@ -553,6 +760,19 @@ def crear_app(cargar_demo=True):
         desde, hasta = fechas_de_reporte()
         return jsonify(reportes.resumen(
             desde, hasta, sucursal_id))
+
+    @app.get("/api/reportes/local")
+    def rep_local():
+        """Reporte gerencial del local: período (desde/hasta) o año completo (anio)."""
+        if g.usuario["tipo"] != "LOCAL":
+            raise AccesoDenegadoError("Este reporte es para los locales")
+        anio = request.args.get("anio")
+        if anio:
+            if not anio.isdigit() or not 2000 <= int(anio) <= date.today().year:
+                raise ReglaNegocioError("El año seleccionado no es válido")
+            return jsonify(reportes.reporte_local(g.usuario["sucursal_id"], anio=int(anio)))
+        desde, hasta = fechas_de_reporte()
+        return jsonify(reportes.reporte_local(g.usuario["sucursal_id"], desde, hasta))
 
     @app.get("/api/reportes/bultos-rechazados")
     @requiere_cd

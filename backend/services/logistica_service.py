@@ -341,18 +341,13 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
     def resolver_orden(self, orden_id, accion, motivo=None, usuario_id=None):
         accion = (accion or "").strip().upper()
         motivo = (motivo or "").strip()
-        if accion not in ("ESPERAR", "RECHAZAR", "CANCELAR"):
-            raise ReglaNegocioError("La acción debe ser ESPERAR, RECHAZAR o CANCELAR")
-        if accion != "ESPERAR" and not motivo:
+        # "Mantener pendiente" (ESPERAR) se eliminó: no cambiaba nada, la orden ya
+        # queda pendiente mientras el CD no la resuelva.
+        if accion not in ("RECHAZAR", "CANCELAR"):
+            raise ReglaNegocioError("La acción debe ser RECHAZAR o CANCELAR")
+        if not motivo:
             raise ReglaNegocioError("Debe indicar el motivo de la resolución")
         orden = self.obtener_orden(orden_id)
-        if accion == "ESPERAR":
-            with self.dao.transaccion():
-                self.dao.registrar_evento(
-                    "ORDEN_EN_ESPERA",
-                    f"Orden {orden_id} mantenida pendiente: "
-                    f"{motivo or 'sin cambio de estado'}")
-            return self.obtener_orden(orden_id)
         if orden["estado"] not in ("PENDIENTE", "EN_PREPARACION"):
             raise ReglaNegocioError("Solo se pueden resolver órdenes pendientes")
         bultos = self._bultos_de_orden(orden_id)

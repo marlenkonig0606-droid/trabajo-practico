@@ -24,7 +24,20 @@ CREATE TABLE IF NOT EXISTS usuario (
     email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash  TEXT NOT NULL,
     sucursal_id    INTEGER NOT NULL REFERENCES sucursal(id),
-    fecha_alta     TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    fecha_alta     TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    -- Roles dentro de un LOCAL: el ADMINISTRADOR ve todo y aprueba empleados.
+    -- Los usuarios del CD se guardan como ADMINISTRADOR (en el CD no se usan roles).
+    rol            TEXT NOT NULL DEFAULT 'EMPLEADO'
+                   CHECK (rol IN ('ADMINISTRADOR', 'EMPLEADO')),
+    -- Un empleado recién registrado queda PENDIENTE hasta que lo valida su administrador.
+    estado         TEXT NOT NULL DEFAULT 'PENDIENTE'
+                   CHECK (estado IN ('PENDIENTE', 'APROBADO', 'RECHAZADO')),
+    -- 1 = tiene una contraseña temporal y debe cambiarla antes de operar.
+    debe_cambiar_password INTEGER NOT NULL DEFAULT 0
+                   CHECK (debe_cambiar_password IN (0, 1)),
+    aprobado_por_usuario_id INTEGER REFERENCES usuario(id),
+    fecha_resolucion TEXT,
+    motivo_rechazo TEXT
 );
 
 -- ---------- 2. Catálogo ----------
@@ -59,6 +72,10 @@ CREATE TABLE IF NOT EXISTS producto_sucursal (
     sucursal_id INTEGER NOT NULL REFERENCES sucursal(id),
     producto_id INTEGER NOT NULL REFERENCES producto(id),
     habilitado  INTEGER NOT NULL DEFAULT 1 CHECK (habilitado IN (0, 1)),
+    -- Stock mínimo PROPIO de cada local (lo configura su administrador).
+    -- Al crearse la fila toma el mínimo por defecto del producto (trigger).
+    -- El mínimo de un CD no se guarda: es la suma de los locales (vista minimo_vigente).
+    stock_minimo INTEGER CHECK (stock_minimo IS NULL OR stock_minimo >= 0),
     PRIMARY KEY (sucursal_id, producto_id)
 );
 

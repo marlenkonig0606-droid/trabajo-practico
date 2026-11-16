@@ -21,6 +21,59 @@ class VentasDAO:
                ORDER BY v.id DESC""",
             (sucursal_id, sucursal_id))
 
+    def buscar(self, sucursal_id, filtros, limite, desplazamiento):
+        """Listado paginado de ventas con filtros combinables (todos opcionales):
+        desde/hasta (fecha), numero (n.º de venta o de comprobante),
+        medio_pago y producto (parte del nombre, sin distinguir mayúsculas).
+        Orden: la más nueva primero. Devuelve (filas, total)."""
+        condiciones, parametros = ["1 = 1"], []
+        if sucursal_id is not None:
+            condiciones.append("v.sucursal_id = ?")
+            parametros.append(sucursal_id)
+        if filtros.get("desde"):
+            condiciones.append("date(v.fecha) >= date(?)")
+            parametros.append(filtros["desde"])
+        if filtros.get("hasta"):
+            condiciones.append("date(v.fecha) <= date(?)")
+            parametros.append(filtros["hasta"])
+        if filtros.get("numero"):
+            condiciones.append("(v.id = ? OR c.numero = ?)")
+            parametros += [filtros["numero"], filtros["numero"]]
+        if filtros.get("medio_pago"):
+            condiciones.append("p.medio_pago = ?")
+            parametros.append(filtros["medio_pago"])
+        if filtros.get("producto"):
+            condiciones.append("""EXISTS (
+                SELECT 1 FROM detalle_venta dv JOIN producto pr ON pr.id = dv.producto_id
+                WHERE dv.venta_id = v.id
+                  AND normalizar(pr.nombre) LIKE '%' || normalizar(?) || '%')""")
+            parametros.append(filtros["producto"])
+        where = " AND ".join(condiciones)
+        desde_sql = """FROM venta v
+               JOIN sucursal s ON s.id = v.sucursal_id
+               JOIN pago p ON p.venta_id = v.id
+               JOIN comprobante c ON c.venta_id = v.id"""
+        total = self.db.consultar_uno(
+            f"SELECT COUNT(*) AS total {desde_sql} WHERE {where}", tuple(parametros))["total"]
+        filas = self.db.consultar(
+            f"""SELECT v.id, v.sucursal_id, s.nombre AS sucursal, v.fecha, v.total,
+                       p.medio_pago, p.cuotas, c.numero AS comprobante_numero,
+                       (SELECT COUNT(*) FROM detalle_venta dv WHERE dv.venta_id = v.id)
+                           AS productos,
+                       (SELECT COALESCE(SUM(dv.cantidad), 0) FROM detalle_venta dv
+                        WHERE dv.venta_id = v.id) AS unidades,
+                       (SELECT COALESCE(SUM(dd.cantidad), 0) FROM devolucion d
+                        JOIN detalle_devolucion dd ON dd.devolucion_id = d.id
+                        WHERE d.venta_id = v.id) AS unidades_devueltas
+                {desde_sql}
+                WHERE {where}
+                ORDER BY v.id DESC
+                LIMIT ? OFFSET ?""", tuple(parametros) + (limite, desplazamiento))
+        for f in filas:
+            f["estado"] = ("DEVUELTA" if f["unidades_devueltas"] >= f["unidades"]
+                           else "DEVOLUCION_PARCIAL" if f["unidades_devueltas"] else "COMPLETADA")
+        return filas, total
+
     def obtener(self, venta_id):
         return self.db.consultar_uno(
             """SELECT v.id, v.sucursal_id, s.nombre AS sucursal, v.fecha,

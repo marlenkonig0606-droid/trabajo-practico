@@ -15,6 +15,7 @@ async function pedir(metodo, url, cuerpo) {
   if (!resp.ok) {
     const error = new Error(datos?.error || (texto ? `Error ${resp.status}` : `Sin respuesta del backend (${resp.status}). ¿Está corriendo python app.py?`))
     error.status = resp.status
+    error.datos = datos   // ej. { estado: 'PENDIENTE' } o { codigo: 'CAMBIO_PASSWORD_OBLIGATORIO' }
     throw error
   }
   return datos
@@ -29,11 +30,43 @@ function conFechas({ desde, hasta }) {
   return q.toString() ? `?${q}` : ''
 }
 
+// Arma "?clave=valor&..." omitiendo los filtros vacíos (para listados paginados)
+function consulta(parametros = {}) {
+  const q = new URLSearchParams()
+  Object.entries(parametros).forEach(([clave, valor]) => {
+    if (valor !== '' && valor != null) q.set(clave, valor)
+  })
+  return q.toString() ? `?${q}` : ''
+}
+
 export const api = {
+  // ---- listados con filtros y paginación (responden { items, total, pagina, paginas }) ----
+  buscarVentas: (f) => pedir('GET', `/ventas${consulta(f)}`),
+  buscarProductos: (f) => pedir('GET', `/productos${consulta(f)}`),
+  buscarCategorias: (f) => pedir('GET', `/categorias${consulta(f)}`),
+  buscarProveedores: (f) => pedir('GET', `/proveedores${consulta(f)}`),
+  buscarSucursales: (f) => pedir('GET', `/catalogo/sucursales${consulta(f)}`),
+  buscarProductosSucursal: (sucursalId, f) =>
+    pedir('GET', `/sucursales/${sucursalId}/productos${consulta(f)}`),
+  buscarStock: (sucursalId, f) => pedir('GET', `/stock/${sucursalId}${consulta(f)}`),
+  buscarOrdenes: (f) => pedir('GET', `/ordenes${consulta(f)}`),
+  buscarRecepciones: (f) => pedir('GET', `/recepciones${consulta(f)}`),
+  cambiarMinimoLocal: (sucursalId, productoId, stockMinimo) =>
+    pedir('PATCH', `/sucursales/${sucursalId}/productos/${productoId}/minimo`,
+      { stock_minimo: stockMinimo }),
+
   sesion: () => pedir('GET', '/auth/me'),
   registrar: (datos) => pedir('POST', '/auth/register', datos),
   iniciarSesion: (datos) => pedir('POST', '/auth/login', datos),
   cerrarSesion: () => pedir('POST', '/auth/logout'),
+  cambiarPassword: (actual, nueva) => pedir('POST', '/auth/cambiar-password', { actual, nueva }),
+
+  // Administración del local (solo ADMINISTRADOR)
+  panelLocal: () => pedir('GET', '/local/panel'),
+  equipoLocal: () => pedir('GET', '/local/usuarios'),
+  altaUsuarioLocal: (email, rol) => pedir('POST', '/local/usuarios', { email, rol }),
+  aprobarUsuario: (id, rol) => pedir('POST', `/local/usuarios/${id}/aprobar`, { rol }),
+  rechazarUsuario: (id, motivo) => pedir('POST', `/local/usuarios/${id}/rechazar`, { motivo }),
   sucursales: () => pedir('GET', '/sucursales'),
   sucursalesCatalogo: () => pedir('GET', '/catalogo/sucursales'),
   crearSucursal: (datos) => pedir('POST', '/sucursales', datos),
@@ -89,6 +122,9 @@ export const api = {
   alertas: () => pedir('GET', '/alertas'),
   eventos: () => pedir('GET', '/eventos'),
 
+  // Reporte gerencial del local: { anio } o { desde, hasta }
+  reporteLocal: ({ anio, desde, hasta } = {}) => pedir('GET', `/reportes/local${anio
+    ? `?anio=${anio}` : conFechas({ desde, hasta })}`),
   reporteResumen: (f = {}) => pedir('GET', `/reportes/resumen${conFechas(f)}`),
   reporteRechazados: (f = {}) => pedir('GET', `/reportes/bultos-rechazados${conFechas(f)}`),
   reporteTransito: () => pedir('GET', '/reportes/transito'),

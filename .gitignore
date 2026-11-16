@@ -3,3 +3,8 @@ dist/
 __pycache__/
 *.db
 .pytest_cache/
+# código de invitación del CD (local, no se sube)
+backend/cd_registration_code.txt
+
+# Credenciales temporales de los administradores creados automáticamente
+backend/credenciales_iniciales.txt
