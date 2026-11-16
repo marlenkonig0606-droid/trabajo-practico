@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
 import {
@@ -6,7 +6,7 @@ import {
   CampanaGauss, Histograma, Leyenda, Linea, PALETA, Podio, SinDatos, StockVsMinimo,
   nombreMes, numero, pesos,
 } from '../components/Graficos.jsx'
-import { BotonImprimir, EncabezadoImpresion } from '../components/UI.jsx'
+import { BotonDescargarPdf, EncabezadoImpresion } from '../components/UI.jsx'
 
 const SECCIONES = [
   ['resumen', 'Resumen general'],
@@ -32,6 +32,7 @@ function fechaLocalHoy() {
 // Reporte gerencial del local: todos los datos salen de GET /api/reportes/local.
 export default function ReportesLocal({ usuario }) {
   const hoy = fechaLocalHoy()
+  const reporteRef = useRef(null)
   const anioActual = Number(hoy.slice(0, 4))
   const [modo, setModo] = useState('anio')
   const [anio, setAnio] = useState(anioActual)
@@ -57,7 +58,7 @@ export default function ReportesLocal({ usuario }) {
     .sort((a, b) => b - a), [datos, anioActual])
 
   return (
-    <section className="reportes-local">
+    <section className="reportes-local" ref={reporteRef}>
       <EncabezadoImpresion titulo={`Reporte gerencial · ${usuario.sucursal}`}
                            subtitulo={descripcionPeriodo(modo, anio, fechas)} usuario={usuario} />
       <div className="tarjeta reportes-cabecera">
@@ -66,7 +67,7 @@ export default function ReportesLocal({ usuario }) {
             <h2>Reportes · {usuario.sucursal}</h2>
             <p className="ayuda">{descripcionPeriodo(modo, anio, fechas)}</p>
           </div>
-          <BotonImprimir disabled={!datos || cargando}
+          <BotonDescargarPdf objetivo={reporteRef} disabled={!datos || cargando}
                          nombreArchivo={`Reporte ${usuario.sucursal} ${modo === 'anio' ? anio : (fechas.desde || 'inicio') + ' a ' + (fechas.hasta || hoy)}`} />
         </div>
         <div className="reportes-filtros">

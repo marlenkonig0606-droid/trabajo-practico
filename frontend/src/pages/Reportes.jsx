@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
-import { BotonImprimir, EncabezadoImpresion } from '../components/UI.jsx'
+import { BotonDescargarPdf, EncabezadoImpresion } from '../components/UI.jsx'
 
 function fechaLocalHoy() {
   const hoy = new Date()
@@ -13,6 +13,7 @@ function fechaLocalHoy() {
 
 export default function Reportes({ usuario }) {
   const hoy = fechaLocalHoy()
+  const reporteRef = useRef(null)
   const [resumen, setResumen] = useState(null)
   const [fechasResumen, setFechasResumen] = useState({ desde: '', hasta: '' })
   const [errorResumen, setErrorResumen] = useState('')
@@ -79,7 +80,7 @@ export default function Reportes({ usuario }) {
   }
 
   return (
-    <section className="reportes-cd">
+    <section className="reportes-cd" ref={reporteRef}>
       <EncabezadoImpresion
         titulo={`Reportes · ${usuario.tipo === 'CD' ? usuario.sucursal + ' (todas las sucursales)' : usuario.sucursal}`}
         subtitulo={describirPeriodo(fechas)} usuario={usuario} />
@@ -88,7 +89,7 @@ export default function Reportes({ usuario }) {
           <div>
             <div className="reportes-titulo">
               <h2>Resumen general · {usuario.tipo === 'CD' ? 'todas las sucursales' : usuario.sucursal}</h2>
-              <BotonImprimir nombreArchivo={`Reportes ${usuario.sucursal} ${hoy}`} />
+              <BotonDescargarPdf objetivo={reporteRef} nombreArchivo={`Reportes ${usuario.sucursal} ${hoy}`} />
             </div>
             <p className="ayuda">
               {usuario.tipo === 'CD'
@@ -356,7 +357,7 @@ function DetalleMovimiento({ movimiento, onCerrar }) {
 // Las columnas de fecha se muestran DD/MM/AAAA
 const esColumnaFecha = (c) => c === 'dia' || c.startsWith('fecha') || c.endsWith('_fecha')
 
-// Al imprimir, las tablas largas se cortan en FILAS_IMPRESION filas (styles.css)
+// En el PDF, las tablas largas se cortan en FILAS_IMPRESION filas (styles.css)
 // para que el PDF no tenga cientos de hojas; se avisa cuántas quedaron afuera.
 const FILAS_IMPRESION = 25
 
@@ -372,7 +373,7 @@ function AvisoRecorte({ total }) {
   if (total <= FILAS_IMPRESION) return null
   return (
     <p className="solo-impresion aviso-recorte">
-      Se imprimen las primeras {FILAS_IMPRESION} de {total} filas. El detalle completo está en el sistema.
+      Se incluyen las primeras {FILAS_IMPRESION} de {total} filas. El detalle completo está en el sistema.
     </p>
   )
 }

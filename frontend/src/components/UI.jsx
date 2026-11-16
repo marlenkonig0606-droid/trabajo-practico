@@ -34,7 +34,6 @@ const TRAZOS = {
   primera: 'M17 6l-6 6 6 6M7 6v12',
   ultima: 'M7 6l6 6-6 6M17 6v12',
   minimo: 'M4 19h16M4 15h7M4 11h11M4 7h4',
-  imprimir: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
 }
 
 export function Icono({ nombre, tamano = 18 }) {
@@ -70,33 +69,38 @@ export function BotonPrincipal({ icono = 'agregar', children, onClick, disabled,
 }
 
 // ---------------------------------------------------------------------------
-// Impresión de reportes. El navegador genera el PDF con "Guardar como PDF";
-// los estilos @media print de styles.css esconden menús y filtros.
+// Reporte en PDF: el botón genera el archivo y lo descarga directamente
+// (utils/exportarPdf.js). "objetivo" es un ref al contenedor del reporte.
 // ---------------------------------------------------------------------------
-export function BotonImprimir({ nombreArchivo, disabled }) {
-  const imprimir = () => {
-    const tituloAnterior = document.title
-    // Chrome/Edge usan el título de la página como nombre sugerido del PDF.
-    if (nombreArchivo) document.title = nombreArchivo
-    // Los bloques plegables se abren para que salgan en el PDF.
-    const cerrados = [...document.querySelectorAll('details:not([open])')]
-    cerrados.forEach((d) => { d.open = true })
-    const restaurar = () => {
-      document.title = tituloAnterior
-      cerrados.forEach((d) => { d.open = false })
-      window.removeEventListener('afterprint', restaurar)
+export function BotonDescargarPdf({ objetivo, nombreArchivo, disabled }) {
+  const [generando, setGenerando] = useState(false)
+  const [error, setError] = useState('')
+  const descargar = async () => {
+    if (!objetivo.current) return
+    setGenerando(true)
+    setError('')
+    try {
+      const { exportarPdf } = await import('../utils/exportarPdf.js')
+      await exportarPdf(objetivo.current, nombreArchivo)
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo generar el PDF. Probá de nuevo.')
+    } finally {
+      setGenerando(false)
     }
-    window.addEventListener('afterprint', restaurar)
-    window.print()
   }
   return (
-    <BotonPrincipal icono="imprimir" tono="boton-imprimir" onClick={imprimir} disabled={disabled}>
-      Imprimir / PDF
-    </BotonPrincipal>
+    <span className="boton-pdf-contenedor">
+      <BotonPrincipal icono="descargar" tono={`boton-pdf ${generando ? 'generando' : ''}`}
+                      onClick={descargar} disabled={disabled || generando}>
+        {generando ? 'Generando PDF…' : 'Descargar PDF'}
+      </BotonPrincipal>
+      {error && <small className="error-pdf" role="alert">{error}</small>}
+    </span>
   )
 }
 
-// Encabezado que SOLO aparece en el papel / PDF.
+// Encabezado que SOLO aparece en el PDF.
 export function EncabezadoImpresion({ titulo, subtitulo, usuario }) {
   const ahora = new Date()
   const dos = (n) => String(n).padStart(2, '0')
