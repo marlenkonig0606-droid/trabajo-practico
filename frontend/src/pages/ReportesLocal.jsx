@@ -3,7 +3,7 @@ import { api } from '../api.js'
 import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
 import {
   BarrasAgrupadas, BarrasHorizontales, BarrasVerticales, COLORES, Dispersion, Dona,
-  Histograma, Leyenda, Linea, PALETA, Podio, SinDatos, StockVsMinimo,
+  CampanaGauss, Histograma, Leyenda, Linea, PALETA, Podio, SinDatos, StockVsMinimo,
   nombreMes, numero, pesos,
 } from '../components/Graficos.jsx'
 
@@ -363,18 +363,28 @@ function AnalisisEstadistico({ e }) {
           {' '}{e.n} tickets · mínimo {pesos(e.minimo)} · máximo {pesos(e.maximo)}</small>
       </div>
       <div className="paneles">
-        <Panel titulo="Distribución de los tickets"
-               ayuda={e.curva_normal.length
-                 ? 'Histograma real con la campana de Gauss de referencia (amarillo). Línea verde: media.'
-                 : 'Histograma real. No se superpone la campana de Gauss porque los datos no siguen una distribución normal.'}>
-          <Histograma clases={e.histograma} curva={e.curva_normal} media={e.media}
-                      limiteAlto={e.limite_atipico_alto} />
-          <Leyenda items={[
-            { texto: 'Ventas por rango de importe', color: COLORES.principal },
-            { texto: 'Rango de tickets atípicos', color: COLORES.secundario },
-            { texto: 'Media', color: COLORES.exito, linea: true },
-            ...(e.curva_normal.length ? [{ texto: 'Curva normal', color: COLORES.amarillo, linea: true }] : []),
-          ]} />
+        <Panel titulo="Distribución de los tickets · campana de Gauss" ancho
+               ayuda={e.central
+                 ? `Histograma de ${e.central.n} tickets (se dejan aparte los ${e.central.excluidos} atípicos, que estiran el eje y no dejan ver la forma). La curva amarilla es la normal con la misma media y desvío; las franjas violetas marcan μ ± 1σ y μ ± 2σ.`
+                 : 'Histograma de los tickets del período.'}>
+          {e.central ? <>
+            <CampanaGauss clases={e.central.histograma} curva={e.central.curva_normal}
+                          media={e.central.media} desvio={e.central.desvio} />
+            <Leyenda items={[
+              { texto: 'Ventas por rango de importe', color: COLORES.principal },
+              { texto: 'Curva normal de referencia', color: COLORES.amarillo, linea: true },
+              { texto: 'Media (μ)', color: COLORES.exito, linea: true },
+              { texto: 'μ ± 1σ / ± 2σ', color: '#a78bfa' },
+            ]} />
+            <p className={`diagnostico-curva ${e.central.ajusta_normal ? 'ok' : 'no'}`}>
+              {e.central.ajusta_normal
+                ? `La campana ajusta bien a estos tickets (Jarque-Bera ${numero(e.central.jarque_bera, 2)} ≤ 5,99): se puede usar la media ± desvío para describirlos.`
+                : `La campana es solo una referencia: los tickets no siguen exactamente una normal (Jarque-Bera ${numero(e.central.jarque_bera, 2)} > 5,99, asimetría ${numero(e.central.asimetria, 2)}). Por eso conviene mirar también la mediana y los cuartiles.`}
+            </p>
+          </> : (
+            <Histograma clases={e.histograma} curva={e.curva_normal} media={e.media}
+                        limiteAlto={e.limite_atipico_alto} />
+          )}
         </Panel>
         <Panel titulo="Dispersión de los tickets">
           <div className="segmentado chico">

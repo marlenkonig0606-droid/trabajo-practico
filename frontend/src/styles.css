@@ -630,3 +630,8 @@ body.con-modal { overflow: hidden; }
   .barra-filtros-campos label, .barra-filtros-campos .campo-ancho { max-width: none; }
   td.acciones { text-align: left; }
 }
+.svg-grafico .etiqueta-media { fill: #6ee7b7; font-weight: 700; }
+.svg-grafico .eje-sigma { fill: #c4b5fd; font-weight: 600; }
+.diagnostico-curva { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid; border-radius: 6px; font-size: .84rem; }
+.diagnostico-curva.ok { border-color: var(--exito); background: rgb(52 211 153 / 7%); }
+.diagnostico-curva.no { border-color: #facc15; background: rgb(250 204 21 / 6%); color: #e7dcae; }

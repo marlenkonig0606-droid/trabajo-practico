@@ -437,3 +437,80 @@ export function StockVsMinimo({ filas }) {
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Campana de Gauss: histograma de los tickets + curva normal de referencia,
+// con la media (μ) y las franjas de ±1σ y ±2σ sombreadas.
+// ---------------------------------------------------------------------------
+export function CampanaGauss({ clases, curva = [], media, desvio, alto = 300 }) {
+  if (!clases?.length) return <SinDatos />
+  const ancho = 1000
+  const m = { arriba: 26, abajo: 46, izq: 52, der: 16 }
+  const w = ancho - m.izq - m.der
+  const h = alto - m.arriba - m.abajo
+  const xMin = Math.min(clases[0].desde, ...curva.map((p) => p.x))
+  const xMax = Math.max(clases[clases.length - 1].hasta, ...curva.map((p) => p.x))
+  const x = (v) => m.izq + ((v - xMin) / (xMax - xMin || 1)) * w
+  const { tope, marcas } = escala(Math.max(...clases.map((c) => c.cantidad),
+    ...curva.map((p) => p.y)), 4, true)
+  const y = (v) => m.arriba + h - (v / tope) * h
+  const base = m.arriba + h
+  const recortar = (v) => Math.min(Math.max(v, xMin), xMax)
+  const franja = (k) => [x(recortar(media - k * desvio)), x(recortar(media + k * desvio))]
+  const linea = curva.map((p) => `${x(p.x)},${y(p.y)}`).join(' ')
+  const area = curva.length ? `M${x(curva[0].x)},${base} L${linea.replaceAll(' ', ' L')} L${x(curva[curva.length - 1].x)},${base} Z` : ''
+  return (
+    <svg className="svg-grafico" viewBox={`0 0 ${ancho} ${alto}`} role="img"
+         aria-label="Histograma de tickets con curva normal de referencia">
+      <defs>
+        <linearGradient id="gauss-barras" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#22d3ee" stopOpacity="0.95" />
+          <stop offset="1" stopColor="#0e7490" stopOpacity="0.55" />
+        </linearGradient>
+        <linearGradient id="gauss-area" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#facc15" stopOpacity="0.35" />
+          <stop offset="1" stopColor="#facc15" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      {desvio > 0 && <>
+        <rect x={franja(2)[0]} y={m.arriba} width={franja(2)[1] - franja(2)[0]} height={h}
+              fill="rgb(167 139 250 / 6%)"><title>μ ± 2σ: el 95 % de los tickets si fuera normal</title></rect>
+        <rect x={franja(1)[0]} y={m.arriba} width={franja(1)[1] - franja(1)[0]} height={h}
+              fill="rgb(167 139 250 / 11%)"><title>μ ± 1σ: el 68 % de los tickets si fuera normal</title></rect>
+      </>}
+      {marcas.map((v) => <g key={v}>
+        <line x1={m.izq} x2={m.izq + w} y1={y(v)} y2={y(v)} stroke={COLORES.grilla} />
+        <text x={m.izq - 8} y={y(v) + 4} textAnchor="end" className="eje">{v}</text>
+      </g>)}
+      {clases.map((c) => {
+        const x0 = x(c.desde) + 1.5
+        const ancho = Math.max(x(c.hasta) - x(c.desde) - 3, 1)
+        return <rect key={c.desde} x={x0} y={y(c.cantidad)} width={ancho} height={base - y(c.cantidad)}
+                     rx="3" fill="url(#gauss-barras)">
+          <title>{`${pesos(c.desde)} a ${pesos(c.hasta)}: ${c.cantidad} ventas`}</title>
+        </rect>
+      })}
+      {curva.length > 1 && <>
+        <path d={area} fill="url(#gauss-area)" />
+        <polyline points={linea} fill="none" stroke={COLORES.amarillo} strokeWidth="3"
+                  strokeLinejoin="round" strokeLinecap="round" />
+      </>}
+      {media != null && <>
+        <line x1={x(media)} x2={x(media)} y1={m.arriba - 6} y2={base} stroke={COLORES.exito}
+              strokeDasharray="6 4" strokeWidth="2"><title>{`Media: ${pesos(media)}`}</title></line>
+        <text x={x(media)} y={m.arriba - 10} textAnchor="middle" className="eje etiqueta-media">
+          μ = {pesos(media)}</text>
+      </>}
+      {desvio > 0 && [-2, -1, 1, 2].map((k) => {
+        const v = media + k * desvio
+        if (v < xMin || v > xMax) return null
+        return <text key={k} x={x(v)} y={base + 30} textAnchor="middle" className="eje eje-sigma">
+          {k > 0 ? `+${k}σ` : `${k}σ`}</text>
+      })}
+      {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+        const v = xMin + (xMax - xMin) * f
+        return <text key={f} x={x(v)} y={base + 16} textAnchor="middle" className="eje">{pesos(v)}</text>
+      })}
+    </svg>
+  )
+}
