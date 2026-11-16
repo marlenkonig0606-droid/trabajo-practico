@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
 import {
   BarrasAgrupadas, BarrasHorizontales, BarrasVerticales, COLORES, Dispersion, Dona,
-  Histograma, Leyenda, Linea, PALETA, Podio, SinDatos, StockVsMinimo,
+  CampanaGauss, Histograma, Leyenda, Linea, PALETA, Podio, SinDatos, StockVsMinimo,
   nombreMes, numero, pesos,
 } from '../components/Graficos.jsx'
+import { BotonDescargarPdf, EncabezadoImpresion } from '../components/UI.jsx'
+import {
+  FiltroPeriodo, IndiceSecciones, Indicadores, Panel, Seccion, descripcionPeriodo, usePeriodoReporte,
+} from '../components/Reporte.jsx'
 
 const SECCIONES = [
   ['resumen', 'Resumen general'],
@@ -23,78 +27,50 @@ const NOMBRE_MEDIO = {
   TRANSFERENCIA: 'Transferencia',
 }
 
-function fechaLocalHoy() {
-  const hoy = new Date()
-  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-}
-
-// Reporte gerencial del local: todos los datos salen de GET /api/reportes/local.
-export default function ReportesLocal({ usuario }) {
-  const hoy = fechaLocalHoy()
-  const anioActual = Number(hoy.slice(0, 4))
-  const [modo, setModo] = useState('anio')
-  const [anio, setAnio] = useState(anioActual)
-  const [fechas, setFechas] = useState({ desde: '', hasta: '' })
+// Reporte gerencial de un local: todos los datos salen de GET /api/reportes/local.
+// - Un local ve el suyo.
+// - El CD lo reutiliza para ver cualquier local: pasa "sucursal" ({ id, nombre }),
+//   su propio filtro de período ("periodo") y el selector de vista ("selectorVista").
+export default function ReportesLocal({ usuario, sucursal, periodo: periodoExterno, selectorVista }) {
+  const reporteRef = useRef(null)
+  const periodoPropio = usePeriodoReporte()
+  const periodo = periodoExterno ?? periodoPropio
+  const nombre = sucursal?.nombre ?? usuario.sucursal
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
 
-  // Se recalcula todo cada vez que cambia el filtro.
+  // Se recalcula todo cada vez que cambia el filtro (o el local elegido por el CD).
   useEffect(() => {
     let activa = true
     setCargando(true)
     setError('')
-    const filtro = modo === 'anio' ? { anio } : fechas
-    api.reporteLocal(filtro)
+    api.reporteLocal({ ...periodo.filtro, sucursal_id: sucursal?.id })
       .then((d) => { if (activa) setDatos(d) })
       .catch((e) => { if (activa) setError(e.message) })
       .finally(() => { if (activa) setCargando(false) })
     return () => { activa = false }
-  }, [modo, anio, fechas.desde, fechas.hasta])
+  }, [periodo.clave, sucursal?.id])
 
-  const anios = useMemo(() => [...new Set([anioActual, ...(datos?.anios_disponibles ?? [])])]
-    .sort((a, b) => b - a), [datos, anioActual])
-
+  const descripcion = descripcionPeriodo(periodo, 'Todo el historial del local.')
   return (
-    <section className="reportes-local">
+    <section className="reportes-local" ref={reporteRef}>
+      <EncabezadoImpresion titulo={`Reporte gerencial · ${nombre}`}
+                           subtitulo={descripcion} usuario={usuario} />
       <div className="tarjeta reportes-cabecera">
-        <div>
-          <h2>Reportes · {usuario.sucursal}</h2>
-          <p className="ayuda">{descripcionPeriodo(modo, anio, fechas)}</p>
+        <div className="reportes-titulo">
+          <div>
+            <h2>Reportes · {nombre}</h2>
+            <p className="ayuda">{descripcion}</p>
+          </div>
+          <BotonDescargarPdf objetivo={reporteRef} disabled={!datos || cargando}
+                             nombreArchivo={`Reporte ${nombre} ${periodo.sufijoArchivo}`} />
         </div>
         <div className="reportes-filtros">
-          <div className="segmentado" role="tablist" aria-label="Tipo de período">
-            <button role="tab" aria-selected={modo === 'anio'} className={modo === 'anio' ? 'activo' : ''}
-                    onClick={() => setModo('anio')}>Año completo</button>
-            <button role="tab" aria-selected={modo === 'periodo'} className={modo === 'periodo' ? 'activo' : ''}
-                    onClick={() => setModo('periodo')}>Período</button>
-          </div>
-          {modo === 'anio' ? (
-            <label>Año
-              <select value={anio} onChange={(e) => setAnio(Number(e.target.value))}>
-                {anios.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </label>
-          ) : (
-            <div className="filtro-resumen">
-              <label>Desde
-                <input type="date" value={fechas.desde} max={fechas.hasta || hoy}
-                       onChange={(e) => setFechas({ ...fechas, desde: e.target.value })} />
-              </label>
-              <label>Hasta
-                <input type="date" value={fechas.hasta} max={hoy} min={fechas.desde || undefined}
-                       onChange={(e) => setFechas({ ...fechas, hasta: e.target.value })} />
-              </label>
-              <button className="link" onClick={() => setFechas({ desde: '', hasta: '' })}>
-                Todo el historial</button>
-            </div>
-          )}
+          {selectorVista}
+          <FiltroPeriodo periodo={periodo} anios={datos?.anios_disponibles} />
         </div>
-        <nav className="reportes-indice" aria-label="Secciones del reporte">
-          {SECCIONES.map(([id, titulo], i) => (
-            <a key={id} href={`#rep-${id}`}>{i + 1}. {titulo}</a>
-          ))}
-        </nav>
+        <IndiceSecciones secciones={SECCIONES} />
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
@@ -111,54 +87,6 @@ export default function ReportesLocal({ usuario }) {
         </div>
       )}
     </section>
-  )
-}
-
-function descripcionPeriodo(modo, anio, { desde, hasta }) {
-  if (modo === 'anio') return `Indicadores calculados con todas las operaciones de ${anio}.`
-  const f = (x) => x.split('-').reverse().join('/')
-  if (desde && hasta) return `Operaciones del ${f(desde)} al ${f(hasta)}.`
-  if (desde) return `Operaciones desde el ${f(desde)}.`
-  if (hasta) return `Operaciones hasta el ${f(hasta)}.`
-  return 'Todo el historial del local.'
-}
-
-function Seccion({ id, numero: n, titulo, descripcion, children }) {
-  return (
-    <section id={`rep-${id}`} className="tarjeta reporte-seccion">
-      <header className="reporte-seccion-cabecera">
-        <span className="reporte-numero">{n}</span>
-        <div>
-          <h2>{titulo}</h2>
-          {descripcion && <p className="ayuda">{descripcion}</p>}
-        </div>
-      </header>
-      {children}
-    </section>
-  )
-}
-
-function Indicadores({ items }) {
-  return (
-    <div className="kpis">
-      {items.map((it) => (
-        <div key={it.titulo} className={`kpi ${it.tono ?? ''}`}>
-          <span>{it.titulo}</span>
-          <strong>{it.valor}</strong>
-          {it.detalle && <small>{it.detalle}</small>}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function Panel({ titulo, ayuda, children, ancho }) {
-  return (
-    <div className={`panel-grafico ${ancho ? 'ancho' : ''}`}>
-      <h3>{titulo}</h3>
-      {ayuda && <p className="ayuda">{ayuda}</p>}
-      {children}
-    </div>
   )
 }
 
@@ -363,18 +291,28 @@ function AnalisisEstadistico({ e }) {
           {' '}{e.n} tickets · mínimo {pesos(e.minimo)} · máximo {pesos(e.maximo)}</small>
       </div>
       <div className="paneles">
-        <Panel titulo="Distribución de los tickets"
-               ayuda={e.curva_normal.length
-                 ? 'Histograma real con la campana de Gauss de referencia (amarillo). Línea verde: media.'
-                 : 'Histograma real. No se superpone la campana de Gauss porque los datos no siguen una distribución normal.'}>
-          <Histograma clases={e.histograma} curva={e.curva_normal} media={e.media}
-                      limiteAlto={e.limite_atipico_alto} />
-          <Leyenda items={[
-            { texto: 'Ventas por rango de importe', color: COLORES.principal },
-            { texto: 'Rango de tickets atípicos', color: COLORES.secundario },
-            { texto: 'Media', color: COLORES.exito, linea: true },
-            ...(e.curva_normal.length ? [{ texto: 'Curva normal', color: COLORES.amarillo, linea: true }] : []),
-          ]} />
+        <Panel titulo="Distribución de los tickets · campana de Gauss" ancho
+               ayuda={e.central
+                 ? `Histograma de ${e.central.n} tickets (se dejan aparte los ${e.central.excluidos} atípicos, que estiran el eje y no dejan ver la forma). La curva amarilla es la normal con la misma media y desvío; las franjas violetas marcan μ ± 1σ y μ ± 2σ.`
+                 : 'Histograma de los tickets del período.'}>
+          {e.central ? <>
+            <CampanaGauss clases={e.central.histograma} curva={e.central.curva_normal}
+                          media={e.central.media} desvio={e.central.desvio} />
+            <Leyenda items={[
+              { texto: 'Ventas por rango de importe', color: COLORES.principal },
+              { texto: 'Curva normal de referencia', color: COLORES.amarillo, linea: true },
+              { texto: 'Media (μ)', color: COLORES.exito, linea: true },
+              { texto: 'μ ± 1σ / ± 2σ', color: '#a78bfa' },
+            ]} />
+            <p className={`diagnostico-curva ${e.central.ajusta_normal ? 'ok' : 'no'}`}>
+              {e.central.ajusta_normal
+                ? `La campana ajusta bien a estos tickets (Jarque-Bera ${numero(e.central.jarque_bera, 2)} ≤ 5,99): se puede usar la media ± desvío para describirlos.`
+                : `La campana es solo una referencia: los tickets no siguen exactamente una normal (Jarque-Bera ${numero(e.central.jarque_bera, 2)} > 5,99, asimetría ${numero(e.central.asimetria, 2)}). Por eso conviene mirar también la mediana y los cuartiles.`}
+            </p>
+          </> : (
+            <Histograma clases={e.histograma} curva={e.curva_normal} media={e.media}
+                        limiteAlto={e.limite_atipico_alto} />
+          )}
         </Panel>
         <Panel titulo="Dispersión de los tickets">
           <div className="segmentado chico">

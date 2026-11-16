@@ -472,3 +472,93 @@ class ReportesDAO:
                 UNION ALL
                 SELECT fecha FROM orden_reposicion WHERE destino_id = ?)
             ORDER BY anio DESC""", (sucursal_id, sucursal_id))]
+
+    # ================================================================
+    #  Reporte del centro de distribución (toda la red de locales)
+    # ================================================================
+    def locales_activos(self):
+        return self.db.consultar(
+            "SELECT id, nombre FROM sucursal WHERE tipo='LOCAL' AND activo=1 ORDER BY nombre")
+
+    def es_local_activo(self, sucursal_id):
+        return self.db.consultar_uno(
+            "SELECT 1 AS ok FROM sucursal WHERE id=? AND tipo='LOCAL' AND activo=1",
+            (sucursal_id,)) is not None
+
+    def anios_con_datos_red(self):
+        return [fila["anio"] for fila in self.db.consultar("""
+            SELECT DISTINCT CAST(strftime('%Y', fecha) AS INTEGER) AS anio FROM (
+                SELECT fecha FROM venta UNION ALL SELECT fecha FROM orden_reposicion)
+            ORDER BY anio DESC""")]
+
+    def ventas_por_local_producto_mes(self, where, parametros):
+        """Ventas de todos los locales agrupadas por local, producto y mes.
+        El costo es el guardado en cada venta (precio histórico); si una venta
+        vieja no lo tiene, se usa el costo actual del producto."""
+        return self.db.consultar(f"""
+            SELECT v.sucursal_id, s.nombre AS local, p.id AS producto_id,
+                   p.nombre AS producto, strftime('%Y-%m', v.fecha) AS mes,
+                   COUNT(DISTINCT v.id) AS ventas,
+                   SUM(dv.cantidad) AS unidades,
+                   SUM(dv.cantidad * dv.precio_unitario) AS ingresos,
+                   SUM(dv.cantidad * COALESCE(dv.costo_unitario, p.precio_costo)) AS costo
+            FROM detalle_venta dv
+            JOIN venta v ON v.id = dv.venta_id
+            JOIN sucursal s ON s.id = v.sucursal_id
+            JOIN producto p ON p.id = dv.producto_id
+            WHERE {where}
+            GROUP BY v.sucursal_id, p.id, mes""", tuple(parametros))
+
+    def ventas_por_local_y_mes(self, where, parametros):
+        """Cantidad de tickets por local y mes (un ticket puede tener varios productos)."""
+        return self.db.consultar(f"""
+            SELECT v.sucursal_id, strftime('%Y-%m', v.fecha) AS mes, COUNT(*) AS ventas
+            FROM venta v WHERE {where}
+            GROUP BY v.sucursal_id, mes""", tuple(parametros))
+
+    def devoluciones_por_local_producto_mes(self, where, parametros):
+        """where filtra por d.fecha (la plata sale el día de la devolución)."""
+        return self.db.consultar(f"""
+            SELECT v.sucursal_id, p.id AS producto_id, strftime('%Y-%m', d.fecha) AS mes,
+                   SUM(dd.cantidad) AS unidades,
+                   SUM(dd.cantidad * dd.precio_unitario) AS importe,
+                   SUM(dd.cantidad * COALESCE(dd.costo_unitario, p.precio_costo)) AS costo
+            FROM detalle_devolucion dd
+            JOIN devolucion d ON d.id = dd.devolucion_id
+            JOIN venta v ON v.id = d.venta_id
+            JOIN producto p ON p.id = dd.producto_id
+            WHERE {where}
+            GROUP BY v.sucursal_id, p.id, mes""", tuple(parametros))
+
+    def bultos_perdidos(self, where, parametros):
+        """Mercadería perdida en tránsito, valuada al costo del despacho.
+        where filtra por h.fecha (cuándo se declaró perdido)."""
+        return self.db.consultar(f"""
+            SELECT strftime('%Y-%m', h.fecha) AS mes, b.id AS bulto_id,
+                   SUM(db.cantidad * COALESCE(db.costo_unitario, p.precio_costo)) AS valor
+            FROM bulto b
+            JOIN historial_bulto h ON h.bulto_id = b.id AND h.estado = 'PERDIDO'
+            JOIN detalle_bulto db ON db.bulto_id = b.id
+            JOIN producto p ON p.id = db.producto_id
+            WHERE b.estado = 'PERDIDO' AND {where}
+            GROUP BY b.id""", tuple(parametros))
+
+    def ordenes_para_cumplimiento(self, where, parametros, cd_id=None):
+        """Cada orden con las unidades pedidas y las que el local recibió y
+        verificó. where filtra por o.fecha (cuándo se hizo el pedido)."""
+        filtro_cd = " AND o.origen_id = ?" if cd_id is not None else ""
+        return self.db.consultar(f"""
+            SELECT o.id, o.estado, o.resolucion, o.fecha, o.destino_id,
+                   s.nombre AS local, cd.nombre AS cd,
+                   (SELECT SUM(dor.cantidad) FROM detalle_orden dor
+                    WHERE dor.orden_id = o.id) AS pedidas,
+                   (SELECT COALESCE(SUM(db.cantidad), 0)
+                    FROM remito r JOIN bulto b ON b.remito_id = r.id
+                    JOIN detalle_bulto db ON db.bulto_id = b.id
+                    WHERE r.orden_id = o.id AND b.estado = 'VERIFICADO') AS recibidas
+            FROM orden_reposicion o
+            JOIN sucursal s ON s.id = o.destino_id
+            JOIN sucursal cd ON cd.id = o.origen_id
+            WHERE {where}{filtro_cd}
+            ORDER BY o.fecha""",
+            tuple(parametros) + ((cd_id,) if cd_id is not None else ()))
