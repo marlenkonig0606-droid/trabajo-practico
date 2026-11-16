@@ -1,4 +1,4 @@
-"""Stock mínimo por local, mínimo del CD como suma, alertas actualizadas,
+"""Stock mínimo propio de cada local y de cada CD, alertas actualizadas,
 filtros/paginación de los listados y eliminación de "Mantener pendiente"."""
 import pytest
 
@@ -46,20 +46,32 @@ def cambiar_minimo(cliente, sucursal_id, valor, producto_id=AGUA):
                          json={"stock_minimo": valor})
 
 
-def test_minimo_por_local_es_independiente_y_el_cd_suma(entorno):
-    _, admin, _ = entorno
-    otro = minimo(NUEVA_CBA)
+def cambiar_minimo_cd(cliente, cd_id, valor, producto_id=AGUA):
+    return cliente.patch(f"/api/stock/{cd_id}/{producto_id}/minimo", json={"stock_minimo": valor})
+
+
+def test_cada_sucursal_controla_solo_su_minimo(entorno):
+    _, admin, cd = entorno
+    otro, del_cd = minimo(NUEVA_CBA), minimo(CD)
     respuesta = cambiar_minimo(admin, CENTRO, 10)
     assert respuesta.status_code == 200
     assert respuesta.get_json()["stock_minimo_local"] == 10
     assert minimo(CENTRO) == 10
     assert minimo(NUEVA_CBA) == otro                 # el otro local no cambia
-    assert minimo(CD) == 10 + otro                   # CD = suma de los locales
+    assert minimo(CD) == del_cd                      # el CD tampoco: es independiente
 
-    cambiar_minimo(admin, CENTRO, 25)
-    assert minimo(CD) == 25 + otro                   # se recalcula solo
-    # Solo productos iguales se suman: otro producto tiene su propia suma.
-    assert minimo(CD, 2) != minimo(CD)
+    r = cambiar_minimo_cd(cd, CD, 77)
+    assert r.status_code == 200 and r.get_json()["stock_minimo"] == 77
+    assert minimo(CD) == 77
+    assert (minimo(CENTRO), minimo(NUEVA_CBA)) == (10, otro)   # los locales no cambian
+
+
+def test_el_cd_no_toca_minimos_ajenos(entorno):
+    _, admin, cd = entorno
+    assert cambiar_minimo(cd, CENTRO, 5).status_code == 403          # mínimo de un local
+    assert cambiar_minimo_cd(cd, 4, 5).status_code == 403            # otro CD (CD Norte)
+    assert cambiar_minimo_cd(admin, CD, 5).status_code == 403        # un local no toca al CD
+    assert cambiar_minimo_cd(cd, CD, -1).status_code == 400
 
 
 def test_solo_el_administrador_configura_el_minimo(entorno):
@@ -97,16 +109,17 @@ def test_alertas_se_actualizan_con_minimo_venta_devolucion_y_habilitacion(entorn
     assert alerta_abierta(CENTRO) is None
 
 
-def test_alerta_del_cd_usa_la_suma_de_los_locales(entorno):
+def test_alerta_del_cd_usa_su_propio_minimo(entorno):
     _, admin, cd = entorno
     libre_cd = StockService().libre(CD, AGUA)
-    otro = minimo(NUEVA_CBA)
-    cambiar_minimo(admin, CENTRO, libre_cd - otro + 1)      # la suma supera el stock del CD
+    cambiar_minimo(admin, CENTRO, libre_cd + 50)            # el mínimo del local no afecta al CD
+    assert alerta_abierta(CD) is None
+    cambiar_minimo_cd(cd, CD, libre_cd + 1)
     alerta = alerta_abierta(CD)
     assert alerta is not None and alerta["minimo"] == libre_cd + 1
     alertas = cd.get("/api/alertas").get_json()
     assert any(a["sucursal"] == "CD Central" and a["minimo"] == libre_cd + 1 for a in alertas)
-    cambiar_minimo(admin, CENTRO, 0)
+    cambiar_minimo_cd(cd, CD, 0)
     assert alerta_abierta(CD) is None
 
 
@@ -158,6 +171,24 @@ def test_stock_del_cd_muestra_proveedor_y_filtra(entorno):
     assert all(f["libre"] < f["stock_minimo"] for f in bajos)
 
 
+def test_productos_y_stock_del_local_filtran_por_categoria_proveedor_y_estado(entorno):
+    _, admin, _ = entorno
+    todos = admin.get(f"/api/stock/{CENTRO}").get_json()
+    assert all({"categoria", "proveedor", "stock_minimo_local", "habilitado"} <= f.keys()
+               for f in todos)
+    una = next(f for f in todos if f["categoria_id"] is not None)
+    por_categoria = admin.get(
+        f"/api/stock/{CENTRO}?pagina=1&categoria_id={una['categoria_id']}").get_json()["items"]
+    assert por_categoria and all(f["categoria_id"] == una["categoria_id"] for f in por_categoria)
+    con_proveedor = next(f for f in todos if f["proveedor_id"] is not None)
+    por_proveedor = admin.get(
+        f"/api/stock/{CENTRO}?pagina=1&proveedor_id={con_proveedor['proveedor_id']}").get_json()["items"]
+    assert all(f["proveedor_id"] == con_proveedor["proveedor_id"] for f in por_proveedor)
+    habilitados = admin.get(f"/api/stock/{CENTRO}?pagina=1&habilitado=1").get_json()["items"]
+    assert all(f["habilitado"] == 1 for f in habilitados)
+    assert all(f["activo"] for f in todos)          # el local no ve productos dados de baja
+
+
 def test_ya_no_existe_mantener_pendiente(entorno):
     _, admin, cd = entorno
     orden = admin.post("/api/ordenes", json={"origen_id": CD, "destino_id": CENTRO,
@@ -182,3 +213,30 @@ def test_recepciones_del_local(entorno):
     assert recepciones["total"] == 1
     assert recepciones["items"][0]["items"][0]["nombre"] == "Agua 1.5L"
     assert cd.get("/api/recepciones").status_code == 403
+
+
+def test_base_anterior_conserva_el_minimo_del_cd_al_migrar(tmp_path):
+    """En la versión anterior el mínimo del CD era la suma de los locales: al
+    migrar, cada CD arranca con esa suma como mínimo propio."""
+    ruta = str(tmp_path / "vieja.db")
+    BaseDeDatos.reiniciar()
+    db = BaseDeDatos(ruta)
+    cargar(incluir_demo=False)
+    with db.transaccion():
+        db.ejecutar("UPDATE producto_sucursal SET stock_minimo = 7 WHERE producto_id = ?", (AGUA,))
+        db.ejecutar("DELETE FROM minimo_cd")
+    db._conexion.executescript("""
+        DROP VIEW minimo_vigente;
+        CREATE VIEW minimo_vigente AS
+            SELECT ps.sucursal_id, ps.producto_id, ps.stock_minimo FROM producto_sucursal ps
+            UNION ALL
+            SELECT cd.id, p.id, (SELECT SUM(ps.stock_minimo) FROM producto_sucursal ps
+                                 WHERE ps.producto_id = p.id)
+            FROM sucursal cd CROSS JOIN producto p WHERE cd.tipo = 'CD';""")
+    locales = db.consultar_uno("SELECT COUNT(*) AS n FROM producto_sucursal ps JOIN sucursal s "
+                               "ON s.id = ps.sucursal_id WHERE s.tipo='LOCAL' AND s.activo=1 "
+                               "AND ps.habilitado=1 AND ps.producto_id=?", (AGUA,))["n"]
+    BaseDeDatos.reiniciar()
+    BaseDeDatos(ruta)                                # arranque con la versión nueva
+    assert minimo(CD) == 7 * locales
+    BaseDeDatos.reiniciar()

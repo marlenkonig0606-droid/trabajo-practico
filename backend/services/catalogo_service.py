@@ -188,7 +188,7 @@ class CatalogoService:
         if resultado == 0:
             raise ReglaNegocioError(
                 "No existe una habilitación de producto para este local")
-        # Habilitar/deshabilitar cambia el mínimo vigente del local y la suma del CD.
+        # Habilitar/deshabilitar cambia el mínimo vigente del local.
         self._revisar_alertas(sucursal_id, producto_id)
         return {
             "sucursal_id": sucursal_id,
@@ -199,7 +199,7 @@ class CatalogoService:
 
     def cambiar_minimo_local(self, sucursal_id, producto_id, stock_minimo):
         """Stock mínimo PROPIO de un local para un producto. No toca a los otros
-        locales; el mínimo de los CD (suma de locales) se recalcula solo."""
+        locales ni a los CD (cada sucursal controla solo su mínimo)."""
         sucursal = self.obtener_sucursal(sucursal_id)
         if sucursal["tipo"] != "LOCAL":
             raise ReglaNegocioError("El stock mínimo se configura en cada local")
@@ -271,7 +271,7 @@ class CatalogoService:
         resultado = self.sucursal_dao.cambiar_estado(id_sucursal, activo)
         self._comprobar_resultado((resultado > 0, "No se pudo cambiar el estado de la sucursal"))
         if sucursal["tipo"] == "LOCAL":
-            # Un local que se activa o desactiva cambia la suma de mínimos de los CD.
+            # Al reactivar un local se recalculan sus alertas.
             self._revisar_alertas(id_sucursal)
         return self.obtener_sucursal(id_sucursal)
 
