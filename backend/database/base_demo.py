@@ -15,6 +15,7 @@ todos ven exactamente los mismos datos.
 import os
 import shutil
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 
 CARPETA = os.path.dirname(os.path.abspath(__file__))
@@ -28,7 +29,9 @@ VERSION_DATOS = 20261116
 
 
 def version_de(ruta):
-    with sqlite3.connect(ruta) as cx:
+    # Se cierra la conexión SÍ o SÍ: en Windows un archivo abierto no se puede mover.
+    # (with sqlite3.connect(...) solo confirma la transacción, no la cierra).
+    with closing(sqlite3.connect(ruta)) as cx:
         return cx.execute("PRAGMA user_version").fetchone()[0]
 
 
@@ -44,7 +47,11 @@ def preparar_base_de_trabajo():
         print("Se creó tp_cd_locales.db con los datos de demostración del equipo.")
         return
     if version_de(BASE_TRABAJO) < version_de(BASE_DEMO):
-        restaurar_demo()
+        try:
+            restaurar_demo()
+        except PermissionError:
+            print("AVISO: no se pudo actualizar tp_cd_locales.db porque otro programa la está "
+                  "usando (¿quedó otro 'python app.py' abierto?). Cerralo y volvé a iniciar.")
 
 
 def restaurar_demo():
