@@ -1,8 +1,20 @@
 """Carga el catálogo base y, en la aplicación, datos de demostración idempotentes."""
 from datetime import datetime, timedelta
 
+from werkzeug.security import generate_password_hash
+
 from database.conexion import BaseDeDatos
 from models.proveedor import normalizar_cuit
+
+# Usuarios estándar para probar el sistema y para la defensa. Se crean solo con
+# los datos de demostración y solo si todavía no existen (no pisan contraseñas).
+USUARIOS_DEMO = [
+    ("adminnuevacordoba@dao.com", "Local Nueva Córdoba"),
+    ("admincentro@dao.com", "Local Centro"),
+    ("cdnorte@dao.com", "CD Norte"),
+    ("cdcentro@dao.com", "CD Central"),
+]
+PASSWORD_DEMO = "12345678"
 
 
 def _insertar_o_buscar(db, tabla, columna_unica, valores):
@@ -196,6 +208,20 @@ def _cargar_demo(db, sucursales, categorias, productos):
     db.ejecutar("INSERT INTO datos_iniciales (nombre) VALUES ('demo-v1')")
 
 
+def _cargar_usuarios_demo(db):
+    """Administradores de cada sucursal, aprobados y sin cambio obligatorio de
+    contraseña, para entrar directo con PASSWORD_DEMO."""
+    for email, sucursal in USUARIOS_DEMO:
+        fila = db.consultar_uno("SELECT id FROM sucursal WHERE nombre=?", (sucursal,))
+        if fila is None or db.consultar_uno("SELECT 1 FROM usuario WHERE email=?", (email,)):
+            continue
+        db.ejecutar(
+            """INSERT INTO usuario (email, password_hash, sucursal_id, rol, estado,
+                                    debe_cambiar_password)
+               VALUES (?, ?, ?, 'ADMINISTRADOR', 'APROBADO', 0)""",
+            (email, generate_password_hash(PASSWORD_DEMO), fila["id"]))
+
+
 def cargar(incluir_demo=True):
     db = BaseDeDatos()
     with db.transaccion():
@@ -234,6 +260,7 @@ def cargar(incluir_demo=True):
 
         if incluir_demo:
             _cargar_demo(db, sucursales, categorias, productos)
+            _cargar_usuarios_demo(db)
         _registrar_aperturas_stock(db)
 
 
