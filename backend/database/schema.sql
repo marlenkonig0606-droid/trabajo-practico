@@ -74,13 +74,13 @@ CREATE TABLE IF NOT EXISTS producto_sucursal (
     habilitado  INTEGER NOT NULL DEFAULT 1 CHECK (habilitado IN (0, 1)),
     -- Stock mínimo PROPIO de cada local (lo configura su administrador).
     -- Al crearse la fila toma el mínimo por defecto del producto (trigger).
-    -- El mínimo de cada CD es propio y está en minimo_cd (vista minimo_vigente).
+    -- Mínimo del CD = MAX(minimo_cd, suma de los locales) (vista minimo_vigente).
     stock_minimo INTEGER CHECK (stock_minimo IS NULL OR stock_minimo >= 0),
     PRIMARY KEY (sucursal_id, producto_id)
 );
 
--- Stock mínimo PROPIO de cada CD (lo configura solo ese CD; no toca a los locales).
--- Si no hay fila, vale el mínimo por defecto del producto (vista minimo_vigente).
+-- Stock mínimo que configuró cada CD (solo ese CD; no toca a los locales).
+-- El mínimo vigente del CD es MAX(este valor, suma de los mínimos de los locales).
 CREATE TABLE IF NOT EXISTS minimo_cd (
     sucursal_id  INTEGER NOT NULL REFERENCES sucursal(id),
     producto_id  INTEGER NOT NULL REFERENCES producto(id),

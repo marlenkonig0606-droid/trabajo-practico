@@ -1,6 +1,9 @@
 // Piezas compartidas por los reportes del local y del centro de distribución:
 // filtro de período, secciones numeradas, indicadores y paneles de gráficos.
 import { useState } from 'react'
+import CampoFecha from './CampoFecha.jsx'
+
+const aGuiones = (iso) => iso.split('-').reverse().join('-')
 
 export function fechaLocalHoy() {
   const hoy = new Date()
@@ -17,8 +20,9 @@ export function usePeriodoReporte() {
     modo, setModo, anio, setAnio, fechas, setFechas, anioActual,
     filtro: modo === 'anio' ? { anio } : fechas,
     clave: modo === 'anio' ? `a${anio}` : `p${fechas.desde}_${fechas.hasta}`,
+    // Nombre del PDF con fechas DD-MM-AAAA (la barra no se puede usar en un archivo).
     sufijoArchivo: modo === 'anio' ? String(anio)
-      : `${fechas.desde || 'inicio'} a ${fechas.hasta || fechaLocalHoy()}`,
+      : `${fechas.desde ? aGuiones(fechas.desde) : 'inicio'} a ${aGuiones(fechas.hasta || fechaLocalHoy())}`,
   }
 }
 
@@ -59,11 +63,11 @@ export function FiltroPeriodo({ periodo, anios, primeraFecha }) {
       ) : (
         <div className="filtro-resumen">
           <label>Desde
-            <input type="date" value={fechas.desde} max={fechas.hasta || hoy}
+            <CampoFecha value={fechas.desde} max={fechas.hasta || hoy}
                    onChange={(e) => setFechas({ ...fechas, desde: e.target.value })} />
           </label>
           <label>Hasta
-            <input type="date" value={fechas.hasta} max={hoy} min={fechas.desde || undefined}
+            <CampoFecha value={fechas.hasta} max={hoy} min={fechas.desde || undefined}
                    onChange={(e) => setFechas({ ...fechas, hasta: e.target.value })} />
           </label>
           <button className="link" onClick={todoElHistorial}>Todo el historial</button>

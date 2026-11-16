@@ -78,7 +78,7 @@ export default function Stock({ usuario }) {
         <div>
           <h2>{esCD ? 'Stock' : `Productos y stock · ${usuario.sucursal}`}</h2>
           <p className="ayuda">{verCD
-            ? 'Cada CD configura su propio stock mínimo. Los mínimos de los locales los define el administrador de cada local.'
+            ? 'El mínimo del CD es la suma de los mínimos de los locales; el CD puede subirlo, pero nunca dejarlo por debajo de esa suma. Los mínimos de los locales los define cada local.'
             : esAdminLocal
               ? 'Habilitá los productos que vende el local y configurá su stock mínimo (es propio de este local).'
               : 'Productos del local, su stock libre y el mínimo que configuró el administrador.'}</p>
@@ -193,6 +193,7 @@ export default function Stock({ usuario }) {
                         <div><dt>Precio de venta</dt><dd>{pesos(f.precio_venta)}</dd></div>
                         <div><dt>{verCD ? 'Mínimo del CD' : 'Mínimo del local'}</dt>
                           <dd>{verCD ? f.stock_minimo : f.stock_minimo_local}</dd></div>
+                        {verCD && <div><dt>Suma de los mínimos de los locales</dt><dd>{f.minimo_locales}</dd></div>}
                         <div><dt>Mínimo por defecto del catálogo</dt><dd>{f.stock_minimo_defecto}</dd></div>
                         <div><dt>Estado en la sucursal</dt><dd>{f.habilitado || verCD ? 'Habilitado' : 'Deshabilitado'}</dd></div>
                       </dl>
@@ -277,7 +278,8 @@ function ModalMinimo({ fila, sucursalId, esCD, nombreSucursal, onCerrar, onGuard
   const [valor, setValor] = useState(String(esCD ? fila.stock_minimo : fila.stock_minimo_local))
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
-  const valido = valor !== '' && Number.isInteger(Number(valor)) && Number(valor) >= 0
+  const piso = esCD ? fila.minimo_locales : 0
+  const valido = valor !== '' && Number.isInteger(Number(valor)) && Number(valor) >= piso
   const guardar = async (e) => {
     e.preventDefault()
     if (!valido || guardando) return
@@ -292,12 +294,21 @@ function ModalMinimo({ fila, sucursalId, esCD, nombreSucursal, onCerrar, onGuard
     <Modal titulo={`Stock mínimo · ${fila.nombre}`} onCerrar={onCerrar} ancho="chico">
       <form className="formulario-modal" onSubmit={guardar}>
         {error && <div className="error" role="alert">{error}</div>}
-        <p className="ayuda">Es el mínimo de <b>{nombreSucursal}</b>: no cambia el de ninguna otra
-          sucursal (cada local y cada CD controla solo el suyo). Si el stock libre queda por
-          debajo, se genera una alerta.</p>
+        {esCD ? (
+          <p className="ayuda">Es el mínimo de <b>{nombreSucursal}</b>. Parte de la suma de los mínimos
+            que pusieron los locales (<b>{piso}</b> unidades): podés subirlo, pero no dejarlo por
+            debajo de esa suma. No cambia el mínimo de ningún local.</p>
+        ) : (
+          <p className="ayuda">Es el mínimo de <b>{nombreSucursal}</b>: no cambia el de los otros locales.
+            El mínimo de los CD nunca queda por debajo de la suma de los mínimos de los locales.
+            Si el stock libre queda por debajo, se genera una alerta.</p>
+        )}
         <label>Stock mínimo
-          <input type="number" min="0" step="1" required value={valor}
+          <input type="number" min={piso} step="1" required value={valor}
                  onChange={(e) => setValor(e.target.value)} /></label>
+        {esCD && valor !== '' && Number(valor) < piso && (
+          <small className="error-campo">No puede ser menor que {piso} (suma de los locales).</small>
+        )}
         <div className="modal-acciones">
           <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
           <button type="submit" disabled={!valido || guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button>
