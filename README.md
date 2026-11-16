@@ -18,6 +18,13 @@ npm install
 npm run dev                  # http://localhost:5173
 ```
 
+USUARIOS DE PREUBA
+Usuario	Sucursal	Contraseña
+adminnuevacordoba@dao.com	Local Nueva Córdoba	12345678
+admincentro@dao.com	Local Centro	12345678
+cdnorte@dao.com	CD Norte	12345678
+cdcentro@dao.com	CD Central	12345678
+
 La variable debe configurarse antes de iniciar Flask y en la misma terminal. Si el backend
 ya estaba ejecutándose cuando la configuraste, detenelo con Ctrl+C y volvé a iniciarlo. El
 registro permite crear cuentas locales y, con esa variable configurada, cuentas del CD.
