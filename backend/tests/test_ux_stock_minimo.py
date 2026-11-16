@@ -158,6 +158,24 @@ def test_stock_del_cd_muestra_proveedor_y_filtra(entorno):
     assert all(f["libre"] < f["stock_minimo"] for f in bajos)
 
 
+def test_productos_y_stock_del_local_filtran_por_categoria_proveedor_y_estado(entorno):
+    _, admin, _ = entorno
+    todos = admin.get(f"/api/stock/{CENTRO}").get_json()
+    assert all({"categoria", "proveedor", "stock_minimo_local", "habilitado"} <= f.keys()
+               for f in todos)
+    una = next(f for f in todos if f["categoria_id"] is not None)
+    por_categoria = admin.get(
+        f"/api/stock/{CENTRO}?pagina=1&categoria_id={una['categoria_id']}").get_json()["items"]
+    assert por_categoria and all(f["categoria_id"] == una["categoria_id"] for f in por_categoria)
+    con_proveedor = next(f for f in todos if f["proveedor_id"] is not None)
+    por_proveedor = admin.get(
+        f"/api/stock/{CENTRO}?pagina=1&proveedor_id={con_proveedor['proveedor_id']}").get_json()["items"]
+    assert all(f["proveedor_id"] == con_proveedor["proveedor_id"] for f in por_proveedor)
+    habilitados = admin.get(f"/api/stock/{CENTRO}?pagina=1&habilitado=1").get_json()["items"]
+    assert all(f["habilitado"] == 1 for f in habilitados)
+    assert all(f["activo"] for f in todos)          # el local no ve productos dados de baja
+
+
 def test_ya_no_existe_mantener_pendiente(entorno):
     _, admin, cd = entorno
     orden = admin.post("/api/ordenes", json={"origen_id": CD, "destino_id": CENTRO,

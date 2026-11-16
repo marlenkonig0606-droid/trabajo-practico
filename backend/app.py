@@ -456,13 +456,23 @@ def crear_app(cargar_demo=True):
             raise AccesoDenegadoError("Solo podés consultar el stock de tu sucursal")
         situacion = request.args.get("situacion", "")   # bajo | ok
         proveedor = request.args.get("proveedor_id", "")
+        categoria = request.args.get("categoria_id", "")
+        habilitado = request.args.get("habilitado", "")  # 1 | 0 (estado en el local)
+        es_local = g.usuario["tipo"] == "LOCAL"
         def extra(f):
+            if es_local and not f["activo"]:
+                return False                     # el local no ve productos dados de baja
             if situacion == "bajo" and f["libre"] >= f["stock_minimo"]:
                 return False
             if situacion == "ok" and f["libre"] < f["stock_minimo"]:
                 return False
+            if habilitado in ("0", "1") and str(f["habilitado"]) != habilitado:
+                return False
+            if categoria and str(f["categoria_id"]) != categoria:
+                return False
             return not proveedor or str(f["proveedor_id"]) == proveedor
-        return listado(stock.listar(sucursal_id), "nombre", "codigo", "proveedor", extra=extra)
+        return listado(stock.listar(sucursal_id), "nombre", "codigo", "proveedor", "categoria",
+                       extra=extra)
 
     @app.put("/api/stock/<int:sucursal_id>/<int:producto_id>")
     def ajustar_stock_cd(sucursal_id, producto_id):

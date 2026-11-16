@@ -90,6 +90,8 @@ class StockDAO:
                       COALESCE(mv.stock_minimo, 0) AS stock_minimo,
                       p.stock_minimo AS stock_minimo_defecto, p.activo,
                       p.proveedor_id, pr.nombre AS proveedor,
+                      p.categoria_id, c.nombre AS categoria,
+                      COALESCE(ps.stock_minimo, p.stock_minimo) AS stock_minimo_local,
                       COALESCE(ps.habilitado, 0) AS habilitado,
                       COALESCE(s.disponible, 0) AS disponible,
                       COALESCE(s.reservado, 0) AS reservado,
@@ -100,6 +102,7 @@ class StockDAO:
                LEFT JOIN stock s ON s.producto_id = p.id AND s.sucursal_id = ?
                LEFT JOIN minimo_vigente mv ON mv.producto_id = p.id AND mv.sucursal_id = ?
                LEFT JOIN proveedor pr ON pr.id = p.proveedor_id
+               LEFT JOIN categoria c ON c.id = p.categoria_id
                ORDER BY p.nombre""", (sucursal_id, sucursal_id, sucursal_id))
 
     def pares_para_alertas(self, sucursal_id=None, producto_id=None):
