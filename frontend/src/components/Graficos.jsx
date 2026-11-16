@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 // Gráficos del módulo de reportes, dibujados con SVG (el proyecto no usa
 // librerías de gráficos). Todos reciben los datos ya calculados por el backend.
 // Pasando el mouse por encima de una barra o punto se ve su valor (<title>).
@@ -59,24 +61,27 @@ export function SinDatos({ children = 'No hay datos en el período seleccionado.
 // Barras verticales (con línea opcional sobre un segundo eje)
 // ---------------------------------------------------------------------------
 export function BarrasVerticales({ datos, formato = numero, color = COLORES.principal,
-  formatoLinea = numero, destacarExtremos = true, alto = 300 }) {
-  // La línea (segundo eje) se dibuja si los datos traen el campo "linea".
+  formatoLinea = numero, destacarExtremos = true, alto = 300, mismoEje = false }) {
+  // La línea se dibuja si los datos traen el campo "linea". Por defecto usa un
+  // segundo eje (derecha); con mismoEje comparte el eje de las barras.
+  const [puntoActivo, setPuntoActivo] = useState(null)
   const linea = datos.some((d) => d.linea != null)
   if (!datos.length || datos.every((d) => !d.valor && !d.linea)) return <SinDatos />
   const ancho = Math.max(ANCHO, datos.length * 46)
-  const m = { arriba: 16, abajo: 34, izq: 52, der: linea ? 52 : 12 }
+  const m = { arriba: 16, abajo: 34, izq: 52, der: linea && !mismoEje ? 52 : 12 }
   const w = ancho - m.izq - m.der
   const h = alto - m.arriba - m.abajo
-  const { tope, marcas } = escala(Math.max(...datos.map((d) => d.valor || 0)), 4,
-    sonEnteros(datos.map((d) => d.valor)))
-  const escalaLinea = linea ? escala(Math.max(...datos.map((d) => d.linea || 0)), 4,
+  const valoresEje = mismoEje ? datos.flatMap((d) => [d.valor, d.linea]) : datos.map((d) => d.valor)
+  const { tope, marcas } = escala(Math.max(...valoresEje.map((v) => v || 0)), 4,
+    sonEnteros(valoresEje))
+  const escalaLinea = linea && !mismoEje ? escala(Math.max(...datos.map((d) => d.linea || 0)), 4,
     sonEnteros(datos.map((d) => d.linea))) : null
   const paso = w / datos.length
   const anchoBarra = Math.min(34, paso * 0.62)
   const valores = datos.map((d) => d.valor || 0).filter((v) => v > 0)
   const max = Math.max(...valores)
   const min = Math.min(...valores)
-  const yLinea = (v) => m.arriba + h - (v / escalaLinea.tope) * h
+  const yLinea = (v) => m.arriba + h - (v / (escalaLinea ? escalaLinea.tope : tope)) * h
   const puntosLinea = linea ? datos
     .map((d, i) => d.linea == null ? null : [m.izq + paso * i + paso / 2, yLinea(d.linea)])
     .filter(Boolean) : []
@@ -114,11 +119,28 @@ export function BarrasVerticales({ datos, formato = numero, color = COLORES.prin
                   stroke={COLORES.amarillo} strokeWidth="2.5" />
       )}
       {linea && datos.map((d, i) => d.linea == null ? null : (
-        <circle key={`p${i}`} cx={m.izq + paso * i + paso / 2} cy={yLinea(d.linea)} r="4"
-                fill={COLORES.amarillo}>
-          <title>{`${d.etiqueta}: ${formatoLinea(d.linea)}`}</title>
-        </circle>
+        <g key={`p${i}`} onMouseEnter={() => setPuntoActivo(i)} onMouseLeave={() => setPuntoActivo(null)}
+           style={{ cursor: 'pointer' }}>
+          <circle cx={m.izq + paso * i + paso / 2} cy={yLinea(d.linea)} r={puntoActivo === i ? 6.5 : 4.5}
+                  fill={COLORES.amarillo} />
+          {/* área invisible más grande para que sea fácil apuntar con el mouse */}
+          <circle cx={m.izq + paso * i + paso / 2} cy={yLinea(d.linea)} r="14" fill="transparent" />
+        </g>
       ))}
+      {puntoActivo != null && datos[puntoActivo]?.linea != null && (() => {
+        const d = datos[puntoActivo]
+        const texto = `${d.etiqueta}: ${formatoLinea(d.linea)}`
+        const anchoCartel = texto.length * 7.4 + 20
+        const x = Math.min(Math.max(m.izq + paso * puntoActivo + paso / 2 - anchoCartel / 2, m.izq),
+          ancho - m.der - anchoCartel)
+        const y = Math.max(yLinea(d.linea) - 40, 2)
+        return (
+          <g className="cartel-grafico" pointerEvents="none">
+            <rect x={x} y={y} width={anchoCartel} height="28" rx="6" />
+            <text x={x + anchoCartel / 2} y={y + 18} textAnchor="middle">{texto}</text>
+          </g>
+        )
+      })()}
     </svg>
   )
 }
@@ -184,7 +206,7 @@ export function BarrasHorizontales({ datos, formato = numero, color = COLORES.pr
     <div className="barras-h">
       {datos.map((d, i) => (
         <div className="barras-h-fila" key={d.etiqueta} title={`${d.etiqueta}: ${formato(d.valor)}`}>
-          <span className="barras-h-puesto">{i + 1}</span>
+          <span className="barras-h-puesto">{d.puesto ?? i + 1}</span>
           <span className="barras-h-etiqueta">{d.etiqueta}</span>
           <div className="barras-h-pista">
             <div style={{ width: `${(d.valor / max) * 100}%`, background: d.color ?? color }} />
@@ -442,9 +464,8 @@ export function StockVsMinimo({ filas }) {
 // Campana de Gauss: histograma de los tickets + curva normal de referencia,
 // con la media (μ) y las franjas de ±1σ y ±2σ sombreadas.
 // ---------------------------------------------------------------------------
-export function CampanaGauss({ clases, curva = [], media, desvio, alto = 300 }) {
+export function CampanaGauss({ clases, curva = [], media, desvio, alto = 300, ancho = 1000 }) {
   if (!clases?.length) return <SinDatos />
-  const ancho = 1000
   const m = { arriba: 26, abajo: 46, izq: 52, der: 16 }
   const w = ancho - m.izq - m.der
   const h = alto - m.arriba - m.abajo

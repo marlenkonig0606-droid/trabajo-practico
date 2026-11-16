@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api.js'
+import { coincide } from '../utils/busqueda.js'
 import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
 import {
   BarrasAgrupadas, BarrasHorizontales, BarrasVerticales, COLORES, Dispersion, Dona,
@@ -68,7 +69,8 @@ export default function ReportesLocal({ usuario, sucursal, periodo: periodoExter
         </div>
         <div className="reportes-filtros">
           {selectorVista}
-          <FiltroPeriodo periodo={periodo} anios={datos?.anios_disponibles} />
+          <FiltroPeriodo periodo={periodo} anios={datos?.anios_disponibles}
+                         primeraFecha={datos?.primera_fecha} />
         </div>
         <IndiceSecciones secciones={SECCIONES} />
       </div>
@@ -204,7 +206,11 @@ function AnalisisProductos({ d }) {
     valores: d.periodo.meses.map((mes) => d.productos.por_mes
       .find((f) => f.producto_id === id && f.mes === mes)?.unidades ?? 0),
   }))
-  const lista = verTodos ? ranking : ranking.slice(0, 10)
+  // Productos elegidos para el ranking (null = todos).
+  const [enRanking, setEnRanking] = useState(null)
+  const visiblesRanking = ranking.map((p, i) => ({ ...p, puesto: i + 1 }))
+    .filter((p) => enRanking == null || enRanking.includes(p.producto))
+  const lista = verTodos ? visiblesRanking : visiblesRanking.slice(0, 10)
 
   return (
     <Seccion id="productos" numero="3" titulo="Análisis de productos"
@@ -214,13 +220,15 @@ function AnalisisProductos({ d }) {
           <Podio formato={(v) => `${numero(v)} u.`}
                  puestos={ranking.slice(0, 3).map((p) => ({ etiqueta: p.producto, valor: p.unidades }))} />
         </Panel>
-        <Panel titulo="Ranking de productos">
+        <Panel titulo="Ranking de productos"
+               ayuda="Buscá y marcá qué productos querés ver (la posición es la del ranking completo).">
+          <SelectorRanking ranking={ranking} elegidos={enRanking} onCambiar={setEnRanking} />
           <BarrasHorizontales formato={(v) => `${numero(v)} u.`}
-                              datos={lista.map((p) => ({ etiqueta: p.producto, valor: p.unidades,
+                              datos={lista.map((p) => ({ etiqueta: p.producto, puesto: p.puesto, valor: p.unidades,
                                 detalle: pesos(p.ingresos) }))} />
-          {ranking.length > 10 && (
+          {visiblesRanking.length > 10 && (
             <button className="link" onClick={() => setVerTodos(!verTodos)}>
-              {verTodos ? 'Ver solo los 10 primeros' : `Ver los ${ranking.length} productos`}
+              {verTodos ? 'Ver solo los 10 primeros' : `Ver los ${visiblesRanking.length} productos`}
             </button>
           )}
         </Panel>
@@ -250,9 +258,43 @@ function AnalisisProductos({ d }) {
   )
 }
 
+// Buscador parcial + casillas para elegir qué productos se muestran en el ranking.
+function SelectorRanking({ ranking, elegidos, onCambiar }) {
+  const [busqueda, setBusqueda] = useState('')
+  const todos = ranking.map((p) => p.producto)
+  const marcados = elegidos ?? todos
+  const encontrados = todos.filter((nombre) => coincide(nombre, busqueda))
+  const alternar = (nombre) => {
+    const nuevos = marcados.includes(nombre)
+      ? marcados.filter((x) => x !== nombre) : [...marcados, nombre]
+    onCambiar(nuevos.length === todos.length ? null : nuevos)
+  }
+  return (
+    <div className="selector-ranking">
+      <div className="selector-ranking-barra">
+        <input type="search" placeholder="Buscar producto (ej.: agu)" value={busqueda}
+               aria-label="Buscar producto en el ranking" onChange={(e) => setBusqueda(e.target.value)} />
+        <button className="link" onClick={() => onCambiar(null)}>Todos</button>
+        <button className="link" onClick={() => onCambiar(busqueda ? encontrados : [])}>
+          {busqueda ? 'Solo los encontrados' : 'Ninguno'}</button>
+      </div>
+      <div className="selector-ranking-opciones">
+        {encontrados.length === 0 ? <small className="ayuda">Ningún producto coincide con “{busqueda}”.</small>
+          : encontrados.map((nombre) => (
+            <label key={nombre} className={`chip-producto ${marcados.includes(nombre) ? 'activo' : ''}`}>
+              <input type="checkbox" checked={marcados.includes(nombre)} onChange={() => alternar(nombre)} />
+              {nombre}
+            </label>
+          ))}
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // 4. Análisis estadístico de tickets
 // ---------------------------------------------------------------------------
+const ALTO_ESTADISTICA = 380   // la campana y la dispersión van lado a lado, del mismo tamaño
 function AnalisisEstadistico({ e }) {
   const [ejeX, setEjeX] = useState('fecha')
   if (!e.suficiente) {
@@ -290,14 +332,15 @@ function AnalisisEstadistico({ e }) {
         <small>Asimetría {numero(e.asimetria, 2)} · curtosis (exceso) {numero(e.curtosis, 2)} ·
           {' '}{e.n} tickets · mínimo {pesos(e.minimo)} · máximo {pesos(e.maximo)}</small>
       </div>
-      <div className="paneles">
-        <Panel titulo="Distribución de los tickets · campana de Gauss" ancho
+      <div className="paneles dos-iguales">
+        <Panel titulo="Distribución de los tickets · campana de Gauss"
                ayuda={e.central
                  ? `Histograma de ${e.central.n} tickets (se dejan aparte los ${e.central.excluidos} atípicos, que estiran el eje y no dejan ver la forma). La curva amarilla es la normal con la misma media y desvío; las franjas violetas marcan μ ± 1σ y μ ± 2σ.`
                  : 'Histograma de los tickets del período.'}>
           {e.central ? <>
             <CampanaGauss clases={e.central.histograma} curva={e.central.curva_normal}
-                          media={e.central.media} desvio={e.central.desvio} />
+                          media={e.central.media} desvio={e.central.desvio}
+                          alto={ALTO_ESTADISTICA} ancho={640} />
             <Leyenda items={[
               { texto: 'Ventas por rango de importe', color: COLORES.principal },
               { texto: 'Curva normal de referencia', color: COLORES.amarillo, linea: true },
@@ -322,6 +365,7 @@ function AnalisisEstadistico({ e }) {
               Productos vs. importe</button>
           </div>
           <Dispersion puntos={puntos} esFecha={ejeX === 'fecha'} limiteAlto={e.limite_atipico_alto}
+                      alto={ALTO_ESTADISTICA}
                       etiquetaX={ejeX === 'fecha' ? 'Fecha de la venta' : 'Productos en el ticket (unidades)'} />
           <Leyenda items={[
             { texto: 'Venta', color: COLORES.principal },
@@ -451,25 +495,22 @@ function DevolucionesOperaciones({ d }) {
                 datos={estados.map(([etiqueta, valor, color]) => ({ etiqueta, valor, color }))} />
         </Panel>
         <Panel titulo="Bultos rechazados" ancho
-               ayuda="Bultos que el local rechazó al verificarlos (por la fecha del rechazo).">
+               ayuda="Bultos que el local rechazó al verificarlos, por el mes del rechazo.">
           <Indicadores items={[
             { titulo: 'Bultos rechazados', valor: rech.cantidad, tono: rech.cantidad ? 'alerta' : '' },
-            { titulo: 'Unidades rechazadas', valor: numero(rech.unidades) },
           ]} />
           {rech.cantidad === 0 ? <SinDatos>No hubo rechazos en el período.</SinDatos> : (
             <div className="paneles interno">
+              <div className="ancho"><h4>Bultos rechazados por mes</h4>
+                <BarrasVerticales color={COLORES.alerta} destacarExtremos={false} alto={220}
+                                  formato={(v) => `${v} bulto${v === 1 ? '' : 's'}`}
+                                  datos={rech.por_mes.map((m) => ({ etiqueta: nombreMes(m.mes, conAnio), valor: m.bultos }))} /></div>
               <div><h4>Por producto</h4>
-                <BarrasHorizontales color={COLORES.alerta} formato={(v) => `${v} u.`}
-                                    datos={rech.por_producto.map((f) => ({
-                                      etiqueta: f.producto, valor: f.unidades,
-                                      detalle: `${f.bultos} bulto${f.bultos === 1 ? '' : 's'}` }))} /></div>
+                <BarrasHorizontales color={COLORES.alerta} formato={(v) => `${v} bulto${v === 1 ? '' : 's'}`}
+                                    datos={rech.por_producto.map((f) => ({ etiqueta: f.producto, valor: f.bultos }))} /></div>
               <div><h4>Por centro de distribución</h4>
                 <Dona formato={(v) => `${v} bulto${v === 1 ? '' : 's'}`}
                       datos={rech.por_cd.map((f) => ({ etiqueta: f.cd, valor: f.bultos }))} /></div>
-              <div className="ancho"><h4>Evolución de los rechazos</h4>
-                <BarrasVerticales color={COLORES.alerta} destacarExtremos={false} alto={180}
-                                  formato={(v) => `${v} bulto${v === 1 ? '' : 's'}`}
-                                  datos={rech.por_mes.map((m) => ({ etiqueta: nombreMes(m.mes, conAnio), valor: m.bultos }))} /></div>
             </div>
           )}
         </Panel>
@@ -517,8 +558,8 @@ function LogisticaReposicion({ d }) {
           )}
         </Panel>
         <Panel titulo="Bultos solicitados vs. ventas por mes" ancho
-               ayuda="Barras: ventas del mes. Línea: bultos pedidos (eje derecho). Permite ver si la reposición acompaña la demanda.">
-          <BarrasVerticales destacarExtremos={false} formato={(v) => `${v} ventas`}
+               ayuda="Barras: ventas del mes. Puntos amarillos: bultos pedidos, en el mismo eje. Pasá el mouse por un punto para ver la cantidad.">
+          <BarrasVerticales destacarExtremos={false} mismoEje formato={(v) => `${v} ventas`}
                             formatoLinea={(v) => `${v} bultos`}
                             datos={l.mensual.map((m) => ({
                               etiqueta: nombreMes(m.mes, conAnio), valor: m.ventas, linea: m.bultos,
@@ -526,7 +567,7 @@ function LogisticaReposicion({ d }) {
                             }))} />
           <Leyenda items={[
             { texto: 'Ventas', color: COLORES.principal },
-            { texto: 'Bultos solicitados (eje derecho)', color: COLORES.amarillo, linea: true },
+            { texto: 'Bultos solicitados', color: COLORES.amarillo, linea: true },
           ]} />
         </Panel>
       </div>

@@ -465,6 +465,16 @@ class ReportesDAO:
             GROUP BY p.id
             ORDER BY unidades DESC""", tuple(parametros) + (sucursal_id,))
 
+    def primera_fecha(self, sucursal_id=None):
+        """Fecha del primer registro (venta o pedido) del local, o de toda la red."""
+        fila = self.db.consultar_uno("""
+            SELECT MIN(fecha) AS primera FROM (
+                SELECT fecha FROM venta WHERE (? IS NULL OR sucursal_id = ?)
+                UNION ALL
+                SELECT fecha FROM orden_reposicion WHERE (? IS NULL OR destino_id = ?))""",
+            (sucursal_id, sucursal_id, sucursal_id, sucursal_id))
+        return fila["primera"][:10] if fila and fila["primera"] else None
+
     def anios_con_datos(self, sucursal_id):
         return [fila["anio"] for fila in self.db.consultar("""
             SELECT DISTINCT CAST(strftime('%Y', fecha) AS INTEGER) AS anio FROM (

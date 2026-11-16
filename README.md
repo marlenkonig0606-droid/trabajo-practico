@@ -10,7 +10,7 @@ referencia (`alquilerDeAutos`), pero con las capas separadas en carpetas.
 cd backend
 pip install -r requirements.txt
 $env:CD_REGISTRATION_CODE = "marlufa"
-python app.py                # http://localhost:5000 (crea la base y carga datos de prueba)
+python app.py                # http://localhost:5000 (la primera vez copia la base de demostración)
 
 # Terminal 2 — frontend
 cd frontend
@@ -40,6 +40,23 @@ archivo `backend/cd_registration_code.txt` con el código en la primera línea (
 Para producción, configurá además `FLASK_SECRET_KEY` con un valor secreto persistente y
 serví la aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo se genera una clave
 temporal al iniciar, por lo que las sesiones no sobreviven a un reinicio del servidor.
+
+## Datos de demostración (los mismos para todo el equipo)
+
+`backend/database/demo/datos_demo.db` tiene casi dos años de operación simulada
+(enero 2025 – noviembre 2026) con los servicios reales del sistema: ventas y devoluciones
+en los dos locales, compras de los CD a proveedores, pedidos de reposición, bultos
+despachados, recibidos y rechazados. Se sube al repositorio para que todos vean lo mismo.
+
+- La **primera vez** que se corre `python app.py`, si no existe `backend/tp_cd_locales.db`,
+  se crea como copia de la base de demostración.
+- Si ya tenías una base y querés los datos del equipo: cerrá el backend y corré
+  `python restaurar_demo.py` (tu base anterior queda guardada como `respaldo_<fecha>.db`).
+- Para volver a generarla: `python generar_datos_demo.py` (es determinística).
+
+Usuarios (contraseña `12345678`): `admincentro@dao.com` (Local Centro),
+`adminnuevacordoba@dao.com` (Local Nueva Córdoba), `cdcentro@dao.com` (CD Central),
+`cdnorte@dao.com` (CD Norte).
 
 ## Arquitectura
 
