@@ -19,6 +19,22 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
             "sucursal_id": sucursal_id, "producto_id": producto_id,
             "libre": self.libre(sucursal_id, producto_id)})
 
+    def revisar_alertas(self, sucursal_id=None, producto_id=None):
+        """Recalcula las alertas de stock mínimo con el stock y el mínimo ACTUALES.
+        Reutiliza el Observer: avisa STOCK_MODIFICADO y AlertaStockMinimoObserver
+        abre, actualiza o resuelve la alerta. Sin parámetros revisa todo."""
+        with self.db.transaccion():
+            for par in self.dao.pares_para_alertas(sucursal_id, producto_id):
+                self._avisar_cambio(par["sucursal_id"], par["producto_id"])
+
+    def revisar_alertas_por_cambio_de_minimo(self, local_id=None, producto_id=None):
+        """Cambió un mínimo de local (o una habilitación): hay que revisar ese local
+        y todos los CD, porque el mínimo del CD es la suma de los locales."""
+        with self.db.transaccion():
+            self.revisar_alertas(local_id, producto_id)
+            for cd_id in self.dao.cds():
+                self.revisar_alertas(cd_id, producto_id)
+
     def disponible(self, sucursal_id, producto_id):
         fila = self.dao.disponible(sucursal_id, producto_id)
         return fila["disponible"] if fila else 0

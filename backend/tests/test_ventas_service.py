@@ -273,3 +273,29 @@ def test_devoluciones_parciales_acumuladas_no_permiten_devolver_mas_de_lo_vendid
         ventas.registrar_devolucion(
             venta["id"], [{"producto_id": AGUA, "cantidad": 1}], "Devolución excesiva")
     assert stock.disponible(LOCAL, AGUA) == 5
+
+
+def test_venta_fallida_no_deja_datos_a_medio_guardar(tmp_path):
+    """Si el segundo producto no tiene stock, no debe quedar ni la venta ni el
+    descuento del primero (las transacciones anidadas no hacen commit parcial)."""
+    from database.conexion import BaseDeDatos
+    from database.datos_iniciales import cargar
+    from services.excepciones import ReglaNegocioError
+    from services.stock_service import StockService
+    from services.ventas_service import VentasService
+
+    BaseDeDatos.reiniciar()
+    try:
+        db = BaseDeDatos(str(tmp_path / "atomica.db"))
+        cargar(incluir_demo=False)
+        stock = StockService()
+        stock.sumar(2, 1, 5, "APERTURA_TEST")
+        with pytest.raises(ReglaNegocioError, match="Stock insuficiente"):
+            VentasService(stock).registrar_venta(
+                2, [{"producto_id": 1, "cantidad": 2}, {"producto_id": 2, "cantidad": 1}],
+                "EFECTIVO")
+        assert db.consultar_uno("SELECT COUNT(*) AS c FROM venta")["c"] == 0
+        assert db.consultar_uno("SELECT COUNT(*) AS c FROM detalle_venta")["c"] == 0
+        assert stock.disponible(2, 1) == 5
+    finally:
+        BaseDeDatos.reiniciar()

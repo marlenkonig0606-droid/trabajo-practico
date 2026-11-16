@@ -7,7 +7,10 @@ class SucursalDAO:
     def __init__(self, db=None):
         self.db = db if db is not None else BaseDeDatos()
 
-    def crear(self, nombre, direccion, tipo):
+    def crear(self, nombre, direccion, tipo, al_crear=None):
+        """al_crear(cx, sucursal_id): acción opcional que se ejecuta en la MISMA
+        transacción (por ejemplo, crear el administrador de un local nuevo).
+        Si falla, se deshace también la sucursal."""
         try:
             nombre = nombre.strip()
             with self.db.transaccion() as cx:
@@ -18,6 +21,8 @@ class SucursalDAO:
                     (nombre, direccion, tipo),
                 )
                 sucursal_id = cursor.lastrowid
+                if al_crear is not None:
+                    al_crear(cx, sucursal_id)
             return True, sucursal_id
         except sqlite3.IntegrityError:
             return False, 'El nombre debe ser único y el tipo debe ser CD o LOCAL'

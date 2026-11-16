@@ -24,6 +24,12 @@ registro permite crear cuentas locales y, con esa variable configurada, cuentas 
 El código no se guarda en el repositorio. Para correr tests, desde `backend/`, ejecutá
 `python -m pytest -v`.
 
+**Código de invitación del CD (alternativa sin variable de entorno):** también se puede crear el
+archivo `backend/cd_registration_code.txt` con el código en la primera línea (por ejemplo
+`dao2026`). El backend lo lee en cada registro, así que no hace falta reiniciarlo. Si la variable
+`CD_REGISTRATION_CODE` está configurada, tiene prioridad sobre el archivo. El archivo está en
+`.gitignore`: cada integrante tiene el suyo y el código no se sube al repositorio.
+
 Para producción, configurá además `FLASK_SECRET_KEY` con un valor secreto persistente y
 serví la aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo se genera una clave
 temporal al iniciar, por lo que las sesiones no sobreviven a un reinicio del servidor.
@@ -83,7 +89,31 @@ Los registros existentes quedan activos y los proveedores sin nombre toman su ra
 El registro desde la pantalla de inicio de sesión crea cuentas para la sucursal seleccionada.
 Para el CD, exige el código configurado en el servidor. Las contraseñas se guardan hasheadas.
 
-Las cuentas locales solo consultan su stock, ventas y reportes. Desde Reposición pueden crear
+### Roles de local: Administrador y Empleado
+
+| | Administrador | Empleado |
+|---|---|---|
+| Pestaña **Mi local** (panel con ventas, stock bajo mínimo, órdenes, bultos y equipo) | ✅ | ❌ |
+| Aprobar o rechazar cuentas y dar de alta perfiles (eligiendo el rol) | ✅ | ❌ |
+| Habilitar productos en el local | ✅ | ❌ (403) |
+| Reportes | ✅ | ❌ (403) |
+| Ventas, devoluciones, reposición, recepción y stock | ✅ | ✅ |
+
+- **Administrador automático:** al crear un local desde Catálogo, en la misma transacción se crea su
+  administrador (correo indicado o `admin.local<id>@cdlocales.local`) con una contraseña temporal que
+  se muestra una sola vez al CD. Si falla la creación del administrador, el local tampoco se crea.
+  Los locales que ya existían reciben uno al iniciar el backend: sus credenciales se muestran en la
+  consola y se guardan en `backend/credenciales_iniciales.txt` (no se sube, está en `.gitignore`).
+- **Aprobación:** quien se registra en un local queda `PENDIENTE` (elige si solicita perfil de
+  Empleado o Administrador). Si intenta entrar, ve el aviso de cuenta pendiente. El administrador
+  la aprueba (confirmando o cambiando el rol) o la rechaza con un motivo.
+- **Contraseña temporal:** al aprobar, el sistema genera una contraseña aleatoria (`secrets`) que el
+  administrador entrega. Con ella la persona entra, pero el backend bloquea todo
+  (`CAMBIO_PASSWORD_OBLIGATORIO`) hasta que elige una propia.
+- **Bases existentes:** la migración deja aprobadas las cuentas que ya había; en cada local la más
+  antigua pasa a Administrador y el resto a Empleado. En el CD no se usan roles.
+
+Las cuentas locales solo consultan su stock, ventas y (si son administradoras) reportes. Desde Reposición pueden crear
 solicitudes para su propia sucursal y elegir cualquier CD como origen; ven las órdenes dirigidas
 a su sucursal y las que solicitaron. La sugerencia automática usa únicamente el stock de su
 propia sucursal. El CD puede consultar todas las órdenes y gestionar su preparación, armado y
@@ -119,6 +149,21 @@ el usuario local ve solo su sucursal. Incluye ventas, ingresos, devoluciones, in
 ticket promedio, unidades y producto más vendido; para el CD también indica el local con
 mayores ingresos netos. Las fechas futuras y los rangos invertidos se rechazan tanto en la
 interfaz como en la API. Debajo se conservan los reportes detallados y sus filtros.
+
+### Reporte gerencial del local
+
+Los locales (solo el Administrador) tienen una pantalla propia (`ReportesLocal.jsx`) que se
+alimenta de `GET /api/reportes/local?anio=AAAA` o `?desde=&hasta=`. Se filtra por **año completo**
+o por **período** y se recalcula al cambiar el filtro. Tiene 7 secciones: resumen anual (ventas,
+facturado, ticket promedio = facturado ÷ ventas, unidades, mes de mayor facturación y de más
+ventas, facturación y ticket mensual), medios de pago (importe y %), productos (podio, ranking y
+comparación mensual de dos productos), estadística de tickets (media, mediana, desvío, cuartiles,
+atípicos por rango intercuartílico, prueba de Jarque-Bera y campana de Gauss solo si la
+distribución lo permite, dispersión), stock (libre vs. mínimo, alertas pendientes y permanencia
+reconstruida con `movimiento_stock`), devoluciones, órdenes, tránsito y rechazos, y logística
+(pedidos, bultos por CD, bultos vs. ventas y relación ventas ÷ bultos). Los gráficos son SVG
+propios (`components/Graficos.jsx`), sin librerías. Los cálculos estadísticos y de permanencia
+están en `services/analisis.py`. El CD conserva su pantalla de reportes.
 
 ## Catálogo, sucursales y proveedores
 
@@ -180,3 +225,18 @@ dentro de la transacción.
 La descripción funcional completa —permisos, solicitudes, recepción, ventas, devoluciones,
 reportes y patrones— está en [documentacion/README.md](./documentacion/README.md). El CD
 puede administrar sucursales, productos, categorías y proveedores desde Catálogo.
+
+## Interfaz y stock mínimo por sucursal
+
+- **Listados con filtros y paginación en el backend**: ventas, productos, catálogo, stock,
+  solicitudes y recepciones aceptan `?pagina=&por_pagina=` y filtros combinables
+  (`q` busca parte del texto sin distinguir mayúsculas ni tildes). Responden
+  `{ items, total, pagina, paginas }`. Sin `pagina` siguen devolviendo la lista completa.
+- **Pantallas**: acciones con íconos y tooltip, "Abrir detalle" expandible, altas y
+  operaciones en modales, una sola acción para activar/desactivar, fechas DD/MM/AAAA.
+  Nueva pestaña **Productos** para los locales.
+- **Stock mínimo**: cada local tiene el suyo (`producto_sucursal.stock_minimo`, lo edita su
+  administrador). El de cada CD es la suma, por producto, de los mínimos de los locales
+  activos que lo tienen habilitado (vista `minimo_vigente`). Las alertas se recalculan al
+  cambiar stock, mínimos, habilitaciones o sucursales, y al iniciar el backend.
+- Se quitó "Mantener pendiente" (acción `ESPERAR`): no cambiaba el estado de la orden.

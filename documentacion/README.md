@@ -65,8 +65,9 @@ El sistema gestiona una cadena de locales que se abastecen desde un **Centro de 
 - El registro crea una cuenta asociada a la sucursal elegida. Las contraseñas se almacenan
   hasheadas y la sesión se mantiene en una cookie HTTP segura según la configuración.
 - Para registrar una cuenta de CD, el servidor debe tener configurada la variable
-  `CD_REGISTRATION_CODE`. El usuario ingresa ese código al registrarse; no se debe guardar
-  el código en el repositorio.
+  `CD_REGISTRATION_CODE` o el archivo local `backend/cd_registration_code.txt` (la variable
+  tiene prioridad). El usuario ingresa ese código al registrarse; no se debe guardar el código
+  en el repositorio (el archivo está en `.gitignore`).
 - Las cuentas locales pueden consultar únicamente su stock, ventas y reportes. Pueden crear
   solicitudes para su propia sucursal, eligiendo cualquier CD de origen, y consultar las
   solicitudes que hicieron o que tienen como destino su sucursal.
@@ -261,7 +262,9 @@ npm install
 npm run dev              # http://localhost:5173
 ```
 
-La variable debe configurarse en la terminal del backend antes de iniciar Flask. Para
+La variable debe configurarse en la terminal del backend antes de iniciar Flask. Como
+alternativa, se puede crear `backend/cd_registration_code.txt` con el código en la primera
+línea: se lee en cada registro y no hace falta reiniciar el backend. Para
 producción, usar un código de invitación privado y configurar también `FLASK_SECRET_KEY` con
 un valor secreto persistente; habilitar `FLASK_COOKIE_SECURE=1` al servir sobre HTTPS.
 Las pruebas backend se ejecutan desde `backend/` con `python -m pytest -v`.
