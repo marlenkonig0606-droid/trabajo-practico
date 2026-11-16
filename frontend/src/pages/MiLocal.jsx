@@ -10,7 +10,6 @@ const pesos = (n) => `$${Number(n ?? 0).toLocaleString('es-AR', { maximumFractio
 export default function MiLocal({ usuario }) {
   const [panel, setPanel] = useState(null)
   const [equipo, setEquipo] = useState([])
-  const [rolesElegidos, setRolesElegidos] = useState({})
   const [motivos, setMotivos] = useState({})
   const [credencial, setCredencial] = useState(null)
   const [nuevoEmail, setNuevoEmail] = useState('')
@@ -45,7 +44,7 @@ export default function MiLocal({ usuario }) {
   }
 
   const aprobar = (u) => ejecutar(`a${u.id}`, async () => {
-    const r = await api.aprobarUsuario(u.id, rolesElegidos[u.id] ?? u.rol)
+    const r = await api.aprobarUsuario(u.id)
     setCredencial({ email: u.email, password: r.password_temporal, rol: r.usuario.rol })
   })
 
@@ -100,22 +99,20 @@ export default function MiLocal({ usuario }) {
         <h2>Solicitudes pendientes ({pendientes.length})</h2>
         <p className="ayuda">
           Hasta que no apruebes una cuenta, esa persona no puede entrar al sistema.
-          Al aprobarla se genera una contraseña temporal que tenés que entregarle.
+          Al aprobarla se genera una contraseña temporal que tenés que entregarle. El rol es
+          el que eligió la persona al registrarse: si no corresponde, rechazá la solicitud.
         </p>
         {pendientes.length === 0 ? <p className="vacio">No hay solicitudes pendientes.</p> : (
           <table>
-            <thead><tr><th>Correo</th><th>Fecha</th><th>Perfil a asignar</th>
+            <thead><tr><th>Correo</th><th>Fecha</th><th>Rol solicitado</th>
               <th>Motivo (si rechazás)</th><th>Acciones</th></tr></thead>
             <tbody>
               {pendientes.map((u) => (
                 <tr key={u.id}>
                   <td>{u.email}</td>
                   <td>{formatearFecha(u.fecha_alta)}</td>
-                  <td>
-                    <SelectorRol compacto titulo={`Perfil ${u.id}`}
-                                 valor={rolesElegidos[u.id] ?? u.rol}
-                                 onCambiar={(rol) => setRolesElegidos({ ...rolesElegidos, [u.id]: rol })} />
-                  </td>
+                  <td><span className={`insignia-rol ${u.rol.toLowerCase()}`}>
+                    {u.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Empleado'}</span></td>
                   <td>
                     <input aria-label={`Motivo de rechazo de ${u.email}`} value={motivos[u.id] ?? ''}
                            onChange={(e) => setMotivos({ ...motivos, [u.id]: e.target.value })} />

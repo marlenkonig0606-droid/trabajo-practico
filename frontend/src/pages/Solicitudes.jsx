@@ -6,6 +6,7 @@ import {
   nombreEstado, useConfirmacion, useListado,
 } from '../components/UI.jsx'
 import { formatearFecha, formatearFechaHora, hoyISO } from '../utils/fechas.js'
+import CampoFecha from '../components/CampoFecha.jsx'
 
 // Reposición del local: solicitudes al CD y recepción de los bultos que llegan.
 export default function Solicitudes({ usuario }) {
@@ -86,10 +87,10 @@ function ListadoSolicitudes({ onMensaje, onError }) {
               <option key={e} value={e}>{nombreEstado(e)}</option>)}
           </select></label>
         <label>Desde
-          <input type="date" value={filtros.desde} max={filtros.hasta || hoy}
+          <CampoFecha value={filtros.desde} max={filtros.hasta || hoy}
                  onChange={(e) => setFiltros({ ...filtros, desde: e.target.value })} /></label>
         <label>Hasta
-          <input type="date" value={filtros.hasta} max={hoy} min={filtros.desde || undefined}
+          <CampoFecha value={filtros.hasta} max={hoy} min={filtros.desde || undefined}
                  onChange={(e) => setFiltros({ ...filtros, hasta: e.target.value })} /></label>
       </BarraFiltros>
       {listado.error && <div className="error">{listado.error}</div>}

@@ -171,15 +171,18 @@ def test_administrador_rechaza_y_no_gestiona_otros_locales(app_vacia):
     assert login.get_json()["motivo"] == "No trabaja en este local"
 
 
-def test_administrador_elige_el_rol_al_aprobar_y_en_el_alta_directa(app_vacia):
+def test_al_aprobar_se_respeta_el_rol_elegido_y_en_el_alta_directa_se_elige(app_vacia):
     pide_admin = registrar_pendiente(app_vacia.test_client(), "quiere@example.com",
                                      rol="ADMINISTRADOR")
     admin = app_vacia.test_client()
     registrar_local_aprobado(admin, "admin2@example.com", 2)
 
-    aprobado = admin.post(f"/api/local/usuarios/{pide_admin['id']}/aprobar",
-                          json={"rol": "EMPLEADO"}).get_json()
-    assert aprobado["usuario"]["rol"] == "EMPLEADO"
+    # No se puede aprobar con otro rol: se aprueba con el que eligió el usuario.
+    cambiado = admin.post(f"/api/local/usuarios/{pide_admin['id']}/aprobar",
+                          json={"rol": "EMPLEADO"})
+    assert cambiado.status_code == 400
+    aprobado = admin.post(f"/api/local/usuarios/{pide_admin['id']}/aprobar", json={}).get_json()
+    assert aprobado["usuario"]["rol"] == "ADMINISTRADOR"
 
     alta = admin.post("/api/local/usuarios",
                       json={"email": "nuevo@example.com", "rol": "ADMINISTRADOR"})

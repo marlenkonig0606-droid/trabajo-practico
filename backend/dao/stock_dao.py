@@ -83,7 +83,8 @@ class StockDAO:
         return fila["cantidad"]
 
     def listar(self, sucursal_id):
-        """stock_minimo = mínimo vigente de ESA sucursal (el propio del local o del CD).
+        """stock_minimo = mínimo vigente de ESA sucursal (el del local, o para un CD
+        el mayor entre el suyo y la suma de los locales). minimo_locales = esa suma.
         stock_minimo_defecto = valor inicial del producto."""
         return self.db.consultar(
             """SELECT p.id AS producto_id, p.codigo, p.nombre, p.precio_venta,
@@ -92,6 +93,7 @@ class StockDAO:
                       p.proveedor_id, pr.nombre AS proveedor,
                       p.categoria_id, c.nombre AS categoria,
                       COALESCE(ps.stock_minimo, p.stock_minimo) AS stock_minimo_local,
+                      COALESCE(ml.suma, 0) AS minimo_locales,
                       COALESCE(ps.habilitado, 0) AS habilitado,
                       COALESCE(s.disponible, 0) AS disponible,
                       COALESCE(s.reservado, 0) AS reservado,
@@ -103,6 +105,7 @@ class StockDAO:
                LEFT JOIN minimo_vigente mv ON mv.producto_id = p.id AND mv.sucursal_id = ?
                LEFT JOIN proveedor pr ON pr.id = p.proveedor_id
                LEFT JOIN categoria c ON c.id = p.categoria_id
+               LEFT JOIN minimo_locales ml ON ml.producto_id = p.id
                ORDER BY p.nombre""", (sucursal_id, sucursal_id, sucursal_id))
 
     def pares_para_alertas(self, sucursal_id=None, producto_id=None):
@@ -118,6 +121,11 @@ class StockDAO:
             """INSERT INTO minimo_cd (sucursal_id, producto_id, stock_minimo) VALUES (?, ?, ?)
                ON CONFLICT (sucursal_id, producto_id) DO UPDATE SET stock_minimo = excluded.stock_minimo""",
             (cd_id, producto_id, stock_minimo))
+
+    def suma_minimos_locales(self, producto_id):
+        fila = self.db.consultar_uno("SELECT suma FROM minimo_locales WHERE producto_id=?",
+                                     (producto_id,))
+        return fila["suma"] if fila else 0
 
     def tipo_de_sucursal(self, sucursal_id):
         fila = self.db.consultar_uno("SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))

@@ -5,6 +5,7 @@ import {
   useConfirmacion, useListado,
 } from '../components/UI.jsx'
 import { formatearFecha, formatearFechaHora, hoyISO } from '../utils/fechas.js'
+import CampoFecha from '../components/CampoFecha.jsx'
 
 const ESTADOS_ORDEN = ['PENDIENTE', 'EN_PREPARACION', 'DESPACHADA', 'CERRADA']
 const FILTROS = { numero: '', destino_id: '', estado_orden: '', desde: '', hasta: '' }
@@ -75,10 +76,10 @@ export default function Logistica() {
             {ESTADOS_ORDEN.map((e) => <option key={e} value={e}>{nombreEstado(e)}</option>)}
           </select></label>
         <label>Desde
-          <input type="date" value={filtros.desde} max={filtros.hasta || hoy}
+          <CampoFecha value={filtros.desde} max={filtros.hasta || hoy}
                  onChange={(e) => setFiltros({ ...filtros, desde: e.target.value })} /></label>
         <label>Hasta
-          <input type="date" value={filtros.hasta} max={hoy} min={filtros.desde || undefined}
+          <CampoFecha value={filtros.hasta} max={hoy} min={filtros.desde || undefined}
                  onChange={(e) => setFiltros({ ...filtros, hasta: e.target.value })} /></label>
       </BarraFiltros>
 

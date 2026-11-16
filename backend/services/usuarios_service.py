@@ -79,10 +79,15 @@ class UsuariosService:
         return self.dao.listar_por_sucursal(admin["sucursal_id"])
 
     def aprobar(self, admin, usuario_id, rol=None):
-        """Aprueba una cuenta pendiente y le genera una contraseña temporal.
-        El administrador puede confirmar el rol pedido o cambiarlo."""
+        """Aprueba una cuenta pendiente con el rol QUE ELIGIÓ EL USUARIO al
+        registrarse y le genera una contraseña temporal. El administrador no
+        puede cambiarlo: si no está de acuerdo, rechaza la solicitud."""
         usuario = self._del_mismo_local(admin, usuario_id)
-        rol = validar_rol(rol) if rol is not None else usuario["rol"]
+        if rol is not None and rol != usuario["rol"]:
+            raise ReglaNegocioError(
+                "No se puede cambiar el rol al aprobar: se aprueba con el rol que eligió "
+                "el usuario. Si no corresponde, rechazá la solicitud.")
+        rol = usuario["rol"]
         password_temporal = generar_password_temporal()
         cambiadas = self.dao.resolver_pendiente(
             usuario_id, "APROBADO", rol, admin["id"],
