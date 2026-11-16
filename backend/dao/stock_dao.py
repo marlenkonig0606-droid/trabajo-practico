@@ -83,8 +83,8 @@ class StockDAO:
         return fila["cantidad"]
 
     def listar(self, sucursal_id):
-        """stock_minimo = mínimo vigente de ESA sucursal (propio del local, o suma de
-        los locales para un CD). stock_minimo_defecto = valor inicial del producto."""
+        """stock_minimo = mínimo vigente de ESA sucursal (el propio del local o del CD).
+        stock_minimo_defecto = valor inicial del producto."""
         return self.db.consultar(
             """SELECT p.id AS producto_id, p.codigo, p.nombre, p.precio_venta,
                       COALESCE(mv.stock_minimo, 0) AS stock_minimo,
@@ -112,6 +112,16 @@ class StockDAO:
                FROM sucursal s CROSS JOIN producto p
                WHERE (? IS NULL OR s.id = ?) AND (? IS NULL OR p.id = ?)""",
             (sucursal_id, sucursal_id, producto_id, producto_id))
+
+    def guardar_minimo_cd(self, cd_id, producto_id, stock_minimo):
+        self.db.ejecutar(
+            """INSERT INTO minimo_cd (sucursal_id, producto_id, stock_minimo) VALUES (?, ?, ?)
+               ON CONFLICT (sucursal_id, producto_id) DO UPDATE SET stock_minimo = excluded.stock_minimo""",
+            (cd_id, producto_id, stock_minimo))
+
+    def tipo_de_sucursal(self, sucursal_id):
+        fila = self.db.consultar_uno("SELECT tipo FROM sucursal WHERE id=?", (sucursal_id,))
+        return fila["tipo"] if fila else None
 
     def cds(self):
         return [f["id"] for f in self.db.consultar(

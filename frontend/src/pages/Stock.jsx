@@ -78,7 +78,7 @@ export default function Stock({ usuario }) {
         <div>
           <h2>{esCD ? 'Stock' : `Productos y stock · ${usuario.sucursal}`}</h2>
           <p className="ayuda">{verCD
-            ? 'El mínimo del CD es la suma de los mínimos que cada local configuró para el producto.'
+            ? 'Cada CD configura su propio stock mínimo. Los mínimos de los locales los define el administrador de cada local.'
             : esAdminLocal
               ? 'Habilitá los productos que vende el local y configurá su stock mínimo (es propio de este local).'
               : 'Productos del local, su stock libre y el mínimo que configuró el administrador.'}</p>
@@ -169,10 +169,12 @@ export default function Stock({ usuario }) {
                                   etiqueta={abierto === f.producto_id ? 'Cerrar detalle' : 'Abrir detalle'}
                                   activo={abierto === f.producto_id}
                                   onClick={() => setAbierto(abierto === f.producto_id ? null : f.producto_id)} />
-                      {puedeAjustar && (
+                      {puedeAjustar && <>
                         <BotonIcono icono="editar" etiqueta="Ajustar stock disponible"
                                     onClick={() => setAjustando(f)} />
-                      )}
+                        <BotonIcono icono="minimo" etiqueta="Editar stock mínimo del CD"
+                                    onClick={() => setEditandoMinimo(f)} />
+                      </>}
                       {esAdminLocal && <>
                         <BotonIcono icono="minimo" etiqueta="Editar stock mínimo del local"
                                     onClick={() => setEditandoMinimo(f)} />
@@ -189,7 +191,7 @@ export default function Stock({ usuario }) {
                         <div><dt>Categoría</dt><dd>{f.categoria ?? '—'}</dd></div>
                         <div><dt>Proveedor</dt><dd>{f.proveedor ?? '—'}</dd></div>
                         <div><dt>Precio de venta</dt><dd>{pesos(f.precio_venta)}</dd></div>
-                        <div><dt>{verCD ? 'Mínimo del CD (suma de locales)' : 'Mínimo del local'}</dt>
+                        <div><dt>{verCD ? 'Mínimo del CD' : 'Mínimo del local'}</dt>
                           <dd>{verCD ? f.stock_minimo : f.stock_minimo_local}</dd></div>
                         <div><dt>Mínimo por defecto del catálogo</dt><dd>{f.stock_minimo_defecto}</dd></div>
                         <div><dt>Estado en la sucursal</dt><dd>{f.habilitado || verCD ? 'Habilitado' : 'Deshabilitado'}</dd></div>
@@ -213,11 +215,12 @@ export default function Stock({ usuario }) {
                      }} />
       )}
       {editandoMinimo && (
-        <ModalMinimo fila={editandoMinimo} sucursalId={usuario.sucursal_id}
+        <ModalMinimo fila={editandoMinimo} sucursalId={usuario.sucursal_id} esCD={esCD}
+                     nombreSucursal={usuario.sucursal}
                      onCerrar={() => setEditandoMinimo(null)}
                      onGuardado={(p) => {
                        setEditandoMinimo(null)
-                       setMensaje(`Stock mínimo de ${p.nombre} en el local: ${p.stock_minimo_local}. El mínimo del CD se recalculó.`)
+                       setMensaje(`Stock mínimo de ${p.nombre} en ${usuario.sucursal}: ${esCD ? p.stock_minimo : p.stock_minimo_local}.`)
                        recargarTodo()
                      }} />
       )}
@@ -268,8 +271,10 @@ function ModalAjuste({ fila, sucursalId, onCerrar, onGuardado }) {
   )
 }
 
-function ModalMinimo({ fila, sucursalId, onCerrar, onGuardado }) {
-  const [valor, setValor] = useState(String(fila.stock_minimo_local))
+// El administrador del local edita el mínimo de SU local; el CD, el de SU CD.
+// Ninguno puede tocar el mínimo del otro.
+function ModalMinimo({ fila, sucursalId, esCD, nombreSucursal, onCerrar, onGuardado }) {
+  const [valor, setValor] = useState(String(esCD ? fila.stock_minimo : fila.stock_minimo_local))
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
   const valido = valor !== '' && Number.isInteger(Number(valor)) && Number(valor) >= 0
@@ -278,16 +283,18 @@ function ModalMinimo({ fila, sucursalId, onCerrar, onGuardado }) {
     if (!valido || guardando) return
     setGuardando(true)
     try {
-      onGuardado(await api.cambiarMinimoLocal(sucursalId, fila.producto_id, Number(valor)))
+      onGuardado(esCD
+        ? await api.cambiarMinimoCd(sucursalId, fila.producto_id, Number(valor))
+        : await api.cambiarMinimoLocal(sucursalId, fila.producto_id, Number(valor)))
     } catch (err) { setError(err.message); setGuardando(false) }
   }
   return (
     <Modal titulo={`Stock mínimo · ${fila.nombre}`} onCerrar={onCerrar} ancho="chico">
       <form className="formulario-modal" onSubmit={guardar}>
         {error && <div className="error" role="alert">{error}</div>}
-        <p className="ayuda">Es el mínimo de <b>este local</b>: no cambia el de los otros locales.
-          El mínimo de los centros de distribución es la suma de los mínimos de todos los locales
-          y se actualiza solo. Si el stock libre queda por debajo, se genera una alerta.</p>
+        <p className="ayuda">Es el mínimo de <b>{nombreSucursal}</b>: no cambia el de ninguna otra
+          sucursal (cada local y cada CD controla solo el suyo). Si el stock libre queda por
+          debajo, se genera una alerta.</p>
         <label>Stock mínimo
           <input type="number" min="0" step="1" required value={valor}
                  onChange={(e) => setValor(e.target.value)} /></label>

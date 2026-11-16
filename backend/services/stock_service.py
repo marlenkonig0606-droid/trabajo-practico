@@ -28,12 +28,23 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
                 self._avisar_cambio(par["sucursal_id"], par["producto_id"])
 
     def revisar_alertas_por_cambio_de_minimo(self, local_id=None, producto_id=None):
-        """Cambió un mínimo de local (o una habilitación): hay que revisar ese local
-        y todos los CD, porque el mínimo del CD es la suma de los locales."""
+        """Cambió un mínimo de local (o una habilitación): se revisa SOLO ese local.
+        El mínimo de cada CD es propio, no depende de los locales."""
+        self.revisar_alertas(local_id, producto_id)
+
+    def cambiar_minimo_cd(self, cd_id, producto_id, stock_minimo):
+        """Stock mínimo PROPIO de un CD. No cambia el mínimo de ningún local."""
+        if self.dao.tipo_de_sucursal(cd_id) != "CD":
+            raise ReglaNegocioError("Este mínimo se configura solo para un centro de distribución")
+        if self.dao.obtener_producto(producto_id) is None:
+            raise ReglaNegocioError(f"No existe el producto {producto_id}")
+        if (isinstance(stock_minimo, bool) or not isinstance(stock_minimo, int)
+                or stock_minimo < 0):
+            raise ReglaNegocioError("El stock mínimo debe ser un entero mayor o igual a cero")
         with self.db.transaccion():
-            self.revisar_alertas(local_id, producto_id)
-            for cd_id in self.dao.cds():
-                self.revisar_alertas(cd_id, producto_id)
+            self.dao.guardar_minimo_cd(cd_id, producto_id, stock_minimo)
+            self.revisar_alertas(cd_id, producto_id)
+        return next(f for f in self.listar(cd_id) if f["producto_id"] == producto_id)
 
     def disponible(self, sucursal_id, producto_id):
         fila = self.dao.disponible(sucursal_id, producto_id)

@@ -49,6 +49,9 @@ export const api = {
   buscarProductosSucursal: (sucursalId, f) =>
     pedir('GET', `/sucursales/${sucursalId}/productos${consulta(f)}`),
   buscarStock: (sucursalId, f) => pedir('GET', `/stock/${sucursalId}${consulta(f)}`),
+  // Mínimo propio del CD (solo su propio CD); el de los locales lo edita cada local.
+  cambiarMinimoCd: (cdId, productoId, stockMinimo) =>
+    pedir('PATCH', `/stock/${cdId}/${productoId}/minimo`, { stock_minimo: stockMinimo }),
   buscarOrdenes: (f) => pedir('GET', `/ordenes${consulta(f)}`),
   buscarRecepciones: (f) => pedir('GET', `/recepciones${consulta(f)}`),
   cambiarMinimoLocal: (sucursalId, productoId, stockMinimo) =>

@@ -46,7 +46,7 @@ const CAMPOS = {
     { id: 'proveedor_id', titulo: 'Proveedor', tipo: 'proveedor' },
     { id: 'precio_costo', titulo: 'Precio de costo', tipo: 'numero', minimo: 0, paso: '0.01', requerido: true },
     { id: 'precio_venta', titulo: 'Precio de venta', tipo: 'numero', minimo: 0, paso: '0.01', requerido: true },
-    { id: 'stock_minimo', titulo: 'Stock mínimo inicial en cada local', tipo: 'numero', minimo: 0, paso: 1, requerido: true },
+    { id: 'stock_minimo', titulo: 'Stock mínimo sugerido (valor inicial)', tipo: 'numero', minimo: 0, paso: 1, requerido: true },
   ],
   categorias: [
     { id: 'nombre', titulo: 'Nombre', requerido: true },

@@ -9,7 +9,7 @@ class ObservadoresDAO:
         return self.db.transaccion()
 
     def stock_minimo(self, sucursal_id, producto_id):
-        """Mínimo vigente de ESA sucursal (propio del local o suma de locales si es CD)."""
+        """Mínimo vigente de ESA sucursal (el propio del local o el propio del CD)."""
         fila = self.db.consultar_uno(
             "SELECT stock_minimo FROM minimo_vigente WHERE sucursal_id=? AND producto_id=?",
             (sucursal_id, producto_id))

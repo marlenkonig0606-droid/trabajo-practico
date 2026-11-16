@@ -449,6 +449,16 @@ def crear_app(cargar_demo=True):
         return jsonify(catalogo.cambiar_minimo_local(
             id_sucursal, id_producto, datos.get("stock_minimo")))
 
+    @app.patch("/api/stock/<int:sucursal_id>/<int:producto_id>/minimo")
+    def cambiar_minimo_cd(sucursal_id, producto_id):
+        """Cada CD configura SU stock mínimo. Nadie más puede cambiarlo, y el CD
+        no puede cambiar el de los locales (eso es de cada administrador de local)."""
+        if g.usuario["tipo"] != "CD" or sucursal_id != g.usuario["sucursal_id"]:
+            raise AccesoDenegadoError(
+                "Solo podés configurar el stock mínimo de tu propio Centro de Distribución")
+        datos = cuerpo_json()
+        return jsonify(stock.cambiar_minimo_cd(sucursal_id, producto_id, datos.get("stock_minimo")))
+
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):
         if (g.usuario["tipo"] != "CD"
