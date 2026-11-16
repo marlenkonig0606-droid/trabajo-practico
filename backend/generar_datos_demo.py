@@ -198,6 +198,8 @@ distintos = db.consultar_uno("""
     SELECT COUNT(*) AS n FROM stock st
     WHERE st.disponible <> COALESCE((SELECT SUM(m.cantidad) FROM movimiento_stock m
           WHERE m.sucursal_id = st.sucursal_id AND m.producto_id = st.producto_id), 0)""")["n"]
+from database.base_demo import VERSION_DATOS  # noqa: E402
+db.ejecutar(f"PRAGMA user_version = {VERSION_DATOS}")   # versión de los datos del equipo
 db.ejecutar("VACUUM")
 print("RESUMEN", resumen, "| en tránsito:", len(pendientes))
 print("stock distinto de movimientos:", distintos,

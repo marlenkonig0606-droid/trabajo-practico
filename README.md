@@ -48,10 +48,12 @@ temporal al iniciar, por lo que las sesiones no sobreviven a un reinicio del ser
 en los dos locales, compras de los CD a proveedores, pedidos de reposición, bultos
 despachados, recibidos y rechazados. Se sube al repositorio para que todos vean lo mismo.
 
-- La **primera vez** que se corre `python app.py`, si no existe `backend/tp_cd_locales.db`,
-  se crea como copia de la base de demostración.
-- Si ya tenías una base y querés los datos del equipo: cerrá el backend y corré
-  `python restaurar_demo.py` (tu base anterior queda guardada como `respaldo_<fecha>.db`).
+- **Automático:** después de `git pull`, al correr `python app.py` el backend deja
+  `backend/tp_cd_locales.db` con los datos del equipo. Si no existía, la crea; si era de una
+  versión de datos anterior, guarda un respaldo (`respaldo_<fecha>.db`) y la reemplaza. Pasa
+  una sola vez por versión: lo que cargues después se conserva.
+- Para volver a los datos del equipo cuando quieras: cerrá el backend y corré
+  `python restaurar_demo.py` (tu base anterior queda como respaldo).
 - Para volver a generarla: `python generar_datos_demo.py` (es determinística).
 
 Usuarios (contraseña `12345678`): `admincentro@dao.com` (Local Centro),
