@@ -191,3 +191,9 @@ def test_campana_de_referencia_sin_atipicos():
     assert len(central["curva_normal"]) > 0               # siempre se dibuja la referencia
     assert sum(c["cantidad"] for c in central["histograma"]) == 40
     assert all(p["x"] >= 0 for p in central["curva_normal"])
+
+
+def test_primera_fecha_para_todo_el_historial(local_con_ventas):
+    # La venta más vieja del local es del 31/12/2024: "Todo el historial" arranca ahí.
+    assert local_con_ventas.reporte_local(2, anio=2025)["primera_fecha"] == "2024-12-31"
+    assert local_con_ventas.reporte_cd()["primera_fecha"] == "2024-12-31"

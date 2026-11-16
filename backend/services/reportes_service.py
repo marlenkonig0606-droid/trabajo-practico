@@ -138,6 +138,7 @@ class ReportesService:
         return {
             "periodo": {"desde": desde, "hasta": hasta, "anio": anio, "meses": meses},
             "anios_disponibles": self.dao.anios_con_datos(sucursal_id),
+            "primera_fecha": self.dao.primera_fecha(sucursal_id),
             "resumen": _resumen_ventas(tickets, meses),
             "medios_pago": self._medios_pago(sucursal_id, where_v, params_v),
             "productos": {
@@ -320,6 +321,7 @@ class ReportesService:
         return {
             "periodo": {"desde": desde, "hasta": hasta, "anio": anio, "meses": meses},
             "anios_disponibles": self.dao.anios_con_datos_red(),
+            "primera_fecha": self.dao.primera_fecha(),
             "locales": locales,
             "resultado": _resultado(vendido, devuelto, perdidos, meses),
             "ventas_por_local": _ventas_por_local(vendido, devuelto, tickets, locales, meses),

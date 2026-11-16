@@ -101,7 +101,8 @@ function ReporteRed({ usuario, periodo, selector }) {
         </div>
         <div className="reportes-filtros">
           {selector}
-          <FiltroPeriodo periodo={periodo} anios={datos?.anios_disponibles} />
+          <FiltroPeriodo periodo={periodo} anios={datos?.anios_disponibles}
+                         primeraFecha={datos?.primera_fecha} />
         </div>
         <IndiceSecciones secciones={SECCIONES} prefijo={PREFIJO} />
       </div>
@@ -188,21 +189,37 @@ function VentasPorLocal({ d }) {
         detalle: `${numero(f.ventas)} ventas · ticket ${f.ticket_promedio == null ? '—' : pesos(f.ticket_promedio)} · ganancia ${pesos(f.ganancia)}`,
       }))} />
       <div className="paneles">
+        <Panel titulo="Comparación de locales" ancho>
+          <table className="tabla-reporte tabla-comparacion">
+            <thead><tr><th>Local</th><th className="num">Ventas</th><th className="num">Unidades</th>
+              <th className="num">Ticket promedio</th><th className="num">Facturado</th>
+              <th className="num">Ganancia</th><th className="num">Margen</th>
+              <th className="num">% de la red</th></tr></thead>
+            <tbody>{filas.map((f, i) => (
+              <tr key={f.local}>
+                <td><span className="muestra-color" style={{ background: colorLocal(i) }} /> {f.local}</td>
+                <td className="num">{numero(f.ventas)}</td>
+                <td className="num">{numero(f.unidades)}</td>
+                <td className="num">{f.ticket_promedio == null ? '—' : pesos(f.ticket_promedio)}</td>
+                <td className="num">{pesos(f.facturado)}</td>
+                <td className="num">{pesos(f.ganancia)}</td>
+                <td className="num">{f.facturado ? `${numero((f.ganancia / f.facturado) * 100, 1)} %` : '—'}</td>
+                <td className="num"><strong>{numero(f.participacion, 1)} %</strong></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Panel>
         <Panel titulo="Participación en la facturación">
           <Dona formato={pesos}
                 centro={{ valor: pesos(d.resultado.ingresos_netos), texto: 'ventas netas' }}
                 datos={filas.map((f, i) => ({ etiqueta: f.local, valor: f.facturado, color: colorLocal(i) }))} />
         </Panel>
-        <Panel titulo="Comparación de locales">
-          <table className="tabla-reporte">
-            <thead><tr><th>Local</th><th className="num">Ventas</th><th className="num">Unidades</th>
-              <th className="num">Facturado</th><th className="num">Ganancia</th><th className="num">%</th></tr></thead>
-            <tbody>{filas.map((f) => (
-              <tr key={f.local}><td>{f.local}</td><td className="num">{numero(f.ventas)}</td>
-                <td className="num">{numero(f.unidades)}</td><td className="num">{pesos(f.facturado)}</td>
-                <td className="num">{pesos(f.ganancia)}</td><td className="num">{numero(f.participacion, 1)} %</td></tr>
-            ))}</tbody>
-          </table>
+        <Panel titulo="Ganancia por local">
+          <BarrasHorizontales formato={pesos}
+                              datos={filas.map((f, i) => ({
+                                etiqueta: f.local, valor: f.ganancia, color: colorLocal(i),
+                                detalle: f.facturado ? `margen ${numero((f.ganancia / f.facturado) * 100, 1)} %` : null,
+                              }))} />
         </Panel>
         <Panel titulo="Facturación mensual por local" ancho>
           <BarrasAgrupadas formato={pesos}

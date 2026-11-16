@@ -31,17 +31,24 @@ export function descripcionPeriodo({ modo, anio, fechas: { desde, hasta } }, tod
   return todo
 }
 
-export function FiltroPeriodo({ periodo, anios }) {
+// primeraFecha: fecha del primer registro (la manda el backend). "Todo el
+// historial" completa los selectores con esa fecha y la de hoy.
+export function FiltroPeriodo({ periodo, anios, primeraFecha }) {
   const hoy = fechaLocalHoy()
   const { modo, setModo, anio, setAnio, fechas, setFechas } = periodo
   const lista = [...new Set([periodo.anioActual, ...(anios ?? [])])].sort((a, b) => b - a)
+  const todoElHistorial = () => setFechas({ desde: primeraFecha ?? '', hasta: hoy })
+  const elegirPeriodo = () => {
+    setModo('periodo')
+    if (!fechas.desde && !fechas.hasta) todoElHistorial()
+  }
   return (
     <>
       <div className="segmentado" role="tablist" aria-label="Tipo de período">
         <button role="tab" aria-selected={modo === 'anio'} className={modo === 'anio' ? 'activo' : ''}
                 onClick={() => setModo('anio')}>Año completo</button>
         <button role="tab" aria-selected={modo === 'periodo'} className={modo === 'periodo' ? 'activo' : ''}
-                onClick={() => setModo('periodo')}>Período</button>
+                onClick={elegirPeriodo}>Período</button>
       </div>
       {modo === 'anio' ? (
         <label>Año
@@ -59,8 +66,7 @@ export function FiltroPeriodo({ periodo, anios }) {
             <input type="date" value={fechas.hasta} max={hoy} min={fechas.desde || undefined}
                    onChange={(e) => setFechas({ ...fechas, hasta: e.target.value })} />
           </label>
-          <button className="link" onClick={() => setFechas({ desde: '', hasta: '' })}>
-            Todo el historial</button>
+          <button className="link" onClick={todoElHistorial}>Todo el historial</button>
         </div>
       )}
     </>
