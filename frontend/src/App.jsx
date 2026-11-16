@@ -106,12 +106,7 @@ export default function App() {
             <button key={s.id} className={actual === s.id ? 'activo' : ''}
                     onClick={() => setActual(s.id)}>{s.titulo}</button>
           ))}
-          <span className="sesion-usuario"><i aria-hidden="true" />{usuario.email} · {usuario.sucursal}
-            {usuario.tipo === 'LOCAL' && (
-              <span className={`insignia-rol ${usuario.rol.toLowerCase()}`}>
-                {usuario.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Empleado'}
-              </span>
-            )}</span>
+          <span className="sesion-usuario"><i aria-hidden="true" />{usuario.email} · {usuario.sucursal}</span>
           <button className="secundario" onClick={cerrarSesion}>Cerrar sesión</button>
         </nav>
       </header>
