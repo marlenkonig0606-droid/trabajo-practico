@@ -169,7 +169,17 @@ def test_ruta_del_reporte_valida_rol_y_anio(local_con_ventas, monkeypatch):
     cd = app.test_client()
     cd.post("/api/auth/register", json={"email": "cd@example.com",
             "password": "contraseña-segura", "sucursal_id": 1, "codigo_cd": "codigo"})
-    assert cd.get("/api/reportes/local").status_code == 403
+    # El CD puede ver el reporte de cualquier local, pero tiene que elegir cuál.
+    assert cd.get("/api/reportes/local").status_code == 400
+    assert cd.get("/api/reportes/local?sucursal_id=1").status_code == 400   # es un CD
+    visto_por_cd = cd.get("/api/reportes/local?anio=2025&sucursal_id=2")
+    assert visto_por_cd.status_code == 200
+    assert visto_por_cd.get_json()["resumen"]["ventas"] == 4
+    # Un local no puede espiar a otro: el parámetro se ignora.
+    assert admin.get("/api/reportes/local?anio=2025&sucursal_id=3").get_json()["resumen"]["ventas"] == 4
+    # Y el reporte de la red es solo para el CD.
+    assert admin.get("/api/reportes/cd").status_code == 403
+    assert cd.get("/api/reportes/cd?anio=2025").status_code == 200
 
 
 def test_campana_de_referencia_sin_atipicos():

@@ -514,3 +514,125 @@ export function CampanaGauss({ clases, curva = [], media, desvio, alto = 300 }) 
     </svg>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Barras de resultado: verdes hacia arriba (ganancia), rojas hacia abajo (pérdida)
+// ---------------------------------------------------------------------------
+export function BarrasResultado({ datos, formato = pesos, alto = 280 }) {
+  if (!datos.length || datos.every((d) => !d.valor)) return <SinDatos />
+  const ancho = Math.max(ANCHO, datos.length * 46)
+  const m = { arriba: 16, abajo: 34, izq: 56, der: 12 }
+  const w = ancho - m.izq - m.der
+  const h = alto - m.arriba - m.abajo
+  const maxPos = Math.max(0, ...datos.map((d) => d.valor || 0))
+  const maxNeg = Math.max(0, ...datos.map((d) => -(d.valor || 0)))
+  const { tope: topePos, marcas: marcasPos } = escala(maxPos || 1)
+  const pasoMarca = marcasPos[1] ?? topePos
+  const topeNeg = maxNeg ? pasoMarca * Math.ceil(maxNeg / pasoMarca) : 0
+  const rango = topePos + topeNeg
+  const y = (v) => m.arriba + ((topePos - v) / rango) * h
+  const marcas = []
+  for (let v = -topeNeg; v <= topePos + 1e-9; v += pasoMarca) marcas.push(Math.round(v))
+  const paso = w / datos.length
+  const anchoBarra = Math.min(34, paso * 0.62)
+  return (
+    <svg className="svg-grafico" viewBox={`0 0 ${ancho} ${alto}`} role="img">
+      {marcas.map((v) => (
+        <g key={v}>
+          <line x1={m.izq} x2={m.izq + w} y1={y(v)} y2={y(v)}
+                stroke={v === 0 ? COLORES.ejes : COLORES.grilla} strokeWidth={v === 0 ? 1.5 : 1} />
+          <text x={m.izq - 8} y={y(v) + 4} textAnchor="end" className="eje">
+            {v < 0 ? '-' : ''}{corto(Math.abs(v))}</text>
+        </g>
+      ))}
+      {datos.map((d, i) => {
+        const v = d.valor || 0
+        const x = m.izq + paso * i + (paso - anchoBarra) / 2
+        return <g key={d.etiqueta}>
+          <rect x={x} y={v >= 0 ? y(v) : y(0)} width={anchoBarra} height={Math.abs(y(v) - y(0))}
+                rx="3" fill={v >= 0 ? COLORES.exito : COLORES.alerta} opacity={v ? 0.9 : 0.25}>
+            <title>{`${d.etiqueta}: ${v < 0 ? 'pérdida' : 'ganancia'} ${formato(Math.abs(v))}${d.detalle ? ` · ${d.detalle}` : ''}`}</title>
+          </rect>
+          <text x={m.izq + paso * i + paso / 2} y={alto - 12} textAnchor="middle" className="eje">
+            {d.etiqueta}</text>
+        </g>
+      })}
+    </svg>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Varias líneas (una por serie) sobre las mismas categorías
+// ---------------------------------------------------------------------------
+export function LineasMultiples({ categorias, series, formato = numero, alto = 300 }) {
+  if (!categorias.length || !series.length
+      || series.every((s) => s.valores.every((v) => !v))) return <SinDatos />
+  const ancho = Math.max(ANCHO, categorias.length * 46)
+  const m = { arriba: 16, abajo: 34, izq: 48, der: 12 }
+  const w = ancho - m.izq - m.der
+  const h = alto - m.arriba - m.abajo
+  const { tope, marcas } = escala(Math.max(...series.flatMap((s) => s.valores)), 4,
+    sonEnteros(series.flatMap((s) => s.valores)))
+  const paso = w / categorias.length
+  const xy = (v, i) => [m.izq + paso * i + paso / 2, m.arriba + h - ((v || 0) / tope) * h]
+  return (
+    <>
+      <svg className="svg-grafico" viewBox={`0 0 ${ancho} ${alto}`} role="img">
+        {marcas.map((v) => {
+          const yy = m.arriba + h - (v / tope) * h
+          return <g key={v}>
+            <line x1={m.izq} x2={m.izq + w} y1={yy} y2={yy} stroke={COLORES.grilla} />
+            <text x={m.izq - 8} y={yy + 4} textAnchor="end" className="eje">{corto(v)}</text>
+          </g>
+        })}
+        {series.map((s) => (
+          <g key={s.nombre}>
+            <polyline points={s.valores.map((v, i) => xy(v, i).join(',')).join(' ')} fill="none"
+                      stroke={s.color} strokeWidth="2.5" strokeLinejoin="round" />
+            {s.valores.map((v, i) => {
+              const [x, yy] = xy(v, i)
+              return <circle key={i} cx={x} cy={yy} r="3.5" fill={s.color}>
+                <title>{`${s.nombre} · ${categorias[i]}: ${formato(v)}`}</title></circle>
+            })}
+          </g>
+        ))}
+        {categorias.map((c, i) => (
+          <text key={c} x={m.izq + paso * i + paso / 2} y={alto - 12} textAnchor="middle" className="eje">{c}</text>
+        ))}
+      </svg>
+      <Leyenda items={series.map((s) => ({ texto: s.nombre, color: s.color, linea: true }))} />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Mapa de calor: filas (productos) x columnas (meses). Más intenso = más vendido
+// respecto del promedio de ESA fila (así se compara la estacionalidad aunque
+// un producto venda mucho más que otro).
+// ---------------------------------------------------------------------------
+export function MapaCalor({ columnas, filas, formato = numero }) {
+  if (!columnas.length || !filas.length) return <SinDatos />
+  return (
+    <div className="mapa-calor" style={{ '--columnas': columnas.length }}>
+      <span />
+      {columnas.map((c) => <span key={c} className="mapa-calor-columna">{c}</span>)}
+      {filas.map((f) => {
+        const max = Math.max(...f.valores, 1)
+        const min = Math.min(...f.valores)
+        return [
+          <span key={`${f.nombre}-n`} className="mapa-calor-fila">{f.nombre}</span>,
+          ...f.valores.map((v, i) => {
+            const t = max === min ? 0.5 : (v - min) / (max - min)
+            return (
+              <span key={`${f.nombre}-${i}`} className={`mapa-calor-celda ${v === max ? 'pico' : ''}`}
+                    style={{ background: `rgb(6 182 212 / ${8 + t * 80}%)` }}
+                    title={`${f.nombre} · ${columnas[i]}: ${formato(v)}`}>
+                {formato(v)}
+              </span>
+            )
+          }),
+        ]
+      })}
+    </div>
+  )
+}

@@ -761,18 +761,41 @@ def crear_app(cargar_demo=True):
         return jsonify(reportes.resumen(
             desde, hasta, sucursal_id))
 
+    def anio_de_reporte():
+        anio = request.args.get("anio")
+        if not anio:
+            return None
+        if not anio.isdigit() or not 2000 <= int(anio) <= date.today().year:
+            raise ReglaNegocioError("El año seleccionado no es válido")
+        return int(anio)
+
     @app.get("/api/reportes/local")
     def rep_local():
-        """Reporte gerencial del local: período (desde/hasta) o año completo (anio)."""
-        if g.usuario["tipo"] != "LOCAL":
-            raise AccesoDenegadoError("Este reporte es para los locales")
-        anio = request.args.get("anio")
+        """Reporte gerencial del local: período (desde/hasta) o año completo (anio).
+        Un local ve SOLO el suyo; el CD puede ver el de cualquier local (?sucursal_id=)."""
+        if g.usuario["tipo"] == "LOCAL":
+            sucursal_id = g.usuario["sucursal_id"]
+        else:
+            sucursal_id = request.args.get("sucursal_id", type=int)
+            if sucursal_id is None or not reportes.dao.es_local_activo(sucursal_id):
+                raise ReglaNegocioError("Elegí un local activo para ver su reporte")
+        anio = anio_de_reporte()
         if anio:
-            if not anio.isdigit() or not 2000 <= int(anio) <= date.today().year:
-                raise ReglaNegocioError("El año seleccionado no es válido")
-            return jsonify(reportes.reporte_local(g.usuario["sucursal_id"], anio=int(anio)))
+            return jsonify(reportes.reporte_local(sucursal_id, anio=anio))
         desde, hasta = fechas_de_reporte()
-        return jsonify(reportes.reporte_local(g.usuario["sucursal_id"], desde, hasta))
+        return jsonify(reportes.reporte_local(sucursal_id, desde, hasta))
+
+    @app.get("/api/reportes/cd")
+    @requiere_cd
+    def rep_cd():
+        """Reporte del centro de distribución. ?pedidos=propios limita los pedidos
+        a los que atendió el CD del usuario (por defecto, todos los CD)."""
+        cd_id = g.usuario["sucursal_id"] if request.args.get("pedidos") == "propios" else None
+        anio = anio_de_reporte()
+        if anio:
+            return jsonify(reportes.reporte_cd(anio=anio, cd_id=cd_id))
+        desde, hasta = fechas_de_reporte()
+        return jsonify(reportes.reporte_cd(desde, hasta, cd_id=cd_id))
 
     @app.get("/api/reportes/bultos-rechazados")
     @requiere_cd

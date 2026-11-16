@@ -291,6 +291,246 @@ class ReportesService:
         }
 
 
+    # ================================================================
+    #  REPORTE DEL CENTRO DE DISTRIBUCIÓN (toda la red de locales)
+    # ================================================================
+    def reporte_cd(self, desde=None, hasta=None, anio=None, cd_id=None):
+        """Resultado económico de la red, ventas por local y por producto,
+        top 10, pedidos de reposición (por local y si llegaron completos) y
+        estacionalidad. cd_id limita los pedidos a los que atendió ese CD."""
+        if anio is not None:
+            desde, hasta = f"{anio}-01-01", f"{anio}-12-31"
+        where_v, params_v = self.dao.filtro_fechas("v.fecha", desde, hasta)
+        where_d, params_d = self.dao.filtro_fechas("d.fecha", desde, hasta)
+        where_o, params_o = self.dao.filtro_fechas("o.fecha", desde, hasta)
+        where_p, params_p = self.dao.filtro_fechas("h.fecha", desde, hasta)
+
+        vendido = self.dao.ventas_por_local_producto_mes(where_v, params_v)
+        devuelto = self.dao.devoluciones_por_local_producto_mes(where_d, params_d)
+        tickets = self.dao.ventas_por_local_y_mes(where_v, params_v)
+        perdidos = self.dao.bultos_perdidos(where_p, params_p)
+        ordenes = self.dao.ordenes_para_cumplimiento(where_o, params_o, cd_id)
+        locales = self.dao.locales_activos()
+
+        primer_mes = min([f["mes"] for f in vendido] + [o["fecha"][:7] for o in ordenes],
+                         default=None)
+        meses = _meses_del_periodo(desde, hasta, anio,
+                                   [{"mes": primer_mes}] if primer_mes else [])
+
+        return {
+            "periodo": {"desde": desde, "hasta": hasta, "anio": anio, "meses": meses},
+            "anios_disponibles": self.dao.anios_con_datos_red(),
+            "locales": locales,
+            "resultado": _resultado(vendido, devuelto, perdidos, meses),
+            "ventas_por_local": _ventas_por_local(vendido, devuelto, tickets, locales, meses),
+            "productos": _productos_por_local(vendido, devuelto, locales),
+            "pedidos": _cumplimiento_pedidos(ordenes, locales),
+            "estacionalidad": _estacionalidad(vendido, meses),
+        }
+
+
+# ---------------------------------------------------------------------------
+#  Ayudas del reporte del CD
+# ---------------------------------------------------------------------------
+def _r(valor):
+    return round(valor or 0, 2)
+
+
+def _resultado(vendido, devuelto, perdidos, meses):
+    """Ganancia (o pérdida) = ventas netas de devoluciones
+    - costo de la mercadería vendida - mercadería perdida en tránsito."""
+    mensual = {m: {"mes": m, "ingresos": 0.0, "costo": 0.0, "perdidas": 0.0} for m in meses}
+
+    def fila(mes):
+        return mensual.setdefault(mes, {"mes": mes, "ingresos": 0.0, "costo": 0.0,
+                                        "perdidas": 0.0})
+    for f in vendido:
+        fila(f["mes"])["ingresos"] += f["ingresos"]
+        fila(f["mes"])["costo"] += f["costo"]
+    for f in devuelto:
+        fila(f["mes"])["ingresos"] -= f["importe"]
+        fila(f["mes"])["costo"] -= f["costo"]
+    for f in perdidos:
+        fila(f["mes"])["perdidas"] += f["valor"] or 0
+    filas = sorted(mensual.values(), key=lambda f: f["mes"])
+    for f in filas:
+        f["resultado"] = _r(f["ingresos"] - f["costo"] - f["perdidas"])
+        f["ingresos"], f["costo"], f["perdidas"] = _r(f["ingresos"]), _r(f["costo"]), _r(f["perdidas"])
+
+    brutos = sum(f["ingresos"] for f in vendido)
+    devoluciones = sum(f["importe"] for f in devuelto)
+    netos = brutos - devoluciones
+    costo = sum(f["costo"] for f in vendido) - sum(f["costo"] for f in devuelto)
+    perdidas = sum(f["valor"] or 0 for f in perdidos)
+    resultado = netos - costo - perdidas
+    return {
+        "ingresos_brutos": _r(brutos),
+        "devoluciones": _r(devoluciones),
+        "ingresos_netos": _r(netos),
+        "costo_vendido": _r(costo),
+        "ganancia_bruta": _r(netos - costo),
+        "perdidas_transito": _r(perdidas),
+        "bultos_perdidos": len(perdidos),
+        "resultado": _r(resultado),
+        "es_ganancia": resultado >= 0,
+        "margen_pct": round(100 * resultado / netos, 1) if netos else None,
+        "mensual": filas,
+    }
+
+
+def _ventas_por_local(vendido, devuelto, tickets, locales, meses):
+    datos = {l["id"]: {"sucursal_id": l["id"], "local": l["nombre"], "ventas": 0,
+                       "unidades": 0, "facturado": 0.0, "costo": 0.0,
+                       "mensual": {m: 0.0 for m in meses}}
+             for l in locales}
+
+    def fila(f):
+        return datos.setdefault(f["sucursal_id"], {
+            "sucursal_id": f["sucursal_id"], "local": f.get("local", "Local inactivo"),
+            "ventas": 0, "unidades": 0, "facturado": 0.0, "costo": 0.0,
+            "mensual": {m: 0.0 for m in meses}})
+    for f in vendido:
+        d = fila(f)
+        d["unidades"] += f["unidades"]
+        d["facturado"] += f["ingresos"]
+        d["costo"] += f["costo"]
+        d["mensual"][f["mes"]] = d["mensual"].get(f["mes"], 0) + f["ingresos"]
+    for f in devuelto:
+        d = fila(f)
+        d["unidades"] -= f["unidades"]
+        d["facturado"] -= f["importe"]
+        d["costo"] -= f["costo"]
+        d["mensual"][f["mes"]] = d["mensual"].get(f["mes"], 0) - f["importe"]
+    for f in tickets:
+        fila(f)["ventas"] += f["ventas"]
+    total = sum(d["facturado"] for d in datos.values())
+    filas = []
+    for d in datos.values():
+        filas.append({
+            "sucursal_id": d["sucursal_id"], "local": d["local"], "ventas": d["ventas"],
+            "unidades": d["unidades"], "facturado": _r(d["facturado"]),
+            "ganancia": _r(d["facturado"] - d["costo"]),
+            "ticket_promedio": _r(d["facturado"] / d["ventas"]) if d["ventas"] else None,
+            "participacion": round(100 * d["facturado"] / total, 1) if total else 0,
+            "mensual": [{"mes": m, "facturado": _r(v)} for m, v in sorted(d["mensual"].items())],
+        })
+    return sorted(filas, key=lambda f: -f["facturado"])
+
+
+def _productos_por_local(vendido, devuelto, locales):
+    """Unidades e ingresos netos por producto y por local + top 10 de la red."""
+    nombres = {l["id"]: l["nombre"] for l in locales}
+    productos = {}
+    for f in vendido:
+        nombres.setdefault(f["sucursal_id"], f["local"])
+        p = productos.setdefault(f["producto_id"], {
+            "producto": f["producto"], "unidades": 0, "ingresos": 0.0, "costo": 0.0,
+            "por_local": {}})
+        p["unidades"] += f["unidades"]
+        p["ingresos"] += f["ingresos"]
+        p["costo"] += f["costo"]
+        l = p["por_local"].setdefault(f["sucursal_id"], {"unidades": 0, "ingresos": 0.0})
+        l["unidades"] += f["unidades"]
+        l["ingresos"] += f["ingresos"]
+    for f in devuelto:
+        p = productos.get(f["producto_id"])
+        if p is None:
+            continue
+        p["unidades"] -= f["unidades"]
+        p["ingresos"] -= f["importe"]
+        p["costo"] -= f["costo"]
+        l = p["por_local"].setdefault(f["sucursal_id"], {"unidades": 0, "ingresos": 0.0})
+        l["unidades"] -= f["unidades"]
+        l["ingresos"] -= f["importe"]
+    filas = [{
+        "producto": p["producto"], "unidades": p["unidades"], "ingresos": _r(p["ingresos"]),
+        "ganancia": _r(p["ingresos"] - p["costo"]),
+        "por_local": [{"local": nombres[sid], "unidades": v["unidades"],
+                       "ingresos": _r(v["ingresos"])}
+                      for sid, v in sorted(p["por_local"].items(), key=lambda x: nombres[x[0]])],
+    } for p in productos.values()]
+    filas.sort(key=lambda f: (-f["unidades"], f["producto"]))
+    return {"por_local": filas, "top": filas[:10],
+            "locales": sorted({nombres[sid] for p in productos.values() for sid in p["por_local"]})}
+
+
+ESTADOS_EN_CURSO = ("PENDIENTE", "EN_PREPARACION", "DESPACHADA")
+CAUSAS = {"RECHAZADA": "Rechazada por el CD", "CANCELADA": "Cancelada por el local",
+          "VENCIDA": "Vencida sin atender"}
+
+
+def _cumplimiento_pedidos(ordenes, locales):
+    """Completo: el local recibió y verificó TODO lo que pidió.
+    Incompleto: la orden terminó y llegó menos (bultos rechazados o perdidos)
+    o no llegó nada (rechazada, cancelada o vencida).
+    En curso: todavía no terminó, no se puede juzgar."""
+    por_local = {l["nombre"]: {"local": l["nombre"], "pedidos": 0, "unidades": 0,
+                               "completos": 0, "incompletos": 0, "en_curso": 0}
+                 for l in locales}
+    causas, faltantes = {}, 0
+    completos = incompletos = en_curso = 0
+    for o in ordenes:
+        fila = por_local.setdefault(o["local"], {"local": o["local"], "pedidos": 0,
+                                                 "unidades": 0, "completos": 0,
+                                                 "incompletos": 0, "en_curso": 0})
+        fila["pedidos"] += 1
+        fila["unidades"] += o["pedidas"] or 0
+        if o["estado"] in ESTADOS_EN_CURSO and o["resolucion"] is None:
+            fila["en_curso"] += 1
+            en_curso += 1
+        elif o["resolucion"] is None and o["recibidas"] >= (o["pedidas"] or 0):
+            fila["completos"] += 1
+            completos += 1
+        else:
+            fila["incompletos"] += 1
+            incompletos += 1
+            causa = CAUSAS.get(o["resolucion"], "Llegó con faltantes")
+            causas[causa] = causas.get(causa, 0) + 1
+            faltantes += max((o["pedidas"] or 0) - o["recibidas"], 0)
+    terminados = completos + incompletos
+    filas = sorted(por_local.values(), key=lambda f: -f["pedidos"])
+    for f in filas:
+        cerrados = f["completos"] + f["incompletos"]
+        f["cumplimiento_pct"] = round(100 * f["completos"] / cerrados, 1) if cerrados else None
+    return {
+        "total": len(ordenes),
+        "completos": completos,
+        "incompletos": incompletos,
+        "en_curso": en_curso,
+        "cumplimiento_pct": round(100 * completos / terminados, 1) if terminados else None,
+        "unidades_faltantes": faltantes,
+        "causas": [{"causa": c, "pedidos": n} for c, n in
+                   sorted(causas.items(), key=lambda x: -x[1])],
+        "por_local": filas,
+    }
+
+
+def _estacionalidad(vendido, meses):
+    """Unidades vendidas de cada producto en cada mes (toda la red).
+    Índice estacional del mes = unidades del mes / promedio mensual del producto
+    (1 = mes normal, 1,3 = se vendió 30 % más que en un mes promedio)."""
+    productos = {}
+    for f in vendido:
+        p = productos.setdefault(f["producto"], {m: 0 for m in meses})
+        p[f["mes"]] = p.get(f["mes"], 0) + f["unidades"]
+    filas = []
+    for nombre, por_mes in productos.items():
+        valores = [por_mes.get(m, 0) for m in meses]
+        total = sum(valores)
+        promedio = total / len(meses) if meses else 0
+        pico = max(range(len(meses)), key=lambda i: valores[i]) if meses else None
+        valle = min(range(len(meses)), key=lambda i: valores[i]) if meses else None
+        filas.append({
+            "producto": nombre, "valores": valores, "total": total,
+            "promedio_mensual": round(promedio, 1),
+            "mes_pico": meses[pico] if pico is not None else None,
+            "mes_valle": meses[valle] if valle is not None else None,
+            "indice_pico": round(valores[pico] / promedio, 2) if promedio else None,
+        })
+    filas.sort(key=lambda f: -f["total"])
+    return {"meses": meses, "productos": filas}
+
+
 # ---------------------------------------------------------------------------
 #  Ayudas del reporte del local
 # ---------------------------------------------------------------------------

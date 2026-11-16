@@ -123,8 +123,11 @@ export const api = {
   eventos: () => pedir('GET', '/eventos'),
 
   // Reporte gerencial del local: { anio } o { desde, hasta }
-  reporteLocal: ({ anio, desde, hasta } = {}) => pedir('GET', `/reportes/local${anio
-    ? `?anio=${anio}` : conFechas({ desde, hasta })}`),
+  // El CD manda sucursal_id para ver el reporte de un local; el local no lo manda.
+  reporteLocal: ({ anio, desde, hasta, sucursal_id } = {}) => pedir('GET',
+    `/reportes/local${consulta(anio ? { anio, sucursal_id } : { desde, hasta, sucursal_id })}`),
+  reporteCd: ({ anio, desde, hasta, pedidos } = {}) => pedir('GET',
+    `/reportes/cd${consulta(anio ? { anio, pedidos } : { desde, hasta, pedidos })}`),
   reporteResumen: (f = {}) => pedir('GET', `/reportes/resumen${conFechas(f)}`),
   reporteRechazados: (f = {}) => pedir('GET', `/reportes/bultos-rechazados${conFechas(f)}`),
   reporteTransito: () => pedir('GET', '/reportes/transito'),

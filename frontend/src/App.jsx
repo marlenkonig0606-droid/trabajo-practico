@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Logistica from './pages/Logistica.jsx'
 import Stock from './pages/Stock.jsx'
-import Reportes from './pages/Reportes.jsx'
+import ReportesCD from './pages/ReportesCD.jsx'
 import ReportesLocal from './pages/ReportesLocal.jsx'
 import Catalogo from './pages/Catalogo.jsx'
 import Ventas from './pages/Ventas.jsx'
@@ -82,10 +82,11 @@ export default function App() {
       : [{
         id: 'reportes',
         titulo: 'Reportes',
-        // El local tiene su reporte gerencial; el CD conserva su pantalla de reportes.
+        // El local ve su reporte gerencial; el CD ve el de la red y puede
+        // abrir el de cualquier local (misma plantilla) o el detalle operativo.
         componente: usuario.tipo === 'LOCAL'
           ? <ReportesLocal usuario={usuario} />
-          : <Reportes usuario={usuario} />,
+          : <ReportesCD usuario={usuario} />,
       }]),
   ]
   const paginaActual = secciones.find((seccion) => seccion.id === actual) ?? secciones[0]

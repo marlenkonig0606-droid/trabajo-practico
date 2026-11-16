@@ -689,3 +689,51 @@ body.exportando-pdf table { font-size: 10px; }
 body.exportando-pdf .stock-barras, body.exportando-pdf .tabla-movimientos, body.exportando-pdf .listado, body.exportando-pdf .catalogo-tabla { overflow: visible !important; max-height: none !important; }
 .boton-pdf-contenedor { display: inline-grid; justify-items: end; gap: 4px; }
 .error-pdf { color: var(--error); font-size: .78rem; }
+
+/* ---------- Reportes del centro de distribución ---------- */
+.vista-reporte { display: grid; gap: 5px; color: var(--suave); font-size: .82rem; }
+.vista-reporte select { min-width: 220px; }
+.resultado-red { display: grid; grid-template-columns: minmax(240px, 1fr) 2fr; gap: 16px; align-items: stretch; }
+.resultado-cifra { display: grid; align-content: center; gap: 6px; padding: 18px 20px; border: 1px solid;
+  border-radius: 12px; }
+.resultado-cifra span { color: var(--suave); font-size: .85rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.resultado-cifra strong { font-size: 2.1rem; font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; }
+.resultado-cifra small { color: var(--suave); }
+.resultado-cifra.ganancia { border-color: rgb(52 211 153 / 45%); background: rgb(52 211 153 / 9%); }
+.resultado-cifra.ganancia strong { color: #34d399; }
+.resultado-cifra.perdida { border-color: rgb(251 113 133 / 55%); background: rgb(251 113 133 / 10%); }
+.resultado-cifra.perdida strong { color: #fb7185; }
+.resultado-cuentas { display: grid; gap: 6px; margin: 0; padding: 14px 16px; border: 1px solid var(--borde);
+  border-radius: 12px; background: rgb(5 20 36 / 50%); }
+.resultado-cuentas div { display: flex; justify-content: space-between; gap: 12px; font-size: .9rem; }
+.resultado-cuentas dt { color: var(--suave); }
+.resultado-cuentas dd { margin: 0; font-variant-numeric: tabular-nums; }
+.resultado-cuentas .negativo { color: #fb7185; }
+.resultado-cuentas .total { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--borde); font-weight: 700; }
+.mapa-calor { display: grid; grid-template-columns: minmax(110px, 160px) repeat(var(--columnas), minmax(38px, 1fr));
+  gap: 3px; overflow-x: auto; font-size: .76rem; }
+.mapa-calor-columna { color: var(--suave); text-align: center; }
+.mapa-calor-fila { overflow: hidden; color: #d3edf6; text-overflow: ellipsis; white-space: nowrap; align-self: center; }
+.mapa-calor-celda { padding: 6px 2px; border-radius: 4px; color: #e6f8fe; text-align: center; font-variant-numeric: tabular-nums; }
+.mapa-calor-celda.pico { outline: 2px solid #facc15; outline-offset: -2px; font-weight: 700; }
+.tabla-reporte { width: 100%; font-size: .84rem; }
+.tabla-reporte td.num, .tabla-reporte th.num { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .resultado-red { grid-template-columns: 1fr; } }
+body.exportando-pdf .resultado-cifra, body.exportando-pdf .resultado-cuentas { background: #fff !important; }
+body.exportando-pdf .resultado-cifra.ganancia strong { color: #047857 !important; }
+body.exportando-pdf .resultado-cifra.perdida strong, body.exportando-pdf .resultado-cuentas .negativo { color: #dc2626 !important; }
+body.exportando-pdf .mapa-calor-fila { color: #0f172a !important; }
+body.exportando-pdf .mapa-calor-celda { color: #0f172a !important; }
+body.exportando-pdf .vista-reporte { display: none !important; }
+.vista-check { display: inline-flex !important; align-items: center; gap: 6px; color: #d3edf6; font-size: .84rem; cursor: pointer; }
+.vista-check input { width: auto; min-height: 0; }
+.vista-check { flex-direction: row !important; }
+.apiladas { display: grid; gap: 12px; margin: 8px 0 4px; }
+.apilada-fila { display: grid; grid-template-columns: minmax(100px, 160px) 1fr 64px; align-items: center; gap: 10px; }
+.apilada-etiqueta { overflow: hidden; color: #d3edf6; font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
+.apilada-barra { display: flex; height: 22px; overflow: hidden; border-radius: 6px; background: rgb(3 15 28 / 85%); }
+.apilada-barra > div { display: grid; place-items: center; color: #04212b; font-size: .74rem; font-weight: 700; }
+.apilada-valor { color: #c1d5e0; font-size: .84rem; text-align: right; font-variant-numeric: tabular-nums; }
+body.exportando-pdf .apilada-etiqueta, body.exportando-pdf .apilada-valor { color: #0f172a !important; }
+body.exportando-pdf .apilada-barra { background: #e2e8f0 !important; }
+body.exportando-pdf .apilada-barra > div { color: #0f172a !important; }
