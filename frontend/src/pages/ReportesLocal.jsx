@@ -6,6 +6,7 @@ import {
   CampanaGauss, Histograma, Leyenda, Linea, PALETA, Podio, SinDatos, StockVsMinimo,
   nombreMes, numero, pesos,
 } from '../components/Graficos.jsx'
+import { BotonImprimir, EncabezadoImpresion } from '../components/UI.jsx'
 
 const SECCIONES = [
   ['resumen', 'Resumen general'],
@@ -57,10 +58,16 @@ export default function ReportesLocal({ usuario }) {
 
   return (
     <section className="reportes-local">
+      <EncabezadoImpresion titulo={`Reporte gerencial · ${usuario.sucursal}`}
+                           subtitulo={descripcionPeriodo(modo, anio, fechas)} usuario={usuario} />
       <div className="tarjeta reportes-cabecera">
-        <div>
-          <h2>Reportes · {usuario.sucursal}</h2>
-          <p className="ayuda">{descripcionPeriodo(modo, anio, fechas)}</p>
+        <div className="reportes-titulo">
+          <div>
+            <h2>Reportes · {usuario.sucursal}</h2>
+            <p className="ayuda">{descripcionPeriodo(modo, anio, fechas)}</p>
+          </div>
+          <BotonImprimir disabled={!datos || cargando}
+                         nombreArchivo={`Reporte ${usuario.sucursal} ${modo === 'anio' ? anio : (fechas.desde || 'inicio') + ' a ' + (fechas.hasta || hoy)}`} />
         </div>
         <div className="reportes-filtros">
           <div className="segmentado" role="tablist" aria-label="Tipo de período">

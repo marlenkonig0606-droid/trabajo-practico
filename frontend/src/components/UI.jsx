@@ -34,6 +34,7 @@ const TRAZOS = {
   primera: 'M17 6l-6 6 6 6M7 6v12',
   ultima: 'M7 6l6 6-6 6M17 6v12',
   minimo: 'M4 19h16M4 15h7M4 11h11M4 7h4',
+  imprimir: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
 }
 
 export function Icono({ nombre, tamano = 18 }) {
@@ -65,6 +66,53 @@ export function BotonPrincipal({ icono = 'agregar', children, onClick, disabled,
     <button type={type} className={`boton-principal ${tono}`} onClick={onClick} disabled={disabled}>
       <Icono nombre={icono} /> <span>{children}</span>
     </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Impresión de reportes. El navegador genera el PDF con "Guardar como PDF";
+// los estilos @media print de styles.css esconden menús y filtros.
+// ---------------------------------------------------------------------------
+export function BotonImprimir({ nombreArchivo, disabled }) {
+  const imprimir = () => {
+    const tituloAnterior = document.title
+    // Chrome/Edge usan el título de la página como nombre sugerido del PDF.
+    if (nombreArchivo) document.title = nombreArchivo
+    // Los bloques plegables se abren para que salgan en el PDF.
+    const cerrados = [...document.querySelectorAll('details:not([open])')]
+    cerrados.forEach((d) => { d.open = true })
+    const restaurar = () => {
+      document.title = tituloAnterior
+      cerrados.forEach((d) => { d.open = false })
+      window.removeEventListener('afterprint', restaurar)
+    }
+    window.addEventListener('afterprint', restaurar)
+    window.print()
+  }
+  return (
+    <BotonPrincipal icono="imprimir" tono="boton-imprimir" onClick={imprimir} disabled={disabled}>
+      Imprimir / PDF
+    </BotonPrincipal>
+  )
+}
+
+// Encabezado que SOLO aparece en el papel / PDF.
+export function EncabezadoImpresion({ titulo, subtitulo, usuario }) {
+  const ahora = new Date()
+  const dos = (n) => String(n).padStart(2, '0')
+  const generado = `${dos(ahora.getDate())}/${dos(ahora.getMonth() + 1)}/${ahora.getFullYear()} `
+    + `${dos(ahora.getHours())}:${dos(ahora.getMinutes())}`
+  return (
+    <div className="solo-impresion encabezado-impresion">
+      <div>
+        <strong>CD a Locales · {titulo}</strong>
+        {subtitulo && <span>{subtitulo}</span>}
+      </div>
+      <div className="encabezado-impresion-meta">
+        <span>Generado el {generado}</span>
+        {usuario && <span>por {usuario.email}</span>}
+      </div>
+    </div>
   )
 }
 

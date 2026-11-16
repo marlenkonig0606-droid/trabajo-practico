@@ -635,3 +635,85 @@ body.con-modal { overflow: hidden; }
 .diagnostico-curva { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid; border-radius: 6px; font-size: .84rem; }
 .diagnostico-curva.ok { border-color: var(--exito); background: rgb(52 211 153 / 7%); }
 .diagnostico-curva.no { border-color: #facc15; background: rgb(250 204 21 / 6%); color: #e7dcae; }
+
+/* =====================================================================
+   Impresión de reportes (botón "Imprimir / PDF" → window.print()).
+   En papel se usa fondo blanco y texto oscuro: ahorra tinta y se lee bien.
+   ===================================================================== */
+.reportes-titulo { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 10px 16px; }
+.reportes-titulo h2 { margin-bottom: 2px; }
+.solo-impresion { display: none; }
+
+@page { size: A4; margin: 12mm 11mm; }
+
+@media print {
+  :root {
+    color-scheme: light;
+    --fondo: #fff;
+    --tarjeta: #fff;
+    --texto: #0f172a;
+    --suave: #475569;
+    --borde: #cbd5e1;
+    --acento: #0891b2;
+    --acento-brillo: transparent;
+  }
+  * { print-color-adjust: exact; -webkit-print-color-adjust: exact;
+      box-shadow: none !important; text-shadow: none !important; animation: none !important; }
+  html, body { background: #fff !important; font-size: 11.5px; }
+  body::before, body::after { display: none !important; }
+
+  /* Fuera del papel: menú, filtros, botones e índice */
+  .topbar, nav, .reportes-filtros, .reportes-indice, .filtro-resumen, .filtro-fechas,
+  .barra-filtros, .comparador, .segmentado, button, .boton-icono, .error, .modal-fondo { display: none !important; }
+  .solo-impresion { display: block; }
+  .app { width: 100% !important; padding: 0 !important; }
+
+  .encabezado-impresion { display: flex; justify-content: space-between; align-items: end; gap: 16px;
+    margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #0891b2; }
+  .encabezado-impresion strong { display: block; color: #0f172a; font-size: 15px; }
+  .encabezado-impresion span { display: block; color: #475569; font-size: 10.5px; }
+  .encabezado-impresion-meta { text-align: right; }
+
+  /* Tarjetas y paneles en claro */
+  .tarjeta, .catalogo, .panel-grafico, .kpi, .grafico, .diagnostico, .diagnostico-curva,
+  .resumen-reportes, .sin-datos, .resumen-indicadores > div, select {
+    border-color: #cbd5e1 !important; background: #fff !important; backdrop-filter: none !important; }
+  .tarjeta { margin: 0 0 10px !important; padding: 12px 14px !important; }
+  .reportes-cabecera { position: static !important; padding: 0 !important; border: 0 !important; }
+  .reportes-cabecera .ayuda { display: none; }   /* ya figura en el encabezado impreso */
+  .reportes-actualizando { opacity: 1 !important; }
+
+  /* Texto oscuro (en pantalla hay muchos celestes claros fijos) */
+  h1, h2, h3, h4, strong, td, th, li, p, span, label, summary, .kpi strong, .podio-nombre,
+  .dona-leyenda li strong, .barras-h-etiqueta, .barras-h-valor, .grafico-etiqueta { color: #0f172a !important; }
+  .ayuda, small, .kpi span, .kpi small, .grafico-valor, .podio-valor, .barras-h-puesto,
+  .dona-leyenda li span:not(.muestra-color), .grafico-leyenda { color: #475569 !important; }
+  .reporte-numero { color: #fff !important; }
+  .podio-escalon { color: rgb(15 23 42 / 80%) !important; }
+  .barras-h-pista, .grafico-pista { background: #e2e8f0 !important; border-color: #e2e8f0 !important; }
+  th { background: #f1f5f9 !important; }
+  table { border-color: #cbd5e1 !important; }
+  td, th { border-color: #e2e8f0 !important; }
+
+  /* Gráficos SVG */
+  .svg-grafico .eje, .dona-svg .eje { fill: #475569 !important; }
+  .svg-grafico .eje-linea { fill: #a16207 !important; }
+  .svg-grafico .etiqueta-media { fill: #047857 !important; }
+  .svg-grafico .eje-sigma { fill: #6d28d9 !important; }
+  .dona-centro { fill: #0f172a !important; }
+  .svg-grafico line[stroke="rgb(126 182 207 / 12%)"] { stroke: #e2e8f0; }
+
+  /* Que no se corte un gráfico o una tabla a la mitad entre dos hojas */
+  .panel-grafico, .kpi, .grafico, .diagnostico, .diagnostico-curva, tr, .podio, .dona { break-inside: avoid; }
+  .reporte-seccion { break-inside: auto; }
+  .reporte-seccion-cabecera, h2, h3 { break-after: avoid; }
+  .paneles { grid-template-columns: 1fr 1fr !important; }
+  .panel-grafico.ancho, .paneles .ancho { grid-column: 1 / -1; }
+  details > summary { list-style: none; }
+  select { appearance: none; padding: 0 4px !important; border: 0 !important; color: #0f172a !important; }
+  .tabla-larga tbody tr:nth-child(n+26) { display: none; }
+  .aviso-recorte { margin: 0 0 6px; color: #475569 !important; font-size: 10px; font-style: italic; }
+  .filtros-movimientos { display: none; }
+  table { font-size: 10px; }
+  .stock-barras, .tabla-movimientos, .listado, .catalogo-tabla { overflow: visible !important; max-height: none !important; }
+}
