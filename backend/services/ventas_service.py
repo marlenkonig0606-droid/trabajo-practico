@@ -1,7 +1,11 @@
 from dao.ventas_dao import VentasDAO
 from database.conexion import BaseDeDatos
 from services.excepciones import NoEncontradoError, ReglaNegocioError
-from services.medio_pago_service import obtener_creador_medio_de_pago
+from services.medio_pago_service import (
+    CREADORES_MEDIO_DE_PAGO,
+    obtener_creador_medio_de_pago,
+)
+from services.paginacion import respuesta_paginada
 from services.stock_service import StockService
 
 
@@ -14,6 +18,20 @@ class VentasService:
     def listar_ventas(self, sucursal_id=None):
         return self.dao.listar(sucursal_id)
 
+    def buscar_ventas(self, sucursal_id, filtros, pagina, por_pagina):
+        if filtros.get("medio_pago") and filtros["medio_pago"] not in CREADORES_MEDIO_DE_PAGO:
+            raise ReglaNegocioError("Medio de pago desconocido")
+        numero = filtros.get("numero")
+        if numero not in (None, ""):
+            if not str(numero).isdigit():
+                raise ReglaNegocioError("El número de venta debe ser un número entero")
+            filtros["numero"] = int(numero)
+        if filtros.get("desde") and filtros.get("hasta") and filtros["desde"] > filtros["hasta"]:
+            raise ReglaNegocioError("La fecha desde no puede ser posterior a la fecha hasta")
+        filas, total = self.dao.buscar(sucursal_id, filtros, por_pagina,
+                                       (pagina - 1) * por_pagina)
+        return respuesta_paginada(filas, total, pagina, por_pagina)
+
     def obtener_venta(self, venta_id):
         venta = self.dao.obtener(venta_id)
         if venta is None:
@@ -21,6 +39,11 @@ class VentasService:
 
         venta["items"] = self.dao.items_venta(venta_id)
         venta["devoluciones"] = self.dao.devoluciones_venta(venta_id)
+        # Para el formulario de devolución: cuánto ya se devolvió y cuánto queda.
+        for item in venta["items"]:
+            item["devuelto"] = sum(d["cantidad"] for d in venta["devoluciones"]
+                                   if d["producto_id"] == item["producto_id"])
+            item["disponible_para_devolver"] = item["cantidad"] - item["devuelto"]
         return venta
 
     def sucursal_de_venta(self, venta_id):

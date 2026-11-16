@@ -52,6 +52,8 @@ def test_api_registra_lista_y_consulta_venta(cliente_api):
         "nombre": "Agua 1.5L",
         "cantidad": 2,
         "precio_unitario": 700,
+        "devuelto": 0,
+        "disponible_para_devolver": 2,
     }]
     assert detalle.get_json()["devoluciones"] == []
 

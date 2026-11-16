@@ -8,6 +8,7 @@ import Ventas from './pages/Ventas.jsx'
 import Acceso from './pages/Acceso.jsx'
 import Solicitudes from './pages/Solicitudes.jsx'
 import MiLocal from './pages/MiLocal.jsx'
+import ProductosLocal from './pages/ProductosLocal.jsx'
 import CambioPassword from './pages/CambioPassword.jsx'
 import { api } from './api.js'
 
@@ -72,7 +73,8 @@ export default function App() {
         titulo: 'Reposición',
         componente: <Solicitudes usuario={usuario} />,
       },
-      { id: 'ventas', titulo: 'Ventas', componente: <Ventas usuario={usuario} /> }]),
+      { id: 'ventas', titulo: 'Ventas', componente: <Ventas usuario={usuario} /> },
+      { id: 'productos', titulo: 'Productos', componente: <ProductosLocal usuario={usuario} /> }]),
     { id: 'stock', titulo: 'Stock', componente: <Stock usuario={usuario} /> },
     // RBAC: el empleado no ve reportes (el backend también lo bloquea).
     ...(esEmpleado

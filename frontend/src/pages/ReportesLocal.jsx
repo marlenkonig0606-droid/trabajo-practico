@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api.js'
+import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
 import {
   BarrasAgrupadas, BarrasHorizontales, BarrasVerticales, COLORES, Dispersion, Dona,
   Histograma, Leyenda, Linea, PALETA, Podio, SinDatos, StockVsMinimo,
@@ -337,7 +338,7 @@ function AnalisisEstadistico({ e }) {
     x: ejeX === 'fecha' ? new Date(p.fecha.replace(' ', 'T')).getTime() : p.unidades,
     y: p.total,
     atipico: p.atipico,
-    titulo: `Venta #${p.id} · ${p.fecha.slice(0, 10)} · ${pesos(p.total)} · ${p.unidades} u.`,
+    titulo: `Venta #${p.id} · ${formatearFecha(p.fecha)} · ${pesos(p.total)} · ${p.unidades} u.`,
   }))
   return (
     <Seccion id="estadistica" numero="4" titulo="Análisis estadístico de tickets"
@@ -432,7 +433,7 @@ function ReporteStock({ s }) {
           )}
         </Panel>
         <Panel titulo="Tiempo de permanencia en stock" ancho
-               ayuda={`Se reconstruye con el historial de movimientos${p.historial_desde ? ` (registrado desde el ${p.historial_desde.slice(0, 10).split('-').reverse().join('/')})` : ''}: un período empieza cuando el producto ingresa con stock en cero y termina cuando se agota. El sistema no registra lotes, así que se mide el tiempo con stock disponible, no el de cada unidad.`}>
+               ayuda={`Se reconstruye con el historial de movimientos${p.historial_desde ? ` (registrado desde el ${p.historial_desde ? formatearFecha(p.historial_desde) : ''})` : ''}: un período empieza cuando el producto ingresa con stock en cero y termina cuando se agota. El sistema no registra lotes, así que se mide el tiempo con stock disponible, no el de cada unidad.`}>
           {p.periodos.length === 0 ? (
             <SinDatos>No hay movimientos de stock suficientes para reconstruir la permanencia en este período.</SinDatos>
           ) : (
@@ -460,8 +461,8 @@ function ReporteStock({ s }) {
                 <table>
                   <thead><tr><th>Producto</th><th>Ingreso</th><th>Salida</th><th>Días</th></tr></thead>
                   <tbody>{p.periodos.slice(0, 50).map((f, i) => (
-                    <tr key={i}><td>{f.producto}</td><td>{f.ingreso}</td>
-                      <td>{f.sigue_en_stock ? 'Sigue en stock' : f.salida}</td><td>{numero(f.dias, 1)}</td></tr>
+                    <tr key={i}><td>{f.producto}</td><td>{formatearFechaHora(f.ingreso)}</td>
+                      <td>{f.sigue_en_stock ? 'Sigue en stock' : formatearFechaHora(f.salida)}</td><td>{numero(f.dias, 1)}</td></tr>
                   ))}</tbody>
                 </table>
               </details>

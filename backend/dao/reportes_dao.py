@@ -151,14 +151,16 @@ class ReportesDAO:
                    COALESCE(libro.movimientos, 0) AS saldo_segun_movimientos,
                    COALESCE(st.disponible, 0)-COALESCE(libro.movimientos, 0)
                        AS diferencia_movimientos,
-                   p.stock_minimo,
+                   COALESCE(mv.stock_minimo, 0) AS stock_minimo,
                    CASE WHEN COALESCE(st.disponible, 0)!=COALESCE(libro.movimientos, 0)
                         THEN 'CONCILIAR'
-                        WHEN COALESCE(st.disponible-st.reservado, 0)<p.stock_minimo
+                        WHEN COALESCE(st.disponible-st.reservado, 0)<COALESCE(mv.stock_minimo, 0)
                         THEN 'BAJO MÍNIMO' ELSE 'OK' END AS estado
             FROM sucursal s
             CROSS JOIN producto p
             LEFT JOIN stock st ON st.sucursal_id = s.id AND st.producto_id = p.id
+            -- mínimo de ESA sucursal: propio del local o suma de locales para el CD
+            LEFT JOIN minimo_vigente mv ON mv.sucursal_id = s.id AND mv.producto_id = p.id
             LEFT JOIN (
                 SELECT m.sucursal_id, m.producto_id, SUM(m.cantidad) AS movimientos
                 FROM movimiento_stock m
@@ -415,11 +417,13 @@ class ReportesDAO:
         return self.db.consultar("""
             SELECT p.nombre AS producto, a.fecha AS desde,
                    COALESCE(st.disponible - st.reservado, 0) AS libre,
-                   p.stock_minimo AS minimo,
-                   MAX(p.stock_minimo - COALESCE(st.disponible - st.reservado, 0), 0)
+                   COALESCE(mv.stock_minimo, 0) AS minimo,
+                   MAX(COALESCE(mv.stock_minimo, 0) - COALESCE(st.disponible - st.reservado, 0), 0)
                        AS faltante
             FROM alerta_stock a
             JOIN producto p ON p.id = a.producto_id
+            LEFT JOIN minimo_vigente mv ON mv.sucursal_id = a.sucursal_id
+                                       AND mv.producto_id = a.producto_id
             LEFT JOIN stock st ON st.sucursal_id = a.sucursal_id
                               AND st.producto_id = a.producto_id
             WHERE a.sucursal_id = ? AND a.resuelta = 0

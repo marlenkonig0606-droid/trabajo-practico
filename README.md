@@ -225,3 +225,18 @@ dentro de la transacción.
 La descripción funcional completa —permisos, solicitudes, recepción, ventas, devoluciones,
 reportes y patrones— está en [documentacion/README.md](./documentacion/README.md). El CD
 puede administrar sucursales, productos, categorías y proveedores desde Catálogo.
+
+## Interfaz y stock mínimo por sucursal
+
+- **Listados con filtros y paginación en el backend**: ventas, productos, catálogo, stock,
+  solicitudes y recepciones aceptan `?pagina=&por_pagina=` y filtros combinables
+  (`q` busca parte del texto sin distinguir mayúsculas ni tildes). Responden
+  `{ items, total, pagina, paginas }`. Sin `pagina` siguen devolviendo la lista completa.
+- **Pantallas**: acciones con íconos y tooltip, "Abrir detalle" expandible, altas y
+  operaciones en modales, una sola acción para activar/desactivar, fechas DD/MM/AAAA.
+  Nueva pestaña **Productos** para los locales.
+- **Stock mínimo**: cada local tiene el suyo (`producto_sucursal.stock_minimo`, lo edita su
+  administrador). El de cada CD es la suma, por producto, de los mínimos de los locales
+  activos que lo tienen habilitado (vista `minimo_vigente`). Las alertas se recalculan al
+  cambiar stock, mínimos, habilitaciones o sucursales, y al iniciar el backend.
+- Se quitó "Mantener pendiente" (acción `ESPERAR`): no cambiaba el estado de la orden.

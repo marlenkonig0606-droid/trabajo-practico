@@ -37,6 +37,10 @@ class BaseDeDatos:
         self._conexion = sqlite3.connect(ruta, check_same_thread=False)
         self._conexion.row_factory = sqlite3.Row      # filas accesibles por nombre
         self._conexion.execute("PRAGMA foreign_keys = ON")
+        # normalizar(texto) en SQL: minúsculas y sin acentos, para búsquedas parciales
+        # que no distinguen mayúsculas (LIKE de SQLite solo lo hace con letras sin tilde).
+        from services.paginacion import normalizar
+        self._conexion.create_function("normalizar", 1, normalizar, deterministic=True)
         # Flask atiende cada request en un hilo distinto, pero la conexión es UNA sola.
         # Este candado evita que dos hilos mezclen sus consultas en la misma conexión.
         # Es RLock (reentrante) porque un mismo hilo puede volver a pedirlo
@@ -242,6 +246,7 @@ class BaseDeDatos:
                     f"ALTER TABLE {tabla} ADD COLUMN costo_unitario REAL")
 
         self._migrar_roles_de_usuario()
+        self._migrar_minimo_por_sucursal()
 
         self._conexion.execute(
             """INSERT OR IGNORE INTO producto_sucursal (sucursal_id, producto_id, habilitado)
@@ -270,6 +275,53 @@ class BaseDeDatos:
                 INSERT OR IGNORE INTO producto_sucursal (sucursal_id, producto_id, habilitado)
                 SELECT NEW.id, id, 1 FROM producto WHERE activo = 1;
             END;
+        """)
+        self._conexion.commit()
+
+    def _migrar_minimo_por_sucursal(self):
+        """Stock mínimo independiente por local y mínimo del CD calculado.
+        - producto_sucursal.stock_minimo: mínimo propio de cada local. En bases
+          anteriores se inicializa con el mínimo que tenía el producto.
+        - Vista minimo_vigente: el mínimo que se usa para comparar el stock de
+          CADA sucursal. Local: su propio valor (0 si no vende el producto).
+          CD: la suma, por producto, de los mínimos de los locales activos que
+          lo tienen habilitado. Se calcula al consultar, así siempre refleja la
+          configuración actual."""
+        columnas = [c["name"] for c in self.consultar("PRAGMA table_info(producto_sucursal)")]
+        if "stock_minimo" not in columnas:
+            self._conexion.executescript("""
+                ALTER TABLE producto_sucursal ADD COLUMN stock_minimo INTEGER
+                    CHECK (stock_minimo IS NULL OR stock_minimo >= 0);
+                UPDATE producto_sucursal SET stock_minimo = (
+                    SELECT p.stock_minimo FROM producto p WHERE p.id = producto_id);
+            """)
+        self._conexion.executescript("""
+            CREATE TRIGGER IF NOT EXISTS producto_sucursal_minimo_inicial
+            AFTER INSERT ON producto_sucursal
+            WHEN NEW.stock_minimo IS NULL
+            BEGIN
+                UPDATE producto_sucursal
+                SET stock_minimo = (SELECT stock_minimo FROM producto WHERE id = NEW.producto_id)
+                WHERE sucursal_id = NEW.sucursal_id AND producto_id = NEW.producto_id;
+            END;
+
+            DROP VIEW IF EXISTS minimo_vigente;
+            CREATE VIEW minimo_vigente AS
+                SELECT ps.sucursal_id, ps.producto_id,
+                       CASE WHEN ps.habilitado = 1 THEN COALESCE(ps.stock_minimo, 0)
+                            ELSE 0 END AS stock_minimo
+                FROM producto_sucursal ps
+                JOIN sucursal s ON s.id = ps.sucursal_id
+                WHERE s.tipo = 'LOCAL'
+                UNION ALL
+                SELECT cd.id, p.id,
+                       COALESCE((SELECT SUM(COALESCE(ps.stock_minimo, 0))
+                                 FROM producto_sucursal ps
+                                 JOIN sucursal l ON l.id = ps.sucursal_id
+                                 WHERE l.tipo = 'LOCAL' AND l.activo = 1
+                                   AND ps.habilitado = 1 AND ps.producto_id = p.id), 0)
+                FROM sucursal cd CROSS JOIN producto p
+                WHERE cd.tipo = 'CD';
         """)
         self._conexion.commit()
 

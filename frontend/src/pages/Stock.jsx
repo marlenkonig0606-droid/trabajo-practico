@@ -1,188 +1,215 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { api } from '../api.js'
+import {
+  Avisos, BarraFiltros, BotonIcono, Cargando, Modal, Vacio, useListado,
+} from '../components/UI.jsx'
+import { formatearFecha, pesos } from '../utils/fechas.js'
 
 export default function Stock({ usuario }) {
+  const esCD = usuario.tipo === 'CD'
   const [sucursales, setSucursales] = useState([])
-  const [sucursal, setSucursal] = useState('')
-  const [filas, setFilas] = useState([])
-  const [ediciones, setEdiciones] = useState({})
+  const [sucursal, setSucursal] = useState(usuario.sucursal_id)
+  const [proveedores, setProveedores] = useState([])
   const [alertas, setAlertas] = useState([])
-  const [error, setError] = useState('')
+  const [verAlertas, setVerAlertas] = useState(true)
+  const [abierto, setAbierto] = useState(null)
+  const [ajustando, setAjustando] = useState(null)
   const [mensaje, setMensaje] = useState('')
+  const [error, setError] = useState('')
+
+  const listado = useListado((f) => api.buscarStock(sucursal, f),
+    { q: '', situacion: '', proveedor_id: '' }, [sucursal])
+  const { filtros, setFiltros } = listado
 
   useEffect(() => {
-    api.sucursales().then((lista) => {
-      setSucursales(lista)
-      const propia = lista.find((s) => s.id === usuario.sucursal_id)
-      setSucursal(propia?.id ?? '')
-    }).catch((e) => setError(e.message))
-  }, [usuario.sucursal_id, usuario.tipo])
-  useEffect(() => {
-    if (!sucursal) return
-    api.stock(sucursal).then((lista) => {
-      setFilas(lista)
-      setEdiciones(Object.fromEntries(lista.map((f) => [f.producto_id, String(f.disponible)])))
-    }).catch((e) => setError(e.message))
-    api.alertas().then(setAlertas).catch((e) => setError(e.message))
-  }, [sucursal])
+    api.sucursales().then(setSucursales).catch((e) => setError(e.message))
+    if (esCD) api.proveedores().then(setProveedores).catch(() => {})
+  }, [])
+  const cargarAlertas = () => api.alertas().then(setAlertas).catch((e) => setError(e.message))
+  useEffect(() => { cargarAlertas() }, [])
 
-  const puedeEditar = usuario.tipo === 'CD'
-    && Number(sucursal) === usuario.sucursal_id
-    && sucursales.find((s) => s.id === Number(sucursal))?.tipo === 'CD'
-  const maximoLibre = filas.reduce(
-    (maximo, fila) => Math.max(maximo, Number(fila.libre)),
-    1,
-  )
-
-  const guardarStock = async (productoId) => {
-    setError('')
-    setMensaje('')
-    try {
-      const disponible = Number(ediciones[productoId])
-      const lista = await api.ajustarStock(Number(sucursal), productoId, disponible)
-      setFilas(lista)
-      setEdiciones(Object.fromEntries(lista.map((f) => [f.producto_id, String(f.disponible)])))
-      setMensaje('Stock actualizado.')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
+  const tipoSucursal = sucursales.find((s) => s.id === Number(sucursal))?.tipo
+  const verCD = tipoSucursal === 'CD'
+  const puedeAjustar = esCD && Number(sucursal) === usuario.sucursal_id
+  const alertasVisibles = alertas.filter((a) => !esCD || a.sucursal ===
+    sucursales.find((s) => s.id === Number(sucursal))?.nombre)
 
   return (
-    <>
-    {error && <div className="error">{error}</div>}
-    {mensaje && <div className="exito">{mensaje}</div>}
-    {alertas.length > 0 && (
-      <section className="tarjeta alertas">
-        <h2>⚠ Productos bajo el stock mínimo ({alertas.length})</h2>
-        <ul>
-          {alertas.map((a) => (
-            <li key={a.id}>
-              <b>{a.producto}</b> en {a.sucursal}: quedan {a.libre} libres (mínimo {a.minimo})
-              <span className="fecha"> · desde {a.fecha}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )}
-    <section className="tarjeta">
-      <h2>Stock disponible (vendible)</h2>
-      <select value={sucursal} onChange={(e) => setSucursal(e.target.value)}>
-        {sucursales.filter((s) => usuario.tipo === 'CD' || s.id === usuario.sucursal_id)
-          .map((s) => <option key={s.id} value={s.id}>{s.nombre} ({s.tipo})</option>)}
-      </select>
-      {filas.length > 0 && (
-        <div className="stock-visual" aria-label="Gráfico de stock libre por producto">
-          <div className="stock-visual-cabecera">
-            <span>VOLUMEN DE STOCK LIBRE</span>
-            <small>{filas.length} referencias monitorizadas</small>
-          </div>
-          <div className="stock-barras">
-            {filas.map((fila) => {
-              const porcentaje = Math.min(100, Math.max(0, Number(fila.libre) / maximoLibre * 100))
-              return (
-                <div className="stock-barra-item" key={fila.producto_id}>
-                  <span title={fila.nombre}>{fila.nombre}</span>
-                  <div className="stock-barra-pista">
-                    <i style={{ width: `${porcentaje}%` }} />
-                  </div>
-                  <b>{fila.libre}</b>
-                </div>
-              )
-            })}
-          </div>
+    <section className="pantalla">
+      <header className="pantalla-cabecera">
+        <div>
+          <h2>Stock disponible</h2>
+          <p className="ayuda">{verCD
+            ? 'El mínimo del CD es la suma de los mínimos que cada local configuró para el producto.'
+            : 'El mínimo es el que configuró el administrador de este local.'}</p>
         </div>
+        {esCD && (
+          <label className="selector-sucursal">Sucursal
+            <select value={sucursal} onChange={(e) => { setSucursal(Number(e.target.value)); setAbierto(null) }}>
+              {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre} ({s.tipo})</option>)}
+            </select></label>
+        )}
+      </header>
+      <Avisos error={error || listado.error} mensaje={mensaje} onCerrar={() => { setError(''); setMensaje('') }} />
+
+      {alertasVisibles.length > 0 && (
+        <section className="tarjeta alertas">
+          <div className="fila-titulo">
+            <h3>⚠ Bajo el stock mínimo ({alertasVisibles.length})</h3>
+            <BotonIcono icono={verAlertas ? 'ocultar' : 'ver'}
+                        etiqueta={verAlertas ? 'Ocultar alertas' : 'Ver alertas'}
+                        onClick={() => setVerAlertas(!verAlertas)} />
+          </div>
+          {verAlertas && (
+            <ul>{alertasVisibles.map((a) => (
+              <li key={a.id}><b>{a.producto}</b>{esCD && ` en ${a.sucursal}`}: {a.libre} libres,
+                mínimo {a.minimo} → faltan <b>{Math.max(a.minimo - a.libre, 0)}</b>
+                <span className="fecha"> · desde el {formatearFecha(a.fecha)}</span></li>
+            ))}</ul>
+          )}
+        </section>
       )}
-      <table>
-        <thead><tr><th>Código</th><th>Producto</th><th>Precio de venta</th><th>Disponible</th><th>Reservado</th><th>Libre</th><th>Mínimo</th>{puedeEditar && <th>Acción</th>}</tr></thead>
-        <tbody>
-          {filas.map((f) => (
-            <tr key={f.producto_id} className={f.libre < f.stock_minimo ? 'bajo' : ''}>
-              <td>{f.codigo}</td>
-              <td>{f.nombre}</td>
-              <td>${Number(f.precio_venta).toFixed(2)}</td>
-              <td>{puedeEditar
-                ? <input aria-label={`Stock disponible de ${f.nombre}`} type="number"
-                         min={f.reservado} step="1" value={ediciones[f.producto_id] ?? ''}
-                         onChange={(e) => setEdiciones({
-                           ...ediciones, [f.producto_id]: e.target.value,
-                         })} />
-                : f.disponible}</td>
-              <td>{f.reservado}</td><td><b>{f.libre}</b></td><td>{f.stock_minimo}</td>
-              {puedeEditar && <td>
-                <button disabled={ediciones[f.producto_id] === ''
-                  || Number(ediciones[f.producto_id]) === f.disponible
-                  || !Number.isInteger(Number(ediciones[f.producto_id]))
-                  || Number(ediciones[f.producto_id]) < f.reservado}
-                  onClick={() => guardarStock(f.producto_id)}>Guardar</button>
-              </td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+
+      <BarraFiltros onBuscar={listado.aplicar} onLimpiar={listado.limpiar} cargando={listado.cargando}>
+        <label className="campo-ancho">Producto
+          <input type="search" value={filtros.q} placeholder="Nombre, código o proveedor (parcial)"
+                 onChange={(e) => setFiltros({ ...filtros, q: e.target.value })} /></label>
+        <label>Situación
+          <select value={filtros.situacion} onChange={(e) => setFiltros({ ...filtros, situacion: e.target.value })}>
+            <option value="">Todas</option><option value="bajo">Bajo el mínimo</option>
+            <option value="ok">Sobre el mínimo</option>
+          </select></label>
+        {esCD && (
+          <label>Proveedor
+            <select value={filtros.proveedor_id} onChange={(e) => setFiltros({ ...filtros, proveedor_id: e.target.value })}>
+              <option value="">Todos</option>
+              {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select></label>
+        )}
+      </BarraFiltros>
+
+      <div className="tarjeta listado">
+        {listado.cargando && !listado.datos ? <Cargando /> :
+          listado.items.length === 0 ? <Vacio /> : (
+          <table className="tabla-compacta">
+            <thead><tr><th>Producto</th>{esCD && <th>Proveedor</th>}
+              <th className="numero">Disponible</th><th className="numero">Reservado</th>
+              <th className="numero">Libre</th><th className="numero">Mínimo</th><th>Situación</th>
+              <th className="acciones">Acciones</th></tr></thead>
+            <tbody>{listado.items.map((f) => {
+              const bajo = f.libre < f.stock_minimo
+              return (
+                <Fragment key={f.producto_id}>
+                  <tr className={bajo ? 'bajo' : ''}>
+                    <td><b>{f.nombre}</b><small className="codigo"> {f.codigo}</small></td>
+                    {esCD && <td>{f.proveedor ?? <span className="ayuda">Sin proveedor</span>}</td>}
+                    <td className="numero">{f.disponible}</td>
+                    <td className="numero">{f.reservado}</td>
+                    <td className="numero"><b>{f.libre}</b></td>
+                    <td className="numero">{f.stock_minimo}</td>
+                    <td><span className={`insignia-estado ${bajo ? 'no' : 'si'}`}>
+                      {bajo ? `Faltan ${f.stock_minimo - f.libre}` : 'OK'}</span></td>
+                    <td className="acciones">
+                      <BotonIcono icono={abierto === f.producto_id ? 'ocultar' : 'ver'}
+                                  etiqueta={abierto === f.producto_id ? 'Cerrar detalle' : 'Abrir detalle'}
+                                  activo={abierto === f.producto_id}
+                                  onClick={() => setAbierto(abierto === f.producto_id ? null : f.producto_id)} />
+                      {puedeAjustar && (
+                        <BotonIcono icono="editar" etiqueta="Ajustar stock disponible"
+                                    onClick={() => setAjustando(f)} />
+                      )}
+                    </td>
+                  </tr>
+                  {abierto === f.producto_id && (
+                    <tr className="fila-detalle"><td colSpan={esCD ? 8 : 7}>
+                      <dl className="detalle-datos">
+                        <div><dt>Código</dt><dd>{f.codigo}</dd></div>
+                        <div><dt>Precio de venta</dt><dd>{pesos(f.precio_venta)}</dd></div>
+                        <div><dt>Proveedor</dt><dd>{f.proveedor ?? '—'}</dd></div>
+                        <div><dt>{verCD ? 'Mínimo del CD (suma de locales)' : 'Mínimo del local'}</dt>
+                          <dd>{f.stock_minimo}</dd></div>
+                        <div><dt>Mínimo por defecto del catálogo</dt><dd>{f.stock_minimo_defecto}</dd></div>
+                        <div><dt>Estado en la sucursal</dt><dd>{f.habilitado || verCD ? 'Habilitado' : 'Deshabilitado'}</dd></div>
+                      </dl>
+                    </td></tr>
+                  )}
+                </Fragment>
+              )
+            })}</tbody>
+          </table>
+        )}
+        {listado.paginacion()}
+        {listado.items.length > 0 && <GraficoStock filas={listado.items} />}
+      </div>
+
+      {ajustando && (
+        <ModalAjuste fila={ajustando} sucursalId={sucursal} onCerrar={() => setAjustando(null)}
+                     onGuardado={() => {
+                       setMensaje(`Stock de ${ajustando.nombre} actualizado.`)
+                       setAjustando(null)
+                       listado.recargar()
+                       cargarAlertas()
+                     }} />
+      )}
     </section>
-    {/* Solo el administrador habilita productos en su local */}
-    {usuario.tipo === 'LOCAL' && usuario.rol === 'ADMINISTRADOR' && (
-      <HabilitacionesProductos sucursalId={usuario.sucursal_id} />
-    )}
-    </>
   )
 }
 
-function HabilitacionesProductos({ sucursalId }) {
-  const [productos, setProductos] = useState([])
-  const [error, setError] = useState('')
-  const [guardando, setGuardando] = useState(null)
-
-  const recargar = () => api.productosSucursal(sucursalId).then(setProductos)
-
-  useEffect(() => {
-    recargar().catch((e) => setError(e.message))
-  }, [sucursalId])
-
-  const cambiar = async (producto) => {
-    setError('')
-    setGuardando(producto.id)
-    try {
-      await api.cambiarHabilitacionProducto(
-        sucursalId, producto.id, !Boolean(producto.habilitado),
-      )
-      await recargar()
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setGuardando(null)
-    }
-  }
-
+// Gráfico de barras del stock libre (los productos de la página actual)
+function GraficoStock({ filas }) {
+  const maximo = Math.max(1, ...filas.map((f) => Math.max(f.libre, f.stock_minimo)))
   return (
-    <section className="tarjeta">
-      <h2>Productos habilitados en mi local</h2>
-      <p className="ayuda">
-        Solo los productos habilitados aparecen para solicitar o vender. Para
-        deshabilitar uno, primero transferí o ajustá su stock y resolvé sus bultos pendientes.
-      </p>
-      {error && <div className="error" role="alert">{error}</div>}
-      {productos.length === 0 ? <p className="vacio">No hay productos activos.</p> : (
-        <table>
-          <thead><tr><th>Código</th><th>Producto</th><th>Estado</th><th>Acción</th></tr></thead>
-          <tbody>
-            {productos.map((producto) => (
-              <tr key={producto.id}>
-                <td>{producto.codigo}</td>
-                <td>{producto.nombre}</td>
-                <td>{producto.habilitado ? 'Habilitado' : 'Deshabilitado'}</td>
-                <td>
-                  <button disabled={guardando === producto.id}
-                          onClick={() => cambiar(producto)}>
-                    {producto.habilitado ? 'Deshabilitar' : 'Habilitar'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+    <details className="detalle-grafico">
+      <summary>Ver gráfico de stock libre</summary>
+      <div className="stock-visual">
+        <div className="stock-barras">
+          {filas.map((f) => (
+            <div className="stock-barra-item" key={f.producto_id}
+                 title={`${f.nombre}: ${f.libre} libres · mínimo ${f.stock_minimo}`}>
+              <span>{f.nombre}</span>
+              <div className="stock-barra-pista">
+                <i style={{ width: `${Math.max(0, f.libre) / maximo * 100}%` }}
+                   className={f.libre < f.stock_minimo ? 'bajo' : ''} />
+              </div>
+              <b>{f.libre}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+    </details>
+  )
+}
+
+function ModalAjuste({ fila, sucursalId, onCerrar, onGuardado }) {
+  const [valor, setValor] = useState(String(fila.disponible))
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const numero = Number(valor)
+  const valido = valor !== '' && Number.isInteger(numero) && numero >= fila.reservado
+    && numero !== fila.disponible
+  const guardar = async (e) => {
+    e.preventDefault()
+    if (!valido || guardando) return
+    setGuardando(true)
+    try {
+      await api.ajustarStock(Number(sucursalId), fila.producto_id, numero)
+      onGuardado()
+    } catch (err) { setError(err.message); setGuardando(false) }
+  }
+  return (
+    <Modal titulo={`Ajustar stock · ${fila.nombre}`} onCerrar={onCerrar} ancho="chico">
+      <form className="formulario-modal" onSubmit={guardar}>
+        {error && <div className="error" role="alert">{error}</div>}
+        <p className="ayuda">Hay {fila.reservado} unidades reservadas para bultos: el disponible no
+          puede quedar por debajo de ese número. El ajuste queda registrado como movimiento.</p>
+        <label>Stock disponible
+          <input type="number" min={fila.reservado} step="1" value={valor}
+                 onChange={(e) => setValor(e.target.value)} /></label>
+        <div className="modal-acciones">
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button type="submit" disabled={!valido || guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+        </div>
+      </form>
+    </Modal>
   )
 }

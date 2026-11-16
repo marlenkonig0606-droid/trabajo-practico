@@ -1,243 +1,310 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { api } from '../api.js'
 import SelectorProductos from '../components/SelectorProductos.jsx'
+import {
+  Avisos, BarraFiltros, BotonIcono, BotonPrincipal, Cargando, EtiquetaEstado, Modal, Vacio,
+  nombreEstado, useConfirmacion, useListado,
+} from '../components/UI.jsx'
+import { formatearFecha, formatearFechaHora, hoyISO } from '../utils/fechas.js'
 
+// Reposición del local: solicitudes al CD y recepción de los bultos que llegan.
 export default function Solicitudes({ usuario }) {
-  const [productos, setProductos] = useState([])
-  const [sucursales, setSucursales] = useState([])
-  const [ordenes, setOrdenes] = useState([])
+  const [vista, setVista] = useState('solicitudes')
+  const [modal, setModal] = useState(false)
   const [notificaciones, setNotificaciones] = useState([])
-  const [origenId, setOrigenId] = useState('')
-  const [cantidades, setCantidades] = useState({})
-  const [error, setError] = useState('')
   const [mensaje, setMensaje] = useState('')
-  const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState('')
+  const [version, setVersion] = useState(0)     // fuerza recargar ambos listados
 
-  const recargar = async () => {
-    const [listaOrdenes, listaProductos, listaSucursales, avisos] = await Promise.all([
-      api.ordenes(), api.productos(), api.sucursales(), api.notificaciones(),
-    ])
-    setOrdenes(listaOrdenes)
-    setProductos(listaProductos)
-    setSucursales(listaSucursales)
-    setNotificaciones(avisos)
-  }
-
-  useEffect(() => {
-    recargar()
-      .catch((e) => setError(e.message))
-      .finally(() => setCargando(false))
-  }, [])
-
-  useEffect(() => {
-    const centros = sucursales.filter((s) => s.tipo === 'CD')
-    if (!origenId && centros.length) setOrigenId(String(centros[0].id))
-  }, [sucursales, origenId])
-
-  const solicitar = async () => {
-    setError('')
-    setMensaje('')
-    const items = Object.entries(cantidades)
-      .filter(([, cantidad]) => Number(cantidad) > 0)
-      .map(([productoId, cantidad]) => ({
-        producto_id: Number(productoId),
-        cantidad: Number(cantidad),
-      }))
-    try {
-      await api.solicitarOrden(Number(origenId), usuario.sucursal_id, items)
-      setCantidades({})
-      await recargar()
-      setMensaje('Solicitud enviada al centro de distribución.')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  const recibir = async (bultoId) => {
-    setError('')
-    setMensaje('')
-    try {
-      await api.recibir(bultoId)
-      await recargar()
-      setMensaje('Recepción confirmada. Ahora verificá el remito y el precinto.')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  const verificar = async (bultoId, aprobado, motivo) => {
-    setError('')
-    setMensaje('')
-    try {
-      const resultado = await api.verificarRecepcion(bultoId, aprobado, motivo)
-      await recargar()
-      setMensaje(resultado.estado === 'VERIFICADO'
-        ? 'Bulto verificado. El stock se actualizará al finalizar la verificación de todos los bultos.'
-        : 'Bulto rechazado. La mercadería vuelve al CD y no se suma al stock local.')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  const cancelar = async (ordenId) => {
-    setError('')
-    setMensaje('')
-    try {
-      await api.resolverOrden(ordenId, 'CANCELAR', 'Cancelada por el local')
-      await recargar()
-      setMensaje('Solicitud cancelada; las reservas previas fueron liberadas.')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  const sugerir = async () => {
-    setError('')
-    try {
-      const items = await api.sugerirOrden(usuario.sucursal_id)
-      setCantidades(Object.fromEntries(
-        items.map((item) => [item.producto_id, String(item.cantidad)]),
-      ))
-      if (items.length === 0) setMensaje('Tu stock disponible ya alcanza los mínimos.')
-    } catch (e) {
-      setError(e.message)
-    }
-  }
+  useEffect(() => { api.notificaciones().then(setNotificaciones).catch(() => {}) }, [version])
 
   return (
-    <section>
-      {error && <div className="error">{error}</div>}
-      {mensaje && <div className="exito">{mensaje}</div>}
-      {notificaciones.filter((aviso) => !aviso.leida).map((aviso) => (
-        <div className="exito" key={aviso.id}>
-          {aviso.fecha} · {aviso.mensaje}
+    <section className="pantalla">
+      <header className="pantalla-cabecera">
+        <div>
+          <h2>Reposición · {usuario.sucursal}</h2>
+          <p className="ayuda">Pedí mercadería al CD y confirmá y verificá los bultos que te envían.</p>
         </div>
+        <BotonPrincipal onClick={() => { setMensaje(''); setModal(true) }}>Nueva solicitud</BotonPrincipal>
+      </header>
+      <Avisos error={error} mensaje={mensaje} onCerrar={() => { setError(''); setMensaje('') }} />
+      {notificaciones.filter((n) => !n.leida).slice(0, 3).map((n) => (
+        <div className="aviso-info" key={n.id}>{formatearFecha(n.fecha)} · {n.mensaje}</div>
       ))}
-      <div className="tarjeta">
-        <h2>Solicitar reposición</h2>
-        <p className="ayuda">
-          Elegí el CD de origen y los productos. El destino es tu sucursal, {usuario.sucursal}.
-          La solicitud queda pendiente hasta que el CD la prepare y despache.
-        </p>
-        <div className="grilla">
-          <label>Origen · Centro de distribución
-            <select value={origenId} onChange={(e) => setOrigenId(e.target.value)}>
-              <option value="">Elegí un CD…</option>
-                {sucursales.filter((s) => s.tipo === 'CD').map((s) =>
-                  <option key={s.id} value={s.id}>{s.nombre}</option>)}
-            </select>
-            </label>
-            <div className="destino-propio"><span>Destino · Local</span>
-              <strong>{usuario.sucursal}</strong>
-            </div>
-        </div>
-        <SelectorProductos productos={productos} cantidades={cantidades}
-                             onChange={setCantidades} />
-        <div className="acciones-formulario">
-            <button className="secundario" onClick={sugerir}>Sugerir según stock mínimo</button>
-            <button disabled={!origenId
-              || !Object.values(cantidades).some((cantidad) => Number(cantidad) > 0)}
-                    onClick={solicitar}>Enviar solicitud</button>
-        </div>
+      <div className="catalogo-tabs" role="tablist">
+        <button role="tab" aria-selected={vista === 'solicitudes'} className={vista === 'solicitudes' ? 'activo' : ''}
+                onClick={() => setVista('solicitudes')}>Solicitudes</button>
+        <button role="tab" aria-selected={vista === 'recepciones'} className={vista === 'recepciones' ? 'activo' : ''}
+                onClick={() => setVista('recepciones')}>Recepciones</button>
       </div>
-
-      <h2>Solicitudes y recepciones · {usuario.sucursal}</h2>
-      {cargando && <p className="vacio">Cargando solicitudes…</p>}
-      {!cargando && ordenes.length === 0 && (
-        <p className="vacio">Todavía no hay solicitudes para esta sucursal.</p>
+      {vista === 'solicitudes'
+        ? <ListadoSolicitudes key={`s${version}`} onMensaje={setMensaje} onError={setError} />
+        : <ListadoRecepciones key={`r${version}`} onMensaje={setMensaje} onError={setError}
+                              onCambio={() => setVersion((v) => v + 1)} />}
+      {modal && (
+        <ModalSolicitud usuario={usuario} onCerrar={() => setModal(false)}
+                        onEnviada={(orden) => {
+                          setModal(false)
+                          setVista('solicitudes')
+                          setVersion((v) => v + 1)
+                          setMensaje(`Solicitud #${orden.id} enviada al centro de distribución.`)
+                        }} />
       )}
-      {ordenes.map((orden) => (
-        <OrdenLocal key={orden.id} orden={orden} productos={productos}
-                    sucursalId={usuario.sucursal_id}
-                    onRecibir={recibir} onVerificar={verificar}
-                    onCancelar={() => cancelar(orden.id)} />
-      ))}
     </section>
   )
 }
 
-function OrdenLocal({
-  orden, productos, sucursalId, onRecibir, onVerificar, onCancelar,
-}) {
-  const puedeRecibir = orden.destino_id === sucursalId
+function ListadoSolicitudes({ onMensaje, onError }) {
+  const listado = useListado(api.buscarOrdenes, { numero: '', estado_orden: '', desde: '', hasta: '' })
+  const { filtros, setFiltros } = listado
+  const [abierta, setAbierta] = useState(null)
+  const [dialogo, confirmar] = useConfirmacion()
+  const hoy = hoyISO()
+
+  const cancelar = async (orden) => {
+    const motivo = await confirmar({ titulo: `Cancelar la solicitud #${orden.id}`, pedirMotivo: true,
+      peligro: true, textoAceptar: 'Cancelar solicitud',
+      mensaje: 'Si el CD ya preparó bultos, se anulan y se libera la reserva.' })
+    if (!motivo) return
+    try {
+      await api.resolverOrden(orden.id, 'CANCELAR', motivo)
+      onMensaje(`Solicitud #${orden.id} cancelada.`)
+      listado.recargar()
+    } catch (e) { onError(e.message) }
+  }
 
   return (
-    <div className="tarjeta">
-      <div className="fila-titulo">
-        <strong>Solicitud #{orden.id}</strong>
-        <span>{orden.origen} → {orden.destino}</span>
-        <span className={`estado ${orden.estado}`}>{orden.estado}</span>
-        {orden.resolucion && <span>{orden.resolucion}: {orden.motivo_resolucion}</span>}
-        {orden.remito_numero && (
-          <span>Remito {orden.remito_numero} · {orden.remito_estado}</span>
+    <>
+      <BarraFiltros onBuscar={listado.aplicar} onLimpiar={listado.limpiar} cargando={listado.cargando}>
+        <label>N.º de solicitud
+          <input inputMode="numeric" value={filtros.numero}
+                 onChange={(e) => setFiltros({ ...filtros, numero: e.target.value.replace(/\D/g, '') })} /></label>
+        <label>Estado
+          <select value={filtros.estado_orden} onChange={(e) => setFiltros({ ...filtros, estado_orden: e.target.value })}>
+            <option value="">Todos</option>
+            {['PENDIENTE', 'EN_PREPARACION', 'DESPACHADA', 'CERRADA'].map((e) =>
+              <option key={e} value={e}>{nombreEstado(e)}</option>)}
+          </select></label>
+        <label>Desde
+          <input type="date" value={filtros.desde} max={filtros.hasta || hoy}
+                 onChange={(e) => setFiltros({ ...filtros, desde: e.target.value })} /></label>
+        <label>Hasta
+          <input type="date" value={filtros.hasta} max={hoy} min={filtros.desde || undefined}
+                 onChange={(e) => setFiltros({ ...filtros, hasta: e.target.value })} /></label>
+      </BarraFiltros>
+      {listado.error && <div className="error">{listado.error}</div>}
+      <div className="tarjeta listado">
+        {listado.cargando && !listado.datos ? <Cargando /> :
+          listado.items.length === 0 ? <Vacio>Todavía no hay solicitudes con esos filtros.</Vacio> : (
+          <table className="tabla-compacta">
+            <thead><tr><th>N.º</th><th>Centro de distribución</th><th>Fecha</th><th>Productos</th>
+              <th>Estado</th><th className="acciones">Acciones</th></tr></thead>
+            <tbody>{listado.items.map((o) => (
+              <Fragment key={o.id}>
+                <tr>
+                  <td><b>#{o.id}</b></td><td>{o.origen}</td><td>{formatearFecha(o.fecha)}</td>
+                  <td>{o.cantidad_productos} producto{o.cantidad_productos === 1 ? '' : 's'} · {o.unidades} u.</td>
+                  <td><EtiquetaEstado estado={o.estado} />
+                    {o.resolucion && <small className="codigo"> {o.resolucion.toLowerCase()}</small>}</td>
+                  <td className="acciones">
+                    <BotonIcono icono={abierta === o.id ? 'ocultar' : 'ver'}
+                                etiqueta={abierta === o.id ? 'Cerrar detalle' : 'Ver detalle'}
+                                activo={abierta === o.id} onClick={() => setAbierta(abierta === o.id ? null : o.id)} />
+                    {['PENDIENTE', 'EN_PREPARACION'].includes(o.estado) && (
+                      <BotonIcono icono="anular" etiqueta="Cancelar solicitud" tono="peligro"
+                                  onClick={() => cancelar(o)} />
+                    )}
+                  </td>
+                </tr>
+                {abierta === o.id && (
+                  <tr className="fila-detalle"><td colSpan="6">
+                    <div className="detalle">
+                      <dl className="detalle-datos">
+                        <div><dt>Fecha</dt><dd>{formatearFechaHora(o.fecha)}</dd></div>
+                        {o.remito_numero && <div><dt>Remito</dt><dd>{o.remito_numero} · {nombreEstado(o.remito_estado)}</dd></div>}
+                        {o.resolucion && <div><dt>Resolución</dt><dd>{o.resolucion}: {o.motivo_resolucion}</dd></div>}
+                        <div><dt>Bultos</dt><dd>{o.bultos.length || 'Ninguno todavía'}</dd></div>
+                      </dl>
+                      <table className="tabla-detalle">
+                        <thead><tr><th>Producto</th><th className="numero">Solicitado</th>
+                          <th className="numero">Enviado</th></tr></thead>
+                        <tbody>{o.items.map((i) => (
+                          <tr key={i.producto_id}><td>{i.nombre}</td><td className="numero">{i.cantidad}</td>
+                            <td className="numero">{i.empaquetado}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  </td></tr>
+                )}
+              </Fragment>
+            ))}</tbody>
+          </table>
         )}
+        {listado.paginacion()}
       </div>
-      <table>
-        <thead><tr><th>Producto</th><th>Solicitado</th><th>Enviado</th></tr></thead>
-        <tbody>
-          {orden.items.map((item) => (
-            <tr key={item.producto_id}>
-              <td>{item.nombre}</td>
-              <td>{item.cantidad}</td>
-              <td>{item.empaquetado}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {orden.bultos.map((bulto) => (
-        <BultoLocal key={bulto.id} bulto={bulto} remitoNumero={orden.remito_numero}
-                    productos={productos}
-                    puedeRecibir={puedeRecibir}
-                    onRecibir={onRecibir} onVerificar={onVerificar} />
-      ))}
-      {puedeRecibir && ['PENDIENTE', 'EN_PREPARACION'].includes(orden.estado) && (
-        <button className="peligro" onClick={onCancelar}>Cancelar solicitud</button>
-      )}
-      {!puedeRecibir && (
-        <p className="ayuda">La recepción y verificación corresponden al local destinatario.</p>
-      )}
-      {orden.remito_estado === 'VERIFICADO' && (
-        <p className="exito">Remito verificado: el stock recibido ya está disponible.</p>
-      )}
-      {orden.remito_estado === 'RECHAZADO' && (
-        <p className="error">Remito rechazado: solo se incorporan al stock los bultos verificados.</p>
-      )}
-    </div>
+      {dialogo}
+    </>
   )
 }
 
-function BultoLocal({
-  bulto, remitoNumero, productos, puedeRecibir, onRecibir, onVerificar,
-}) {
-  const nombreProducto = (id) => productos.find((p) => p.id === id)?.nombre ?? `#${id}`
+function ListadoRecepciones({ onMensaje, onError, onCambio }) {
+  const listado = useListado(api.buscarRecepciones, { numero: '', estado_bulto: '' })
+  const { filtros, setFiltros } = listado
+  const [abierto, setAbierto] = useState(null)
+  const [ocupado, setOcupado] = useState(null)
+  const [dialogo, confirmar] = useConfirmacion()
+
+  const ejecutar = async (bulto, fn, texto) => {
+    setOcupado(bulto.id)
+    try {
+      await fn()
+      onMensaje(texto)
+      onCambio()
+    } catch (e) { onError(e.message) } finally { setOcupado(null) }
+  }
+  const rechazar = async (b) => {
+    const motivo = await confirmar({ titulo: `Rechazar el bulto #${b.id}`, pedirMotivo: true, peligro: true,
+      textoAceptar: 'Rechazar', mensaje: 'La mercadería vuelve al CD y no se suma a tu stock.' })
+    if (motivo) ejecutar(b, () => api.verificarRecepcion(b.id, false, motivo),
+      `Bulto #${b.id} rechazado: la mercadería vuelve al CD.`)
+  }
 
   return (
-    <div className="bulto">
-      <strong>Bulto #{bulto.id}</strong>
-      <span className={`estado ${bulto.estado}`}>{bulto.estado}</span>
-      {bulto.precinto && <span>Precinto esperado: {bulto.precinto}</span>}
-      <span className="items">
-        {bulto.items.map((item) =>
-          `${item.cantidad} × ${nombreProducto(item.producto_id)}`).join(', ')}
-      </span>
-      {puedeRecibir && bulto.estado === 'EN_TRANSITO' && (
-        <div className="recepcion-bulto">
-          <p>Confirmá primero que el bulto llegó al local.</p>
-          <button onClick={() => onRecibir(bulto.id)}>Confirmar recepción</button>
+    <>
+      <BarraFiltros onBuscar={listado.aplicar} onLimpiar={listado.limpiar} cargando={listado.cargando}>
+        <label>N.º de bulto o solicitud
+          <input inputMode="numeric" value={filtros.numero}
+                 onChange={(e) => setFiltros({ ...filtros, numero: e.target.value.replace(/\D/g, '') })} /></label>
+        <label>Estado
+          <select value={filtros.estado_bulto} onChange={(e) => setFiltros({ ...filtros, estado_bulto: e.target.value })}>
+            <option value="">Todos</option>
+            {['EN_TRANSITO', 'RECIBIDO', 'VERIFICADO', 'RECHAZADO', 'PERDIDO'].map((e) =>
+              <option key={e} value={e}>{nombreEstado(e)}</option>)}
+          </select></label>
+      </BarraFiltros>
+      {listado.error && <div className="error">{listado.error}</div>}
+      <div className="tarjeta listado">
+        {listado.cargando && !listado.datos ? <Cargando /> :
+          listado.items.length === 0 ? <Vacio>No hay bultos enviados a tu local con esos filtros.</Vacio> : (
+          <table className="tabla-compacta">
+            <thead><tr><th>Bulto</th><th>Solicitud</th><th>Desde</th><th>Despachado</th>
+              <th>Unidades</th><th>Estado</th><th className="acciones">Acciones</th></tr></thead>
+            <tbody>{listado.items.map((b) => (
+              <Fragment key={b.id}>
+                <tr>
+                  <td><b>#{b.id}</b></td><td>#{b.orden_id}</td><td>{b.origen}</td>
+                  <td>{formatearFecha(b.fecha_despacho)}</td><td>{b.unidades} u.</td>
+                  <td><EtiquetaEstado estado={b.estado} /></td>
+                  <td className="acciones">
+                    <BotonIcono icono={abierto === b.id ? 'ocultar' : 'ver'}
+                                etiqueta={abierto === b.id ? 'Cerrar detalle' : 'Ver detalle'}
+                                activo={abierto === b.id} onClick={() => setAbierto(abierto === b.id ? null : b.id)} />
+                    {b.estado === 'EN_TRANSITO' && (
+                      <BotonIcono icono="recibir" etiqueta="Confirmar recepción" tono="exito"
+                                  disabled={ocupado === b.id}
+                                  onClick={() => ejecutar(b, () => api.recibir(b.id),
+                                    `Bulto #${b.id} recibido. Ahora verificá el precinto.`)} />
+                    )}
+                    {b.estado === 'RECIBIDO' && <>
+                      <BotonIcono icono="aprobar" etiqueta="Verificar (precinto y mercadería correctos)"
+                                  tono="exito" disabled={ocupado === b.id}
+                                  onClick={() => ejecutar(b, () => api.verificarRecepcion(b.id, true),
+                                    `Bulto #${b.id} verificado. El stock se suma al verificar todo el remito.`)} />
+                      <BotonIcono icono="rechazar" etiqueta="Rechazar bulto" tono="peligro"
+                                  disabled={ocupado === b.id} onClick={() => rechazar(b)} />
+                    </>}
+                  </td>
+                </tr>
+                {abierto === b.id && (
+                  <tr className="fila-detalle"><td colSpan="7">
+                    <div className="detalle">
+                      <dl className="detalle-datos">
+                        <div><dt>Precinto esperado</dt><dd>{b.precinto ?? '—'}</dd></div>
+                        <div><dt>Remito</dt><dd>{b.remito_numero ?? '—'}</dd></div>
+                        <div><dt>Despachado</dt><dd>{formatearFechaHora(b.fecha_despacho)}</dd></div>
+                        <div><dt>Recibido</dt><dd>{formatearFechaHora(b.fecha_recepcion)}</dd></div>
+                      </dl>
+                      <table className="tabla-detalle">
+                        <thead><tr><th>Producto</th><th className="numero">Cantidad</th></tr></thead>
+                        <tbody>{b.items.map((i) => (
+                          <tr key={i.producto_id}><td>{i.nombre}</td><td className="numero">{i.cantidad}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  </td></tr>
+                )}
+              </Fragment>
+            ))}</tbody>
+          </table>
+        )}
+        {listado.paginacion()}
+      </div>
+      {dialogo}
+    </>
+  )
+}
+
+function ModalSolicitud({ usuario, onCerrar, onEnviada }) {
+  const [productos, setProductos] = useState([])
+  const [centros, setCentros] = useState([])
+  const [origenId, setOrigenId] = useState('')
+  const [cantidades, setCantidades] = useState({})
+  const [error, setError] = useState('')
+  const [aviso, setAviso] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  useEffect(() => {
+    Promise.all([api.productos(), api.sucursales()]).then(([p, s]) => {
+      setProductos(p)
+      const cds = s.filter((x) => x.tipo === 'CD')
+      setCentros(cds)
+      if (cds.length) setOrigenId(String(cds[0].id))
+    }).catch((e) => setError(e.message))
+  }, [])
+
+  const items = Object.entries(cantidades).filter(([, c]) => Number(c) > 0)
+    .map(([id, c]) => ({ producto_id: Number(id), cantidad: Number(c) }))
+
+  const sugerir = async () => {
+    setError('')
+    try {
+      const sugerencia = await api.sugerirOrden(usuario.sucursal_id)
+      setCantidades(Object.fromEntries(sugerencia.map((i) => [i.producto_id, String(i.cantidad)])))
+      setAviso(sugerencia.length ? `Se completaron ${sugerencia.length} productos según tu stock mínimo.`
+        : 'Tu stock disponible ya alcanza los mínimos del local.')
+    } catch (e) { setError(e.message) }
+  }
+
+  const enviar = async (e) => {
+    e.preventDefault()
+    if (!items.length || !origenId || enviando) return
+    setEnviando(true)
+    setError('')
+    try {
+      onEnviada(await api.solicitarOrden(Number(origenId), usuario.sucursal_id, items))
+    } catch (err) { setError(err.message); setEnviando(false) }
+  }
+
+  return (
+    <Modal titulo="Nueva solicitud de reposición" onCerrar={onCerrar} ancho="ancho">
+      <form className="formulario-modal" onSubmit={enviar}>
+        {error && <div className="error" role="alert">{error}</div>}
+        {aviso && <div className="aviso-info">{aviso}</div>}
+        <div className="grilla">
+          <label>Centro de distribución de origen
+            <select required value={origenId} onChange={(e) => setOrigenId(e.target.value)}>
+              {centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select></label>
+          <div className="destino-propio"><span>Destino</span><strong>{usuario.sucursal}</strong></div>
         </div>
-      )}
-      {puedeRecibir && bulto.estado === 'RECIBIDO' && (
-        <div className="recepcion-bulto">
-          <p>Recepción confirmada. Compará el remito y el precinto con los datos esperados y elegí:</p>
-          <div className="acciones-verificacion">
-            <button onClick={() => onVerificar(bulto.id, true)}>Verificar</button>
-            <button className="peligro" onClick={() => {
-              const motivo = window.prompt('Motivo del rechazo del bulto')
-              if (motivo !== null) onVerificar(bulto.id, false, motivo)
-            }}>Rechazar</button>
-          </div>
+        <SelectorProductos productos={productos} cantidades={cantidades} onChange={setCantidades} />
+        <div className="modal-acciones">
+          <button type="button" className="secundario" onClick={sugerir}>Sugerir según stock mínimo</button>
+          <button type="button" className="secundario" onClick={onCerrar}>Cancelar</button>
+          <button type="submit" disabled={!items.length || !origenId || enviando}>
+            {enviando ? 'Enviando…' : 'Enviar solicitud'}</button>
         </div>
-      )}
-    </div>
+      </form>
+    </Modal>
   )
 }

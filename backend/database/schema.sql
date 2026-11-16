@@ -72,6 +72,10 @@ CREATE TABLE IF NOT EXISTS producto_sucursal (
     sucursal_id INTEGER NOT NULL REFERENCES sucursal(id),
     producto_id INTEGER NOT NULL REFERENCES producto(id),
     habilitado  INTEGER NOT NULL DEFAULT 1 CHECK (habilitado IN (0, 1)),
+    -- Stock mínimo PROPIO de cada local (lo configura su administrador).
+    -- Al crearse la fila toma el mínimo por defecto del producto (trigger).
+    -- El mínimo de un CD no se guarda: es la suma de los locales (vista minimo_vigente).
+    stock_minimo INTEGER CHECK (stock_minimo IS NULL OR stock_minimo >= 0),
     PRIMARY KEY (sucursal_id, producto_id)
 );
 

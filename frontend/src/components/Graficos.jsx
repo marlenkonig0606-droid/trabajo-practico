@@ -45,6 +45,12 @@ const corto = (n) => {
   return numero(n, 1)
 }
 
+// ms -> 'DD/MM/AAAA' (los ms se calcularon desde la fecha local de la venta)
+const fechaCorta = (ms) => {
+  const d = new Date(ms)
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+
 export function SinDatos({ children = 'No hay datos en el período seleccionado.' }) {
   return <p className="sin-datos">{children}</p>
 }
@@ -397,7 +403,7 @@ export function Dispersion({ puntos, etiquetaX, formatoX = numero, esFecha = fal
       {[0, 0.25, 0.5, 0.75, 1].map((f) => {
         const v = xMin + rango * f
         return <text key={f} x={px(v)} y={alto - 16} textAnchor="middle" className="eje">
-          {esFecha ? new Date(v).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' })
+          {esFecha ? fechaCorta(v)
             : formatoX(v)}</text>
       })}
       <text x={m.izq + w / 2} y={alto - 1} textAnchor="middle" className="eje">{etiquetaX}</text>

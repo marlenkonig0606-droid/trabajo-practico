@@ -9,12 +9,19 @@ from models.proveedor import normalizar_cuit
 
 
 class CatalogoService:
-    def __init__(self):
+    def __init__(self, stock_service=None):
+        # stock_service se usa para recalcular las alertas de stock mínimo cuando
+        # cambia algo que afecta un mínimo (mínimo del local, habilitación, altas/bajas).
+        self.stock = stock_service
         self.producto_dao = ProductoDAO()
         self.categoria_dao = CategoriaDAO()
         self.proveedor_dao = ProveedorDAO()
         self.sucursal_dao = SucursalDAO()
         self.usuarios = UsuariosService()
+
+    def _revisar_alertas(self, local_id=None, producto_id=None):
+        if self.stock is not None:
+            self.stock.revisar_alertas_por_cambio_de_minimo(local_id, producto_id)
 
     def _a_dict(self, fila):
         if fila is None:
@@ -103,6 +110,7 @@ class CatalogoService:
             datos["stock_minimo"], datos.get("proveedor_id")
         )
         nuevo_id = self._id_creado(resultado)
+        self._revisar_alertas(producto_id=nuevo_id)
         return self.obtener_producto(nuevo_id)
 
     def actualizar_producto(self, id_producto, datos):
@@ -142,6 +150,7 @@ class CatalogoService:
         resultado = self.producto_dao.cambiar_estado(id_producto, activo)
         self._comprobar_resultado(
             (resultado > 0, "No se pudo cambiar el estado del producto"))
+        self._revisar_alertas(producto_id=id_producto)
 
     def productos_de_sucursal(self, sucursal_id):
         sucursal = self.obtener_sucursal(sucursal_id)
@@ -179,12 +188,30 @@ class CatalogoService:
         if resultado == 0:
             raise ReglaNegocioError(
                 "No existe una habilitación de producto para este local")
+        # Habilitar/deshabilitar cambia el mínimo vigente del local y la suma del CD.
+        self._revisar_alertas(sucursal_id, producto_id)
         return {
             "sucursal_id": sucursal_id,
             "producto_id": producto_id,
             "nombre": producto["nombre"],
             "habilitado": habilitado,
         }
+
+    def cambiar_minimo_local(self, sucursal_id, producto_id, stock_minimo):
+        """Stock mínimo PROPIO de un local para un producto. No toca a los otros
+        locales; el mínimo de los CD (suma de locales) se recalcula solo."""
+        sucursal = self.obtener_sucursal(sucursal_id)
+        if sucursal["tipo"] != "LOCAL":
+            raise ReglaNegocioError("El stock mínimo se configura en cada local")
+        self.obtener_producto(producto_id)
+        if (isinstance(stock_minimo, bool) or not isinstance(stock_minimo, int)
+                or stock_minimo < 0):
+            raise ReglaNegocioError("El stock mínimo debe ser un entero mayor o igual a cero")
+        if self.producto_dao.cambiar_minimo_local(sucursal_id, producto_id, stock_minimo) == 0:
+            raise ReglaNegocioError("El producto no está registrado en este local")
+        self._revisar_alertas(sucursal_id, producto_id)
+        return next(p for p in self.productos_de_sucursal(sucursal_id)
+                    if p["id"] == producto_id)
 
     def _validar_sucursal(self, datos):
         if not isinstance(datos.get("nombre"), str) or not datos["nombre"].strip():
@@ -222,6 +249,7 @@ class CatalogoService:
         if administrador:
             # Se devuelve UNA sola vez para que el CD se la entregue al administrador.
             sucursal["administrador"] = administrador
+            self._revisar_alertas(sucursal["id"])
         return sucursal
 
     def eliminar_sucursal(self, id_sucursal):
@@ -242,6 +270,9 @@ class CatalogoService:
                     "o pendientes de verificación")
         resultado = self.sucursal_dao.cambiar_estado(id_sucursal, activo)
         self._comprobar_resultado((resultado > 0, "No se pudo cambiar el estado de la sucursal"))
+        if sucursal["tipo"] == "LOCAL":
+            # Un local que se activa o desactiva cambia la suma de mínimos de los CD.
+            self._revisar_alertas(id_sucursal)
         return self.obtener_sucursal(id_sucursal)
 
     def _cantidad_cd(self):

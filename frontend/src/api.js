@@ -30,7 +30,31 @@ function conFechas({ desde, hasta }) {
   return q.toString() ? `?${q}` : ''
 }
 
+// Arma "?clave=valor&..." omitiendo los filtros vacíos (para listados paginados)
+function consulta(parametros = {}) {
+  const q = new URLSearchParams()
+  Object.entries(parametros).forEach(([clave, valor]) => {
+    if (valor !== '' && valor != null) q.set(clave, valor)
+  })
+  return q.toString() ? `?${q}` : ''
+}
+
 export const api = {
+  // ---- listados con filtros y paginación (responden { items, total, pagina, paginas }) ----
+  buscarVentas: (f) => pedir('GET', `/ventas${consulta(f)}`),
+  buscarProductos: (f) => pedir('GET', `/productos${consulta(f)}`),
+  buscarCategorias: (f) => pedir('GET', `/categorias${consulta(f)}`),
+  buscarProveedores: (f) => pedir('GET', `/proveedores${consulta(f)}`),
+  buscarSucursales: (f) => pedir('GET', `/catalogo/sucursales${consulta(f)}`),
+  buscarProductosSucursal: (sucursalId, f) =>
+    pedir('GET', `/sucursales/${sucursalId}/productos${consulta(f)}`),
+  buscarStock: (sucursalId, f) => pedir('GET', `/stock/${sucursalId}${consulta(f)}`),
+  buscarOrdenes: (f) => pedir('GET', `/ordenes${consulta(f)}`),
+  buscarRecepciones: (f) => pedir('GET', `/recepciones${consulta(f)}`),
+  cambiarMinimoLocal: (sucursalId, productoId, stockMinimo) =>
+    pedir('PATCH', `/sucursales/${sucursalId}/productos/${productoId}/minimo`,
+      { stock_minimo: stockMinimo }),
+
   sesion: () => pedir('GET', '/auth/me'),
   registrar: (datos) => pedir('POST', '/auth/register', datos),
   iniciarSesion: (datos) => pedir('POST', '/auth/login', datos),

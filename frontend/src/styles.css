@@ -500,3 +500,133 @@ html { scroll-behavior: smooth; }
   .podio-puesto.primero .podio-escalon { height: 110px; }
 }
 .dona-svg .eje { fill: var(--suave); font-size: 11px; }
+
+/* =====================================================================
+   Componentes compartidos (UI.jsx): íconos, tooltips, modales, filtros,
+   paginación, estados y detalles expandibles.
+   ===================================================================== */
+.pantalla { display: grid; gap: 14px; }
+.pantalla-cabecera { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.pantalla-cabecera h2 { margin: 0 0 2px; }
+.pantalla-cabecera .ayuda { margin: 0; }
+.selector-sucursal { min-width: 220px; }
+
+/* Botones de solo ícono, con tooltip propio (data-tooltip) */
+.icono { flex: none; }
+.boton-icono {
+  position: relative; display: inline-grid; place-items: center; width: 34px; height: 34px;
+  padding: 0; border: 1px solid var(--borde); border-radius: 8px; color: #a5f3fc;
+  background: rgb(5 20 36 / 70%); box-shadow: none;
+}
+.boton-icono:hover:not(:disabled) { border-color: var(--acento); color: #fff; background: rgb(6 182 212 / 16%);
+  box-shadow: none; transform: none; }
+.boton-icono.activo { border-color: var(--acento); color: #04212b; background: var(--acento); }
+.boton-icono.peligro { color: #fda4af; border-color: rgb(251 113 133 / 35%); background: rgb(251 113 133 / 7%); }
+.boton-icono.peligro:hover:not(:disabled) { border-color: var(--error); background: rgb(251 113 133 / 18%); }
+.boton-icono.exito { color: #6ee7b7; border-color: rgb(52 211 153 / 35%); background: rgb(52 211 153 / 7%); }
+.boton-icono.exito:hover:not(:disabled) { border-color: var(--exito); background: rgb(52 211 153 / 18%); }
+.boton-icono.secundario { color: var(--suave); }
+.boton-icono[data-tooltip]::after {
+  content: attr(data-tooltip); position: absolute; bottom: calc(100% + 8px); left: 50%; z-index: 40;
+  padding: 5px 9px; border: 1px solid var(--borde); border-radius: 6px; color: #e6f8fe;
+  background: #051424; box-shadow: 0 6px 18px rgb(0 0 0 / 45%); font-size: .75rem; font-weight: 500;
+  white-space: nowrap; pointer-events: none; opacity: 0; transform: translate(-50%, 4px);
+  transition: opacity .12s, transform .12s;
+}
+.boton-icono:hover::after, .boton-icono:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+.boton-icono:disabled::after { display: none; }
+td.acciones { text-align: right; white-space: nowrap; }
+td.acciones .boton-icono + .boton-icono { margin-left: 6px; }
+th.acciones { text-align: right; }
+
+.boton-principal { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.boton-buscar { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Estados */
+.insignia-estado { display: inline-block; padding: 2px 9px; border: 1px solid; border-radius: 999px;
+  font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.insignia-estado.si { border-color: rgb(52 211 153 / 35%); background: rgb(52 211 153 / 9%); color: #6ee7b7; }
+.insignia-estado.no { border-color: rgb(251 113 133 / 35%); background: rgb(251 113 133 / 9%); color: #fda4af; }
+.estado.COMPLETADA { border-color: rgb(52 211 153 / 28%); background: rgb(52 211 153 / 10%); color: #6ee7b7; }
+.estado.DEVOLUCION_PARCIAL, .estado.PENDIENTE, .estado.EN_PREPARACION, .estado.RECIBIDO {
+  border-color: rgb(250 204 21 / 30%); background: rgb(250 204 21 / 8%); color: #fde68a; }
+.estado.DEVUELTA, .estado.ANULADO, .estado.PERDIDO { border-color: rgb(251 113 133 / 28%); background: rgb(251 113 133 / 8%); color: #fda4af; }
+tr.inactiva td:not(.acciones) { opacity: .6; }
+
+/* Filtros */
+.barra-filtros { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border: 1px solid var(--borde); border-radius: 12px; background: var(--tarjeta); }
+.barra-filtros-campos { display: flex; flex: 1 1 520px; flex-wrap: wrap; gap: 10px 12px; }
+.barra-filtros-campos label { flex: 1 1 140px; max-width: 220px; }
+.barra-filtros-campos .campo-ancho { flex: 2 1 240px; max-width: 360px; }
+.barra-filtros-botones { display: flex; align-items: center; gap: 8px; }
+
+/* Listados */
+.listado { padding-top: 6px; overflow-x: auto; }
+.tabla-compacta { margin-top: 0; }
+.tabla-compacta td { vertical-align: middle; }
+.numero { text-align: right; font-variant-numeric: tabular-nums; }
+.codigo { color: var(--suave); font-size: .76rem; }
+tr.resaltada td { background: rgb(52 211 153 / 9%); }
+tr.bajo td:first-child { box-shadow: inset 3px 0 0 var(--error); }
+tr.fila-detalle > td { padding: 0 10px 14px; background: rgb(3 15 28 / 55%); }
+tr.con-error td { background: rgb(251 113 133 / 8%); }
+.detalle { display: grid; gap: 10px; padding-top: 12px; }
+.detalle h4 { margin: 4px 0 0; color: #bfeefa; font-size: .85rem; }
+.detalle-datos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 18px;
+  margin: 12px 0 0; }
+.detalle-datos div { display: grid; gap: 2px; }
+.detalle-datos dt { color: var(--suave); font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; }
+.detalle-datos dd { margin: 0; }
+.tabla-detalle { margin: 0; font-size: .84rem; }
+.tabla-detalle th { font-size: .7rem; }
+.tabla-detalle input { width: 90px; padding: 6px 8px; }
+.detalle-devoluciones ul { margin: 4px 0 0; padding-left: 18px; color: #c1d5e0; }
+.vacio-listado { margin: 16px 0; padding: 18px; border: 1px dashed var(--borde); border-radius: 8px;
+  color: var(--suave); text-align: center; font-style: italic; }
+.cargando { display: flex; align-items: center; gap: 10px; color: var(--suave); }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--borde); border-top-color: var(--acento);
+  border-radius: 50%; animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+.aviso-info { padding: 9px 12px; border: 1px solid rgb(6 182 212 / 30%); border-radius: 8px;
+  background: rgb(6 182 212 / 8%); color: #a5f3fc; }
+.bulto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.bulto .acciones { display: inline-flex; gap: 6px; margin-left: auto; }
+.bulto .historial { flex-basis: 100%; }
+.detalle-grafico summary { cursor: pointer; margin-top: 10px; color: #a5f3fc; font-size: .85rem; }
+.stock-barra-pista i.bajo { background: var(--error); }
+
+/* Paginación */
+.paginacion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--borde); }
+.paginacion-total { color: var(--suave); font-size: .84rem; }
+.paginacion-controles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.paginacion-actual { padding: 0 8px; font-size: .86rem; font-variant-numeric: tabular-nums; }
+.paginacion-tamano { flex-direction: row; align-items: center; gap: 6px; margin-left: 8px; }
+.paginacion-tamano select { width: auto; padding: 5px 8px; }
+
+/* Modales */
+body.con-modal { overflow: hidden; }
+.modal-fondo { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px;
+  background: rgb(2 8 16 / 72%); backdrop-filter: blur(3px); animation: aparecer .15s ease-out; }
+.modal { display: grid; grid-template-rows: auto 1fr auto; width: min(560px, 100%); max-height: calc(100vh - 32px);
+  border: 1px solid var(--borde); border-radius: 14px; background: #0b1f35;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 55%); }
+.modal.ancho { width: min(860px, 100%); }
+.modal.chico { width: min(440px, 100%); }
+.modal-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--borde); }
+.modal-cabecera h2 { margin: 0; font-size: 1.05rem; }
+.modal-cuerpo { padding: 16px 18px; overflow-y: auto; }
+.formulario-modal { display: grid; gap: 14px; }
+.formulario-modal p { margin: 0; }
+.formulario-modal textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--borde); border-radius: 8px;
+  color: var(--texto); background: rgb(3 15 28 / 75%); font: inherit; resize: vertical; }
+.modal-acciones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.resumen-modal { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 18px; padding: 10px 12px;
+  border: 1px solid var(--borde); border-radius: 8px; background: rgb(3 15 28 / 55%); }
+@keyframes aparecer { from { opacity: 0; } }
+@media (max-width: 640px) {
+  .barra-filtros-campos label, .barra-filtros-campos .campo-ancho { max-width: none; }
+  td.acciones { text-align: left; }
+}

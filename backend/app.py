@@ -27,6 +27,7 @@ from services.observadores import (
 from services.ventas_service import VentasService
 from services.catalogo_service import CatalogoService
 from services.usuarios_service import UsuariosService
+from services.paginacion import coincide, leer_paginacion, paginar
 
 
 RUTA_CODIGO_CD = os.path.join(os.path.dirname(__file__), "cd_registration_code.txt")
@@ -66,11 +67,33 @@ def crear_app(cargar_demo=True):
     reportes = ReportesService()
     alertas = AlertasService()
     ventas = VentasService(stock)
-    catalogo = CatalogoService()
+    catalogo = CatalogoService(stock_service=stock)
     auth = AuthService()
     usuarios = UsuariosService()
     # Bootstrap: todo local activo que no tenga administrador recibe uno.
     usuarios.asegurar_administradores()
+    # Al iniciar se recalculan las alertas de stock mínimo con los valores actuales
+    # (corrige alertas viejas que quedaron con datos desactualizados).
+    stock.revisar_alertas()
+
+    # ---------- listados: filtros y paginación en el backend ----------
+    def estado_activo(fila, campo="activo"):
+        """Filtro ?estado=activos|inactivos (vacío = todos)."""
+        estado = request.args.get("estado", "")
+        if estado == "activos":
+            return bool(fila[campo])
+        if estado == "inactivos":
+            return not fila[campo]
+        return True
+
+    def listado(lista, *campos_busqueda, extra=lambda fila: True):
+        """Aplica ?q= (búsqueda parcial en los campos indicados), ?estado= y el
+        filtro extra; si viene ?pagina= devuelve solo esa página y el total."""
+        q = request.args.get("q", "")
+        filtrada = [f for f in lista
+                    if coincide(q, *(f.get(c) for c in campos_busqueda))
+                    and estado_activo(f) and extra(f)]
+        return jsonify(paginar(filtrada, leer_paginacion(request.args)))
 
     def cuerpo_json():
         datos = request.get_json(silent=True)
@@ -257,7 +280,9 @@ def crear_app(cargar_demo=True):
     @app.get("/api/catalogo/sucursales")
     @requiere_cd
     def listar_sucursales_catalogo():
-        return jsonify(catalogo.listar_sucursales())
+        tipo = request.args.get("tipo")
+        return listado(catalogo.listar_sucursales(), "nombre", "direccion", "codigo",
+                       extra=lambda f: not tipo or f["tipo"] == tipo)
 
     @app.get("/api/sucursales/<int:id_sucursal>")
     @requiere_cd
@@ -299,7 +324,9 @@ def crear_app(cargar_demo=True):
                     "nombre": producto["nombre"],
                     "precio_venta": producto["precio_venta"],
                 } for producto in productos])
-        return jsonify(catalogo.listar_productos())
+        categoria = request.args.get("categoria_id")
+        return listado(catalogo.listar_productos(), "nombre", "codigo",
+                       extra=lambda f: not categoria or str(f["categoria_id"]) == categoria)
 
     @app.get("/api/productos/<int:id_producto>")
     @requiere_cd
@@ -333,7 +360,7 @@ def crear_app(cargar_demo=True):
     @app.get("/api/categorias")
     @requiere_cd
     def listar_categorias():
-        return jsonify(catalogo.listar_categorias())
+        return listado(catalogo.listar_categorias(), "nombre", "descripcion")
 
     @app.post("/api/categorias")
     @requiere_cd
@@ -362,7 +389,7 @@ def crear_app(cargar_demo=True):
     @app.get("/api/proveedores")
     @requiere_cd
     def listar_proveedores():
-        return jsonify(catalogo.listar_proveedores())
+        return listado(catalogo.listar_proveedores(), "nombre", "razon_social", "cuit")
 
     @app.post("/api/proveedores")
     @requiere_cd
@@ -393,7 +420,10 @@ def crear_app(cargar_demo=True):
                 or id_sucursal != g.usuario["sucursal_id"]):
             raise AccesoDenegadoError(
                 "Cada local solo puede consultar las habilitaciones de su sucursal")
-        return jsonify(catalogo.productos_de_sucursal(id_sucursal))
+        habilitado = request.args.get("habilitado", "")
+        return listado(
+            catalogo.productos_de_sucursal(id_sucursal), "nombre", "codigo", "categoria",
+            extra=lambda f: (habilitado == "" or bool(f["habilitado"]) == (habilitado == "1")))
 
     @app.patch("/api/sucursales/<int:id_sucursal>/productos/<int:id_producto>")
     def cambiar_habilitacion_producto(id_sucursal, id_producto):
@@ -408,12 +438,31 @@ def crear_app(cargar_demo=True):
         return jsonify(catalogo.cambiar_habilitacion_producto(
             id_sucursal, id_producto, datos.get("habilitado")))
 
+    @app.patch("/api/sucursales/<int:id_sucursal>/productos/<int:id_producto>/minimo")
+    def cambiar_minimo_local(id_sucursal, id_producto):
+        """El administrador del local configura SU stock mínimo para un producto."""
+        if (g.usuario["tipo"] != "LOCAL" or id_sucursal != g.usuario["sucursal_id"]
+                or es_empleado_de_local(g.usuario)):
+            raise AccesoDenegadoError(
+                "Solo el administrador del local puede configurar su stock mínimo")
+        datos = cuerpo_json()
+        return jsonify(catalogo.cambiar_minimo_local(
+            id_sucursal, id_producto, datos.get("stock_minimo")))
+
     @app.get("/api/stock/<int:sucursal_id>")
     def ver_stock(sucursal_id):
         if (g.usuario["tipo"] != "CD"
                 and sucursal_id != g.usuario["sucursal_id"]):
             raise AccesoDenegadoError("Solo podés consultar el stock de tu sucursal")
-        return jsonify(stock.listar(sucursal_id))
+        situacion = request.args.get("situacion", "")   # bajo | ok
+        proveedor = request.args.get("proveedor_id", "")
+        def extra(f):
+            if situacion == "bajo" and f["libre"] >= f["stock_minimo"]:
+                return False
+            if situacion == "ok" and f["libre"] < f["stock_minimo"]:
+                return False
+            return not proveedor or str(f["proveedor_id"]) == proveedor
+        return listado(stock.listar(sucursal_id), "nombre", "codigo", "proveedor", extra=extra)
 
     @app.put("/api/stock/<int:sucursal_id>/<int:producto_id>")
     def ajustar_stock_cd(sucursal_id, producto_id):
@@ -433,9 +482,56 @@ def crear_app(cargar_demo=True):
     @app.get("/api/ordenes")
     def listar_ordenes():
         if g.usuario["tipo"] == "CD":
-            return jsonify(logistica.listar_ordenes())
-        return jsonify(logistica.listar_ordenes(
-            g.usuario["sucursal_id"], solicitante_id=g.usuario["id"]))
+            ordenes = logistica.listar_ordenes()
+        else:
+            # El administrador ve todas las solicitudes del local; el empleado, las suyas.
+            ordenes = logistica.listar_ordenes(
+                g.usuario["sucursal_id"],
+                solicitante_id=None if g.usuario["rol"] == "ADMINISTRADOR" else g.usuario["id"])
+        for o in ordenes:          # resumen para el listado compacto
+            o["cantidad_productos"] = len(o["items"])
+            o["unidades"] = sum(i["cantidad"] for i in o["items"])
+        estado = request.args.get("estado_orden", "")
+        local = request.args.get("destino_id", "")
+        desde, hasta = request.args.get("desde", ""), request.args.get("hasta", "")
+        numero = request.args.get("numero", "")
+        def extra(o):
+            fecha = (o.get("fecha") or "")[:10]
+            return ((not estado or o["estado"] == estado)
+                    and (not local or str(o["destino_id"]) == local)
+                    and (not numero or str(o["id"]) == numero)
+                    and (not desde or fecha >= desde) and (not hasta or fecha <= hasta))
+        return jsonify(paginar([o for o in ordenes if extra(o)],
+                               leer_paginacion(request.args)))
+
+    @app.get("/api/recepciones")
+    def listar_recepciones():
+        """Bultos que el CD ya despachó hacia el local (lo que el local recibe y
+        verifica). Filtros: ?estado_bulto=, ?numero= (n.º de bulto o solicitud)."""
+        if g.usuario["tipo"] != "LOCAL":
+            raise AccesoDenegadoError("Las recepciones corresponden a los locales")
+        estado = request.args.get("estado_bulto", "")
+        numero = request.args.get("numero", "")
+        recepciones = []
+        for o in logistica.listar_ordenes(g.usuario["sucursal_id"]):
+            nombres = {i["producto_id"]: i["nombre"] for i in o["items"]}
+            for b in o["bultos"]:
+                if not b["fecha_despacho"]:          # todavía no salió del CD
+                    continue
+                if estado and b["estado"] != estado:
+                    continue
+                if numero and numero not in (str(b["id"]), str(o["id"])):
+                    continue
+                recepciones.append({
+                    **b, "orden_id": o["id"], "origen": o["origen"],
+                    "remito_numero": o["remito_numero"],
+                    "unidades": sum(i["cantidad"] for i in b["items"]),
+                    "items": [{**i, "nombre": nombres.get(i["producto_id"])} for i in b["items"]],
+                })
+        # Primero lo que falta recibir o verificar; dentro de cada grupo, lo más nuevo.
+        recepciones.sort(key=lambda r: r["fecha_despacho"] or "", reverse=True)
+        recepciones.sort(key=lambda r: r["estado"] not in ("EN_TRANSITO", "RECIBIDO"))
+        return jsonify(paginar(recepciones, leer_paginacion(request.args)))
 
     @app.get("/api/notificaciones")
     def listar_notificaciones():
@@ -568,7 +664,12 @@ def crear_app(cargar_demo=True):
     @app.get("/api/ventas")
     def listar_ventas():
         sucursal_id = None if g.usuario["tipo"] == "CD" else g.usuario["sucursal_id"]
-        return jsonify(ventas.listar_ventas(sucursal_id))
+        paginacion = leer_paginacion(request.args)
+        if paginacion is None:                    # compatibilidad: lista completa
+            return jsonify(ventas.listar_ventas(sucursal_id))
+        filtros = {clave: request.args.get(clave, "").strip()
+                   for clave in ("desde", "hasta", "numero", "medio_pago", "producto")}
+        return jsonify(ventas.buscar_ventas(sucursal_id, filtros, *paginacion))
 
     @app.get("/api/ventas/<int:venta_id>")
     def obtener_venta(venta_id):

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
+import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
 
 function fechaLocalHoy() {
   const hoy = new Date()
@@ -272,7 +273,7 @@ function TablaMovimientos({ filas, onVerDetalle }) {
         <tbody>
           {filas.map((fila) => (
             <tr key={`${fila.tipo}-${fila.operacion_id}`}>
-              <td>{fila.fecha}</td><td>{fila.sucursal}</td>
+              <td>{formatearFechaHora(fila.fecha)}</td><td>{fila.sucursal}</td>
               <td>{nombres[fila.tipo] ?? fila.tipo}</td>
               <td>{fila.referencia}</td><td>{fila.unidades}</td>
               <td>{fila.valor == null ? '—' : `${fila.valor < 0 ? '-' : '+'}$${Math.abs(fila.valor).toFixed(2)}`}</td>
@@ -313,7 +314,7 @@ function DetalleMovimiento({ movimiento, onCerrar }) {
         {error && <div className="error">{error}</div>}
         {!venta && !error && <p className="vacio">Cargando detalle…</p>}
         {venta && <>
-          <p><b>Venta #{venta.id}</b> · {venta.fecha} · {venta.sucursal}</p>
+          <p><b>Venta #{venta.id}</b> · {formatearFechaHora(venta.fecha)} · {venta.sucursal}</p>
           {devolucion && items[0] && (
             <p>Devolución #{items[0].id} · {items[0].motivo}</p>
           )}
@@ -344,12 +345,15 @@ function DetalleMovimiento({ movimiento, onCerrar }) {
   )
 }
 
+// Las columnas de fecha se muestran DD/MM/AAAA
+const esColumnaFecha = (c) => c === 'dia' || c.startsWith('fecha') || c.endsWith('_fecha')
+
 function Tabla({ filas, columnas, resaltar }) {
   if (filas.length === 0) return <p className="vacio">Sin datos.</p>
   return (
     <table>
       <thead><tr>{columnas.map((c) => <th key={c}>{c.replaceAll('_', ' ')}</th>)}</tr></thead>
-      <tbody>{filas.map((f, i) => <tr key={i} className={resaltar?.(f) ? 'bajo' : ''}>{columnas.map((c) => <td key={c}>{f[c] == null ? 'Dato faltante' : f[c]}</td>)}</tr>)}</tbody>
+      <tbody>{filas.map((f, i) => <tr key={i} className={resaltar?.(f) ? 'bajo' : ''}>{columnas.map((c) => <td key={c}>{f[c] == null ? 'Dato faltante' : esColumnaFecha(c) ? formatearFechaHora(f[c]) : f[c]}</td>)}</tr>)}</tbody>
     </table>
   )
 }

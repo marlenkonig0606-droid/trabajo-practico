@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api.js'
 import SelectorRol from '../components/SelectorRol.jsx'
+import { BotonIcono, BotonPrincipal } from '../components/UI.jsx'
+import { formatearFecha } from '../utils/fechas.js'
 
 const pesos = (n) => `$${Number(n ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`
 
@@ -108,7 +110,7 @@ export default function MiLocal({ usuario }) {
               {pendientes.map((u) => (
                 <tr key={u.id}>
                   <td>{u.email}</td>
-                  <td>{u.fecha_alta}</td>
+                  <td>{formatearFecha(u.fecha_alta)}</td>
                   <td>
                     <SelectorRol compacto titulo={`Perfil ${u.id}`}
                                  valor={rolesElegidos[u.id] ?? u.rol}
@@ -119,9 +121,10 @@ export default function MiLocal({ usuario }) {
                            onChange={(e) => setMotivos({ ...motivos, [u.id]: e.target.value })} />
                   </td>
                   <td className="acciones">
-                    <button disabled={ocupado !== null} onClick={() => aprobar(u)}>Aprobar</button>
-                    <button className="peligro" disabled={ocupado !== null}
-                            onClick={() => rechazar(u)}>Rechazar</button>
+                    <BotonIcono icono="aprobar" etiqueta="Aprobar y generar contraseña temporal"
+                                tono="exito" disabled={ocupado !== null} onClick={() => aprobar(u)} />
+                    <BotonIcono icono="rechazar" etiqueta="Rechazar solicitud" tono="peligro"
+                                disabled={ocupado !== null} onClick={() => rechazar(u)} />
                   </td>
                 </tr>
               ))}
@@ -138,7 +141,7 @@ export default function MiLocal({ usuario }) {
                    onChange={(e) => setNuevoEmail(e.target.value)} />
           </label>
           <SelectorRol valor={nuevoRol} onCambiar={setNuevoRol} titulo="Perfil del nuevo usuario" />
-          <button disabled={ocupado !== null}>Crear perfil con contraseña temporal</button>
+          <BotonPrincipal type="submit" disabled={ocupado !== null}>Crear perfil con contraseña temporal</BotonPrincipal>
         </form>
       </section>
 
