@@ -83,7 +83,7 @@ export default function App() {
         id: 'reportes',
         titulo: 'Reportes',
         // El local ve su reporte gerencial; el CD ve el de la red y puede
-        // abrir el de cualquier local (misma plantilla) o el detalle operativo.
+        // abrir el de cualquier local (misma plantilla).
         componente: usuario.tipo === 'LOCAL'
           ? <ReportesLocal usuario={usuario} />
           : <ReportesCD usuario={usuario} />,

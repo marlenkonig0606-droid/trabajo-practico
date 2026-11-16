@@ -10,7 +10,6 @@ import {
   usePeriodoReporte,
 } from '../components/Reporte.jsx'
 import { BotonDescargarPdf, EncabezadoImpresion } from '../components/UI.jsx'
-import Reportes from './Reportes.jsx'
 import ReportesLocal from './ReportesLocal.jsx'
 
 const SECCIONES = [
@@ -28,7 +27,6 @@ const PREFIJO = 'repcd'
 // Arriba se elige QUÉ ver:
 //  - "red": el reporte del CD (toda la red de locales), GET /api/reportes/cd
 //  - un local: la MISMA plantilla que ve el administrador de ese local
-//  - "operativo": las tablas de control (movimientos, bultos, eventos…)
 export default function ReportesCD({ usuario }) {
   const periodo = usePeriodoReporte()
   const [vista, setVista] = useState('red')
@@ -44,19 +42,10 @@ export default function ReportesCD({ usuario }) {
       <select value={vista} onChange={(e) => setVista(e.target.value)}>
         <option value="red">{usuario.sucursal} · todos los locales</option>
         {locales.map((l) => <option key={l.id} value={l.id}>{l.nombre}</option>)}
-        <option value="operativo">Detalle operativo (tablas)</option>
       </select>
     </label>
   )
 
-  if (vista === 'operativo') {
-    return (
-      <>
-        <div className="tarjeta reportes-filtros">{selector}</div>
-        <Reportes usuario={usuario} />
-      </>
-    )
-  }
   if (vista !== 'red') {
     const local = locales.find((l) => String(l.id) === String(vista))
     if (local) {
