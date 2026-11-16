@@ -562,3 +562,43 @@ class ReportesDAO:
             WHERE {where}{filtro_cd}
             ORDER BY o.fecha""",
             tuple(parametros) + ((cd_id,) if cd_id is not None else ()))
+
+    def movimientos_de_cds(self, where, parametros):
+        """Entradas y salidas de mercadería de cada CD, por mes, tipo y proveedor.
+        where filtra por m.fecha."""
+        return self.db.consultar(f"""
+            SELECT s.id AS cd_id, s.nombre AS cd, strftime('%Y-%m', m.fecha) AS mes,
+                   m.motivo, COALESCE(pr.nombre, 'Sin proveedor') AS proveedor,
+                   SUM(m.cantidad) AS unidades,
+                   SUM(m.cantidad * COALESCE(m.costo_unitario, p.precio_costo)) AS valor,
+                   COUNT(DISTINCT COALESCE(m.referencia, m.id)) AS documentos
+            FROM movimiento_stock m
+            JOIN sucursal s ON s.id = m.sucursal_id AND s.tipo = 'CD'
+            JOIN producto p ON p.id = m.producto_id
+            LEFT JOIN proveedor pr ON pr.id = p.proveedor_id
+            WHERE {where}
+            GROUP BY s.id, mes, m.motivo, pr.id""", tuple(parametros))
+
+    def stock_de_cds(self):
+        return self.db.consultar("""
+            SELECT s.id AS cd_id, s.nombre AS cd,
+                   COALESCE(SUM(st.disponible), 0) AS unidades,
+                   COALESCE(SUM(st.disponible * p.precio_costo), 0) AS valor
+            FROM sucursal s
+            LEFT JOIN stock st ON st.sucursal_id = s.id
+            LEFT JOIN producto p ON p.id = st.producto_id
+            WHERE s.tipo = 'CD' AND s.activo = 1
+            GROUP BY s.id ORDER BY s.nombre""")
+
+    def ultimos_ingresos_a_cds(self, where, parametros, limite=10):
+        return self.db.consultar(f"""
+            SELECT m.fecha, s.nombre AS cd, p.nombre AS producto,
+                   COALESCE(pr.nombre, 'Sin proveedor') AS proveedor, m.cantidad,
+                   ROUND(m.cantidad * COALESCE(m.costo_unitario, p.precio_costo), 2) AS valor,
+                   m.referencia
+            FROM movimiento_stock m
+            JOIN sucursal s ON s.id = m.sucursal_id AND s.tipo = 'CD'
+            JOIN producto p ON p.id = m.producto_id
+            LEFT JOIN proveedor pr ON pr.id = p.proveedor_id
+            WHERE m.motivo = 'INGRESO_PROVEEDOR' AND {where}
+            ORDER BY m.fecha DESC, m.id DESC LIMIT ?""", tuple(parametros) + (limite,))

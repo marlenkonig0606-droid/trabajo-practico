@@ -326,6 +326,63 @@ class ReportesService:
             "productos": _productos_por_local(vendido, devuelto, locales),
             "pedidos": _cumplimiento_pedidos(ordenes, locales),
             "estacionalidad": _estacionalidad(vendido, meses),
+            "entradas": self._entradas_cds(desde, hasta, meses),
+        }
+
+    def _entradas_cds(self, desde, hasta, meses):
+        """Mercadería que entra a cada CD (compras a proveedores) y que sale
+        (despachos a los locales), para ver si el abastecimiento acompaña."""
+        where_m, params_m = self.dao.filtro_fechas("m.fecha", desde, hasta)
+        filas = self.dao.movimientos_de_cds(where_m, params_m)
+        stock = self.dao.stock_de_cds()
+        cds = {f["cd"]: {"cd": f["cd"], "ingresado": 0, "ingresado_valor": 0.0,
+                         "ingresos": 0, "despachado": 0, "despachado_valor": 0.0,
+                         "reingresado": 0, "ajustes": 0,
+                         "stock_actual": f["unidades"], "stock_valor": _r(f["valor"]),
+                         "mensual": {m: {"mes": m, "entradas": 0, "salidas": 0} for m in meses}}
+               for f in stock}
+        proveedores = {}
+        for f in filas:
+            c = cds.setdefault(f["cd"], {"cd": f["cd"], "ingresado": 0, "ingresado_valor": 0.0,
+                                         "ingresos": 0, "despachado": 0, "despachado_valor": 0.0,
+                                         "reingresado": 0, "ajustes": 0, "stock_actual": 0,
+                                         "stock_valor": 0,
+                                         "mensual": {m: {"mes": m, "entradas": 0, "salidas": 0}
+                                                     for m in meses}})
+            mes = c["mensual"].setdefault(f["mes"], {"mes": f["mes"], "entradas": 0, "salidas": 0})
+            if f["motivo"] == "INGRESO_PROVEEDOR":
+                c["ingresado"] += f["unidades"]
+                c["ingresado_valor"] += f["valor"] or 0
+                c["ingresos"] += f["documentos"]
+                mes["entradas"] += f["unidades"]
+                p = proveedores.setdefault(f["proveedor"], {"proveedor": f["proveedor"],
+                                                            "unidades": 0, "valor": 0.0})
+                p["unidades"] += f["unidades"]
+                p["valor"] += f["valor"] or 0
+            elif f["motivo"] == "DESPACHO":
+                c["despachado"] += -f["unidades"]
+                c["despachado_valor"] += -(f["valor"] or 0)
+                mes["salidas"] += -f["unidades"]
+            elif f["motivo"] == "RECHAZO_REINGRESO":
+                c["reingresado"] += f["unidades"]
+                mes["entradas"] += f["unidades"]
+            elif not f["motivo"].startswith("APERTURA"):
+                c["ajustes"] += f["unidades"]
+        resultado = []
+        for c in sorted(cds.values(), key=lambda c: c["cd"]):
+            mensual = sorted(c.pop("mensual").values(), key=lambda m: m["mes"])
+            resultado.append({**c, "ingresado_valor": _r(c["ingresado_valor"]),
+                              "despachado_valor": _r(c["despachado_valor"]),
+                              # Cobertura: cuántas veces lo que entró cubre lo que salió
+                              "cobertura": round(c["ingresado"] / c["despachado"], 2)
+                                           if c["despachado"] else None,
+                              "mensual": mensual})
+        where_u, params_u = self.dao.filtro_fechas("m.fecha", desde, hasta)
+        return {
+            "por_cd": resultado,
+            "por_proveedor": sorted(({**p, "valor": _r(p["valor"])} for p in proveedores.values()),
+                                    key=lambda p: -p["valor"]),
+            "ultimos": self.dao.ultimos_ingresos_a_cds(where_u, params_u),
         }
 
 

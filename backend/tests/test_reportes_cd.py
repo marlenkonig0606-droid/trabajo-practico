@@ -132,3 +132,22 @@ def test_pedidos_completos_incompletos_y_en_curso(red):
     assert por_local["Local Nueva Córdoba"]["incompletos"] == 2
     # Filtrar por un CD que no atendió nada deja la sección vacía.
     assert reportes.reporte_cd(cd_id=999)["pedidos"]["total"] == 0
+
+
+def test_entradas_de_los_cd(red):
+    reportes, stock, logistica = red
+    stock.sumar(1, 1, 200, "INGRESO_PROVEEDOR", "Factura A-0001-00000001")
+    orden = logistica.crear_orden(CENTRO, [{"producto_id": 1, "cantidad": 30}], 1)
+    bulto = logistica.crear_bulto(orden["id"], [{"producto_id": 1, "cantidad": 30}])
+    logistica.precintar(bulto["id"])
+    logistica.despachar(bulto["id"])
+    e = reportes.reporte_cd()["entradas"]
+    central = next(c for c in e["por_cd"] if c["cd"] == "CD Central")
+    assert central["ingresado"] == 200 and central["ingresos"] == 1
+    assert central["despachado"] == 30
+    assert central["cobertura"] == round(200 / 30, 2)
+    total = BaseDeDatos().consultar_uno(
+        "SELECT SUM(disponible) AS u FROM stock WHERE sucursal_id = 1")["u"]
+    assert central["stock_actual"] == total
+    assert e["ultimos"][0]["cantidad"] == 200
+    assert sum(p["unidades"] for p in e["por_proveedor"]) == 200

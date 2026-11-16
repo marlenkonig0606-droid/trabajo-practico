@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { formatearFecha } from '../utils/fechas.js'
 import { api } from '../api.js'
 import {
   BarrasAgrupadas, BarrasHorizontales, BarrasResultado, COLORES, Dona, Leyenda, LineasMultiples,
@@ -19,6 +20,7 @@ const SECCIONES = [
   ['top', 'Top 10 productos'],
   ['pedidos', 'Pedidos de los locales'],
   ['estacionalidad', 'Estacionalidad'],
+  ['entradas', 'Entradas a los CD'],
 ]
 const PREFIJO = 'repcd'
 
@@ -115,6 +117,7 @@ function ReporteRed({ usuario, periodo, selector }) {
           <Pedidos d={datos} cd={usuario.sucursal} soloPropios={soloPropios}
                    onSoloPropios={setSoloPropios} />
           <Estacionalidad d={datos} />
+          <EntradasCD d={datos} />
         </div>
       )}
     </section>
@@ -415,6 +418,67 @@ function Estacionalidad({ d }) {
                   <td>{p.mes_pico ? nombreMes(p.mes_pico) : '—'}</td>
                   <td>{p.mes_valle ? nombreMes(p.mes_valle) : '—'}</td>
                   <td className="num">{p.indice_pico == null ? '—' : `+${numero((p.indice_pico - 1) * 100, 0)} %`}</td></tr>
+              ))}</tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
+    </Seccion>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 7. Entradas de mercadería a los CD (compras a proveedores) vs. despachos
+// ---------------------------------------------------------------------------
+function EntradasCD({ d }) {
+  const e = d.entradas
+  const [cd, setCd] = useState('todos')
+  const elegidos = cd === 'todos' ? e.por_cd : e.por_cd.filter((c) => c.cd === cd)
+  const meses = d.periodo.meses
+  const sumaMes = (clave) => meses.map((m) => elegidos.reduce(
+    (s, c) => s + (c.mensual.find((x) => x.mes === m)?.[clave] ?? 0), 0))
+  return (
+    <Seccion prefijo={PREFIJO} id="entradas" numero="7" titulo="Entradas de mercadería a los CD"
+             descripcion="Lo que cada CD compró a los proveedores y lo que despachó a los locales en el período.">
+      <div className="kpis">
+        {e.por_cd.map((c) => (
+          <div key={c.cd} className="kpi">
+            <span>{c.cd}</span>
+            <strong>{numero(c.ingresado)} u. ingresadas</strong>
+            <small>
+              {numero(c.ingresos)} facturas · {pesos(c.ingresado_valor)} al costo<br />
+              {numero(c.despachado)} u. despachadas · stock hoy {numero(c.stock_actual)} u. ({pesos(c.stock_valor)})
+            </small>
+          </div>
+        ))}
+      </div>
+      <div className="segmentado chico" role="tablist" aria-label="Centro de distribución">
+        {['todos', ...e.por_cd.map((c) => c.cd)].map((x) => (
+          <button key={x} role="tab" aria-selected={cd === x} className={cd === x ? 'activo' : ''}
+                  onClick={() => setCd(x)}>{x === 'todos' ? 'Todos los CD' : x}</button>
+        ))}
+      </div>
+      <div className="paneles">
+        <Panel titulo="Entradas vs. salidas por mes" ancho
+               ayuda="Entradas: compras a proveedores y bultos rechazados que volvieron. Salidas: despachos a los locales.">
+          <BarrasAgrupadas formato={(v) => `${numero(v)} u.`}
+                           categorias={meses.map((m) => nombreMes(m, conAnio(d)))}
+                           series={[
+                             { nombre: 'Entradas', color: COLORES.exito, valores: sumaMes('entradas') },
+                             { nombre: 'Salidas (despachos)', color: COLORES.secundario, valores: sumaMes('salidas') },
+                           ]} />
+        </Panel>
+        <Panel titulo="Compras por proveedor">
+          <Dona formato={pesos}
+                datos={e.por_proveedor.map((p, i) => ({ etiqueta: p.proveedor, valor: p.valor, color: PALETA[i % PALETA.length] }))} />
+        </Panel>
+        <Panel titulo="Últimos ingresos">
+          {e.ultimos.length === 0 ? <SinDatos>No hubo ingresos de proveedores en el período.</SinDatos> : (
+            <table className="tabla-reporte">
+              <thead><tr><th>Fecha</th><th>CD</th><th>Producto</th><th className="num">Unidades</th></tr></thead>
+              <tbody>{e.ultimos.map((u, i) => (
+                <tr key={i} title={u.referencia}><td>{formatearFecha(u.fecha)}</td><td>{u.cd}</td>
+                  <td>{u.producto}</td><td className="num">{numero(u.cantidad)}</td></tr>
               ))}</tbody>
             </table>
           )}
