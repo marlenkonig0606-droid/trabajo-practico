@@ -437,3 +437,202 @@ export function StockVsMinimo({ filas }) {
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Campana de Gauss: histograma de los tickets + curva normal de referencia,
+// con la media (μ) y las franjas de ±1σ y ±2σ sombreadas.
+// ---------------------------------------------------------------------------
+export function CampanaGauss({ clases, curva = [], media, desvio, alto = 300 }) {
+  if (!clases?.length) return <SinDatos />
+  const ancho = 1000
+  const m = { arriba: 26, abajo: 46, izq: 52, der: 16 }
+  const w = ancho - m.izq - m.der
+  const h = alto - m.arriba - m.abajo
+  const xMin = Math.min(clases[0].desde, ...curva.map((p) => p.x))
+  const xMax = Math.max(clases[clases.length - 1].hasta, ...curva.map((p) => p.x))
+  const x = (v) => m.izq + ((v - xMin) / (xMax - xMin || 1)) * w
+  const { tope, marcas } = escala(Math.max(...clases.map((c) => c.cantidad),
+    ...curva.map((p) => p.y)), 4, true)
+  const y = (v) => m.arriba + h - (v / tope) * h
+  const base = m.arriba + h
+  const recortar = (v) => Math.min(Math.max(v, xMin), xMax)
+  const franja = (k) => [x(recortar(media - k * desvio)), x(recortar(media + k * desvio))]
+  const linea = curva.map((p) => `${x(p.x)},${y(p.y)}`).join(' ')
+  const area = curva.length ? `M${x(curva[0].x)},${base} L${linea.replaceAll(' ', ' L')} L${x(curva[curva.length - 1].x)},${base} Z` : ''
+  return (
+    <svg className="svg-grafico" viewBox={`0 0 ${ancho} ${alto}`} role="img"
+         aria-label="Histograma de tickets con curva normal de referencia">
+      <defs>
+        <linearGradient id="gauss-barras" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#22d3ee" stopOpacity="0.95" />
+          <stop offset="1" stopColor="#0e7490" stopOpacity="0.55" />
+        </linearGradient>
+        <linearGradient id="gauss-area" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#facc15" stopOpacity="0.35" />
+          <stop offset="1" stopColor="#facc15" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      {desvio > 0 && <>
+        <rect x={franja(2)[0]} y={m.arriba} width={franja(2)[1] - franja(2)[0]} height={h}
+              fill="rgb(167 139 250 / 6%)"><title>μ ± 2σ: el 95 % de los tickets si fuera normal</title></rect>
+        <rect x={franja(1)[0]} y={m.arriba} width={franja(1)[1] - franja(1)[0]} height={h}
+              fill="rgb(167 139 250 / 11%)"><title>μ ± 1σ: el 68 % de los tickets si fuera normal</title></rect>
+      </>}
+      {marcas.map((v) => <g key={v}>
+        <line x1={m.izq} x2={m.izq + w} y1={y(v)} y2={y(v)} stroke={COLORES.grilla} />
+        <text x={m.izq - 8} y={y(v) + 4} textAnchor="end" className="eje">{v}</text>
+      </g>)}
+      {clases.map((c) => {
+        const x0 = x(c.desde) + 1.5
+        const ancho = Math.max(x(c.hasta) - x(c.desde) - 3, 1)
+        return <rect key={c.desde} x={x0} y={y(c.cantidad)} width={ancho} height={base - y(c.cantidad)}
+                     rx="3" fill="url(#gauss-barras)">
+          <title>{`${pesos(c.desde)} a ${pesos(c.hasta)}: ${c.cantidad} ventas`}</title>
+        </rect>
+      })}
+      {curva.length > 1 && <>
+        <path d={area} fill="url(#gauss-area)" />
+        <polyline points={linea} fill="none" stroke={COLORES.amarillo} strokeWidth="3"
+                  strokeLinejoin="round" strokeLinecap="round" />
+      </>}
+      {media != null && <>
+        <line x1={x(media)} x2={x(media)} y1={m.arriba - 6} y2={base} stroke={COLORES.exito}
+              strokeDasharray="6 4" strokeWidth="2"><title>{`Media: ${pesos(media)}`}</title></line>
+        <text x={x(media)} y={m.arriba - 10} textAnchor="middle" className="eje etiqueta-media">
+          μ = {pesos(media)}</text>
+      </>}
+      {desvio > 0 && [-2, -1, 1, 2].map((k) => {
+        const v = media + k * desvio
+        if (v < xMin || v > xMax) return null
+        return <text key={k} x={x(v)} y={base + 30} textAnchor="middle" className="eje eje-sigma">
+          {k > 0 ? `+${k}σ` : `${k}σ`}</text>
+      })}
+      {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+        const v = xMin + (xMax - xMin) * f
+        return <text key={f} x={x(v)} y={base + 16} textAnchor="middle" className="eje">{pesos(v)}</text>
+      })}
+    </svg>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Barras de resultado: verdes hacia arriba (ganancia), rojas hacia abajo (pérdida)
+// ---------------------------------------------------------------------------
+export function BarrasResultado({ datos, formato = pesos, alto = 280 }) {
+  if (!datos.length || datos.every((d) => !d.valor)) return <SinDatos />
+  const ancho = Math.max(ANCHO, datos.length * 46)
+  const m = { arriba: 16, abajo: 34, izq: 56, der: 12 }
+  const w = ancho - m.izq - m.der
+  const h = alto - m.arriba - m.abajo
+  const maxPos = Math.max(0, ...datos.map((d) => d.valor || 0))
+  const maxNeg = Math.max(0, ...datos.map((d) => -(d.valor || 0)))
+  const { tope: topePos, marcas: marcasPos } = escala(maxPos || 1)
+  const pasoMarca = marcasPos[1] ?? topePos
+  const topeNeg = maxNeg ? pasoMarca * Math.ceil(maxNeg / pasoMarca) : 0
+  const rango = topePos + topeNeg
+  const y = (v) => m.arriba + ((topePos - v) / rango) * h
+  const marcas = []
+  for (let v = -topeNeg; v <= topePos + 1e-9; v += pasoMarca) marcas.push(Math.round(v))
+  const paso = w / datos.length
+  const anchoBarra = Math.min(34, paso * 0.62)
+  return (
+    <svg className="svg-grafico" viewBox={`0 0 ${ancho} ${alto}`} role="img">
+      {marcas.map((v) => (
+        <g key={v}>
+          <line x1={m.izq} x2={m.izq + w} y1={y(v)} y2={y(v)}
+                stroke={v === 0 ? COLORES.ejes : COLORES.grilla} strokeWidth={v === 0 ? 1.5 : 1} />
+          <text x={m.izq - 8} y={y(v) + 4} textAnchor="end" className="eje">
+            {v < 0 ? '-' : ''}{corto(Math.abs(v))}</text>
+        </g>
+      ))}
+      {datos.map((d, i) => {
+        const v = d.valor || 0
+        const x = m.izq + paso * i + (paso - anchoBarra) / 2
+        return <g key={d.etiqueta}>
+          <rect x={x} y={v >= 0 ? y(v) : y(0)} width={anchoBarra} height={Math.abs(y(v) - y(0))}
+                rx="3" fill={v >= 0 ? COLORES.exito : COLORES.alerta} opacity={v ? 0.9 : 0.25}>
+            <title>{`${d.etiqueta}: ${v < 0 ? 'pérdida' : 'ganancia'} ${formato(Math.abs(v))}${d.detalle ? ` · ${d.detalle}` : ''}`}</title>
+          </rect>
+          <text x={m.izq + paso * i + paso / 2} y={alto - 12} textAnchor="middle" className="eje">
+            {d.etiqueta}</text>
+        </g>
+      })}
+    </svg>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Varias líneas (una por serie) sobre las mismas categorías
+// ---------------------------------------------------------------------------
+export function LineasMultiples({ categorias, series, formato = numero, alto = 300 }) {
+  if (!categorias.length || !series.length
+      || series.every((s) => s.valores.every((v) => !v))) return <SinDatos />
+  const ancho = Math.max(ANCHO, categorias.length * 46)
+  const m = { arriba: 16, abajo: 34, izq: 48, der: 12 }
+  const w = ancho - m.izq - m.der
+  const h = alto - m.arriba - m.abajo
+  const { tope, marcas } = escala(Math.max(...series.flatMap((s) => s.valores)), 4,
+    sonEnteros(series.flatMap((s) => s.valores)))
+  const paso = w / categorias.length
+  const xy = (v, i) => [m.izq + paso * i + paso / 2, m.arriba + h - ((v || 0) / tope) * h]
+  return (
+    <>
+      <svg className="svg-grafico" viewBox={`0 0 ${ancho} ${alto}`} role="img">
+        {marcas.map((v) => {
+          const yy = m.arriba + h - (v / tope) * h
+          return <g key={v}>
+            <line x1={m.izq} x2={m.izq + w} y1={yy} y2={yy} stroke={COLORES.grilla} />
+            <text x={m.izq - 8} y={yy + 4} textAnchor="end" className="eje">{corto(v)}</text>
+          </g>
+        })}
+        {series.map((s) => (
+          <g key={s.nombre}>
+            <polyline points={s.valores.map((v, i) => xy(v, i).join(',')).join(' ')} fill="none"
+                      stroke={s.color} strokeWidth="2.5" strokeLinejoin="round" />
+            {s.valores.map((v, i) => {
+              const [x, yy] = xy(v, i)
+              return <circle key={i} cx={x} cy={yy} r="3.5" fill={s.color}>
+                <title>{`${s.nombre} · ${categorias[i]}: ${formato(v)}`}</title></circle>
+            })}
+          </g>
+        ))}
+        {categorias.map((c, i) => (
+          <text key={c} x={m.izq + paso * i + paso / 2} y={alto - 12} textAnchor="middle" className="eje">{c}</text>
+        ))}
+      </svg>
+      <Leyenda items={series.map((s) => ({ texto: s.nombre, color: s.color, linea: true }))} />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Mapa de calor: filas (productos) x columnas (meses). Más intenso = más vendido
+// respecto del promedio de ESA fila (así se compara la estacionalidad aunque
+// un producto venda mucho más que otro).
+// ---------------------------------------------------------------------------
+export function MapaCalor({ columnas, filas, formato = numero }) {
+  if (!columnas.length || !filas.length) return <SinDatos />
+  return (
+    <div className="mapa-calor" style={{ '--columnas': columnas.length }}>
+      <span />
+      {columnas.map((c) => <span key={c} className="mapa-calor-columna">{c}</span>)}
+      {filas.map((f) => {
+        const max = Math.max(...f.valores, 1)
+        const min = Math.min(...f.valores)
+        return [
+          <span key={`${f.nombre}-n`} className="mapa-calor-fila">{f.nombre}</span>,
+          ...f.valores.map((v, i) => {
+            const t = max === min ? 0.5 : (v - min) / (max - min)
+            return (
+              <span key={`${f.nombre}-${i}`} className={`mapa-calor-celda ${v === max ? 'pico' : ''}`}
+                    style={{ background: `rgb(6 182 212 / ${8 + t * 80}%)` }}
+                    title={`${f.nombre} · ${columnas[i]}: ${formato(v)}`}>
+                {formato(v)}
+              </span>
+            )
+          }),
+        ]
+      })}
+    </div>
+  )
+}

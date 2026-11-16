@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
+import { BotonDescargarPdf, EncabezadoImpresion } from '../components/UI.jsx'
 
 function fechaLocalHoy() {
   const hoy = new Date()
@@ -12,6 +13,7 @@ function fechaLocalHoy() {
 
 export default function Reportes({ usuario }) {
   const hoy = fechaLocalHoy()
+  const reporteRef = useRef(null)
   const [resumen, setResumen] = useState(null)
   const [fechasResumen, setFechasResumen] = useState({ desde: '', hasta: '' })
   const [errorResumen, setErrorResumen] = useState('')
@@ -78,11 +80,17 @@ export default function Reportes({ usuario }) {
   }
 
   return (
-    <section>
+    <section className="reportes-cd" ref={reporteRef}>
+      <EncabezadoImpresion
+        titulo={`Reportes · ${usuario.tipo === 'CD' ? usuario.sucursal + ' (todas las sucursales)' : usuario.sucursal}`}
+        subtitulo={describirPeriodo(fechas)} usuario={usuario} />
       <div className="tarjeta resumen-reportes">
         <div className="resumen-cabecera">
           <div>
-            <h2>Resumen general · {usuario.tipo === 'CD' ? 'todas las sucursales' : usuario.sucursal}</h2>
+            <div className="reportes-titulo">
+              <h2>Resumen general · {usuario.tipo === 'CD' ? 'todas las sucursales' : usuario.sucursal}</h2>
+              <BotonDescargarPdf objetivo={reporteRef} nombreArchivo={`Reportes ${usuario.sucursal} ${hoy}`} />
+            </div>
             <p className="ayuda">
               {usuario.tipo === 'CD'
                 ? 'Una vista rápida del rendimiento de todos los locales.'
@@ -265,7 +273,8 @@ function TablaMovimientos({ filas, onVerDetalle }) {
   }
   return (
     <div className="tabla-movimientos">
-      <table>
+      <AvisoRecorte total={filas.length} />
+      <table className={filas.length > FILAS_IMPRESION ? 'tabla-larga' : ''}>
         <thead><tr>
           <th>Fecha</th><th>Sucursal</th><th>Tipo</th><th>Referencia</th>
           <th>Unidades</th><th>Valor</th><th>Detalle</th>
@@ -348,13 +357,37 @@ function DetalleMovimiento({ movimiento, onCerrar }) {
 // Las columnas de fecha se muestran DD/MM/AAAA
 const esColumnaFecha = (c) => c === 'dia' || c.startsWith('fecha') || c.endsWith('_fecha')
 
+// En el PDF, las tablas largas se cortan en FILAS_IMPRESION filas (styles.css)
+// para que el PDF no tenga cientos de hojas; se avisa cuántas quedaron afuera.
+const FILAS_IMPRESION = 25
+
+function describirPeriodo({ desde, hasta }) {
+  const f = (x) => x.split('-').reverse().join('/')
+  if (desde && hasta) return `Período: del ${f(desde)} al ${f(hasta)}.`
+  if (desde) return `Período: desde el ${f(desde)}.`
+  if (hasta) return `Período: hasta el ${f(hasta)}.`
+  return 'Período: todo el historial.'
+}
+
+function AvisoRecorte({ total }) {
+  if (total <= FILAS_IMPRESION) return null
+  return (
+    <p className="solo-impresion aviso-recorte">
+      Se incluyen las primeras {FILAS_IMPRESION} de {total} filas. El detalle completo está en el sistema.
+    </p>
+  )
+}
+
 function Tabla({ filas, columnas, resaltar }) {
   if (filas.length === 0) return <p className="vacio">Sin datos.</p>
   return (
-    <table>
+    <>
+    <AvisoRecorte total={filas.length} />
+    <table className={filas.length > FILAS_IMPRESION ? 'tabla-larga' : ''}>
       <thead><tr>{columnas.map((c) => <th key={c}>{c.replaceAll('_', ' ')}</th>)}</tr></thead>
       <tbody>{filas.map((f, i) => <tr key={i} className={resaltar?.(f) ? 'bajo' : ''}>{columnas.map((c) => <td key={c}>{f[c] == null ? 'Dato faltante' : esColumnaFecha(c) ? formatearFechaHora(f[c]) : f[c]}</td>)}</tr>)}</tbody>
     </table>
+    </>
   )
 }
 

@@ -69,6 +69,58 @@ export function BotonPrincipal({ icono = 'agregar', children, onClick, disabled,
 }
 
 // ---------------------------------------------------------------------------
+// Reporte en PDF: el botón genera el archivo y lo descarga directamente
+// (utils/exportarPdf.js). "objetivo" es un ref al contenedor del reporte.
+// ---------------------------------------------------------------------------
+export function BotonDescargarPdf({ objetivo, nombreArchivo, disabled }) {
+  const [generando, setGenerando] = useState(false)
+  const [error, setError] = useState('')
+  const descargar = async () => {
+    if (!objetivo.current) return
+    setGenerando(true)
+    setError('')
+    try {
+      const { exportarPdf } = await import('../utils/exportarPdf.js')
+      await exportarPdf(objetivo.current, nombreArchivo)
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo generar el PDF. Probá de nuevo.')
+    } finally {
+      setGenerando(false)
+    }
+  }
+  return (
+    <span className="boton-pdf-contenedor">
+      <BotonPrincipal icono="descargar" tono={`boton-pdf ${generando ? 'generando' : ''}`}
+                      onClick={descargar} disabled={disabled || generando}>
+        {generando ? 'Generando PDF…' : 'Descargar PDF'}
+      </BotonPrincipal>
+      {error && <small className="error-pdf" role="alert">{error}</small>}
+    </span>
+  )
+}
+
+// Encabezado que SOLO aparece en el PDF.
+export function EncabezadoImpresion({ titulo, subtitulo, usuario }) {
+  const ahora = new Date()
+  const dos = (n) => String(n).padStart(2, '0')
+  const generado = `${dos(ahora.getDate())}/${dos(ahora.getMonth() + 1)}/${ahora.getFullYear()} `
+    + `${dos(ahora.getHours())}:${dos(ahora.getMinutes())}`
+  return (
+    <div className="solo-impresion encabezado-impresion">
+      <div>
+        <strong>CD a Locales · {titulo}</strong>
+        {subtitulo && <span>{subtitulo}</span>}
+      </div>
+      <div className="encabezado-impresion-meta">
+        <span>Generado el {generado}</span>
+        {usuario && <span>por {usuario.email}</span>}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Estado y acción contextual de habilitar/deshabilitar (una sola acción).
 // ---------------------------------------------------------------------------
 export function Estado({ activo, textos = ['Activo', 'Inactivo'] }) {

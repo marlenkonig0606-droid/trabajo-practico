@@ -68,6 +68,7 @@ def estadistica_tickets(importes):
 
     histograma = _histograma(datos)
     curva = _curva_normal(media, desvio, n, histograma) if normal else []
+    central = _distribucion_central(datos, limite_bajo, limite_alto)
 
     return {
         "n": n,
@@ -92,13 +93,51 @@ def estadistica_tickets(importes):
         "diagnostico": motivo,
         "histograma": histograma,
         "curva_normal": curva,
+        "central": central,
     }
 
 
-def _histograma(datos):
-    """Regla de Sturges: k = 1 + log2(n) intervalos (entre 4 y 12)."""
+def _distribucion_central(datos, limite_bajo, limite_alto):
+    """Forma de la distribución SIN los tickets atípicos (fuera de los límites de
+    Tukey). Los atípicos estiran el eje y aplastan el gráfico; sacándolos se ve
+    dónde se concentran las ventas. Se superpone la curva normal con la media y
+    el desvío de estos tickets como REFERENCIA, y se informa si ajusta o no."""
+    centrales = [x for x in datos if limite_bajo <= x <= limite_alto]
+    n = len(centrales)
+    if n < MINIMO_TICKETS_ESTADISTICA:
+        return None
+    media = statistics.fmean(centrales)
+    desvio = statistics.stdev(centrales)
+    if desvio == 0:
+        return None
+    m2 = sum((x - media) ** 2 for x in centrales) / n
+    asimetria = sum((x - media) ** 3 for x in centrales) / n / m2 ** 1.5
+    curtosis = sum((x - media) ** 4 for x in centrales) / n / m2 ** 2 - 3
+    jarque_bera = n / 6 * (asimetria ** 2 + curtosis ** 2 / 4)
+    histograma = _histograma(centrales, maximo_intervalos=24)
+    return {
+        "n": n,
+        "excluidos": len(datos) - n,
+        "media": _redondear(media),
+        "desvio": _redondear(desvio),
+        "asimetria": _redondear(asimetria, 3),
+        "jarque_bera": _redondear(jarque_bera, 3),
+        "ajusta_normal": jarque_bera <= CHI2_2GL_95,
+        "histograma": histograma,
+        "curva_normal": _curva_normal(media, desvio, n, histograma),
+    }
+
+
+def _histograma(datos, maximo_intervalos=12):
+    """Regla de Sturges: k = 1 + log2(n) intervalos (entre 4 y el máximo)."""
     minimo, maximo = datos[0], datos[-1]
-    k = max(4, min(12, math.ceil(1 + math.log2(len(datos)))))
+    k = max(4, min(maximo_intervalos, math.ceil(1 + math.log2(len(datos)))))
+    if maximo_intervalos > 12:
+        # Más intervalos (regla de Freedman-Diaconis) para que se vea la forma.
+        q1, _, q3 = statistics.quantiles(datos, n=4, method="inclusive")
+        ancho_fd = 2 * (q3 - q1) / len(datos) ** (1 / 3)
+        if ancho_fd > 0:
+            k = max(k, min(maximo_intervalos, math.ceil((maximo - minimo) / ancho_fd)))
     if maximo == minimo:
         return [{"desde": minimo, "hasta": maximo, "cantidad": len(datos)}]
     ancho = (maximo - minimo) / k
@@ -116,9 +155,11 @@ def _curva_normal(media, desvio, n, histograma):
     superponerla al histograma."""
     ancho = histograma[0]["hasta"] - histograma[0]["desde"]
     inicio, fin = histograma[0]["desde"], histograma[-1]["hasta"]
+    # La curva se extiende un desvío más allá del histograma para que se vean las colas.
+    inicio, fin = max(0, inicio - desvio * 0.5), fin + desvio * 0.5
     puntos = []
-    for i in range(61):
-        x = inicio + (fin - inicio) * i / 60
+    for i in range(121):
+        x = inicio + (fin - inicio) * i / 120
         densidad = math.exp(-((x - media) ** 2) / (2 * desvio ** 2)) / (
             desvio * math.sqrt(2 * math.pi))
         puntos.append({"x": round(x, 2), "y": round(densidad * n * ancho, 4)})
