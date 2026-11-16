@@ -6,6 +6,7 @@ import {
   useListado,
 } from '../components/UI.jsx'
 import { formatearFecha, formatearFechaHora, hoyISO, pesos } from '../utils/fechas.js'
+import CampoFecha from '../components/CampoFecha.jsx'
 
 export const MEDIOS_PAGO = [
   ['EFECTIVO', 'Efectivo'],
@@ -67,10 +68,10 @@ export default function Ventas({ usuario }) {
 
       <BarraFiltros onBuscar={listado.aplicar} onLimpiar={listado.limpiar} cargando={listado.cargando}>
         <label>Desde
-          <input type="date" value={filtros.desde} max={filtros.hasta || hoy}
+          <CampoFecha value={filtros.desde} max={filtros.hasta || hoy}
                  onChange={(e) => setFiltros({ ...filtros, desde: e.target.value })} /></label>
         <label>Hasta
-          <input type="date" value={filtros.hasta} max={hoy} min={filtros.desde || undefined}
+          <CampoFecha value={filtros.hasta} max={hoy} min={filtros.desde || undefined}
                  onChange={(e) => setFiltros({ ...filtros, hasta: e.target.value })} /></label>
         <label>N.º de venta o comprobante
           <input inputMode="numeric" value={filtros.numero} placeholder="Ej.: 125"

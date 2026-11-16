@@ -28,12 +28,17 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
                 self._avisar_cambio(par["sucursal_id"], par["producto_id"])
 
     def revisar_alertas_por_cambio_de_minimo(self, local_id=None, producto_id=None):
-        """Cambió un mínimo de local (o una habilitación): se revisa SOLO ese local.
-        El mínimo de cada CD es propio, no depende de los locales."""
-        self.revisar_alertas(local_id, producto_id)
+        """Cambió un mínimo de local (o una habilitación): se revisa ese local y
+        todos los CD, porque el mínimo del CD no puede ser menor que la suma de
+        los mínimos de los locales."""
+        with self.db.transaccion():
+            self.revisar_alertas(local_id, producto_id)
+            for cd_id in self.dao.cds():
+                self.revisar_alertas(cd_id, producto_id)
 
     def cambiar_minimo_cd(self, cd_id, producto_id, stock_minimo):
-        """Stock mínimo PROPIO de un CD. No cambia el mínimo de ningún local."""
+        """Stock mínimo de un CD. No cambia el mínimo de ningún local y no puede
+        ser menor que la suma de los mínimos de los locales."""
         if self.dao.tipo_de_sucursal(cd_id) != "CD":
             raise ReglaNegocioError("Este mínimo se configura solo para un centro de distribución")
         if self.dao.obtener_producto(producto_id) is None:
@@ -41,6 +46,11 @@ class StockService(Sujeto):            # también es SUJETO: avisa cada cambio d
         if (isinstance(stock_minimo, bool) or not isinstance(stock_minimo, int)
                 or stock_minimo < 0):
             raise ReglaNegocioError("El stock mínimo debe ser un entero mayor o igual a cero")
+        suma = self.dao.suma_minimos_locales(producto_id)
+        if stock_minimo < suma:
+            raise ReglaNegocioError(
+                f"El mínimo del CD no puede ser menor que la suma de los mínimos de los "
+                f"locales ({suma} unidades)")
         with self.db.transaccion():
             self.dao.guardar_minimo_cd(cd_id, producto_id, stock_minimo)
             self.revisar_alertas(cd_id, producto_id)

@@ -1,6 +1,9 @@
 // Piezas compartidas por los reportes del local y del centro de distribución:
 // filtro de período, secciones numeradas, indicadores y paneles de gráficos.
 import { useState } from 'react'
+import CampoFecha from './CampoFecha.jsx'
+
+const aGuiones = (iso) => iso.split('-').reverse().join('-')
 
 export function fechaLocalHoy() {
   const hoy = new Date()
@@ -17,8 +20,9 @@ export function usePeriodoReporte() {
     modo, setModo, anio, setAnio, fechas, setFechas, anioActual,
     filtro: modo === 'anio' ? { anio } : fechas,
     clave: modo === 'anio' ? `a${anio}` : `p${fechas.desde}_${fechas.hasta}`,
+    // Nombre del PDF con fechas DD-MM-AAAA (la barra no se puede usar en un archivo).
     sufijoArchivo: modo === 'anio' ? String(anio)
-      : `${fechas.desde || 'inicio'} a ${fechas.hasta || fechaLocalHoy()}`,
+      : `${fechas.desde ? aGuiones(fechas.desde) : 'inicio'} a ${aGuiones(fechas.hasta || fechaLocalHoy())}`,
   }
 }
 
@@ -31,17 +35,24 @@ export function descripcionPeriodo({ modo, anio, fechas: { desde, hasta } }, tod
   return todo
 }
 
-export function FiltroPeriodo({ periodo, anios }) {
+// primeraFecha: fecha del primer registro (la manda el backend). "Todo el
+// historial" completa los selectores con esa fecha y la de hoy.
+export function FiltroPeriodo({ periodo, anios, primeraFecha }) {
   const hoy = fechaLocalHoy()
   const { modo, setModo, anio, setAnio, fechas, setFechas } = periodo
   const lista = [...new Set([periodo.anioActual, ...(anios ?? [])])].sort((a, b) => b - a)
+  const todoElHistorial = () => setFechas({ desde: primeraFecha ?? '', hasta: hoy })
+  const elegirPeriodo = () => {
+    setModo('periodo')
+    if (!fechas.desde && !fechas.hasta) todoElHistorial()
+  }
   return (
     <>
       <div className="segmentado" role="tablist" aria-label="Tipo de período">
         <button role="tab" aria-selected={modo === 'anio'} className={modo === 'anio' ? 'activo' : ''}
                 onClick={() => setModo('anio')}>Año completo</button>
         <button role="tab" aria-selected={modo === 'periodo'} className={modo === 'periodo' ? 'activo' : ''}
-                onClick={() => setModo('periodo')}>Período</button>
+                onClick={elegirPeriodo}>Período</button>
       </div>
       {modo === 'anio' ? (
         <label>Año
@@ -52,15 +63,14 @@ export function FiltroPeriodo({ periodo, anios }) {
       ) : (
         <div className="filtro-resumen">
           <label>Desde
-            <input type="date" value={fechas.desde} max={fechas.hasta || hoy}
+            <CampoFecha value={fechas.desde} max={fechas.hasta || hoy}
                    onChange={(e) => setFechas({ ...fechas, desde: e.target.value })} />
           </label>
           <label>Hasta
-            <input type="date" value={fechas.hasta} max={hoy} min={fechas.desde || undefined}
+            <CampoFecha value={fechas.hasta} max={hoy} min={fechas.desde || undefined}
                    onChange={(e) => setFechas({ ...fechas, hasta: e.target.value })} />
           </label>
-          <button className="link" onClick={() => setFechas({ desde: '', hasta: '' })}>
-            Todo el historial</button>
+          <button className="link" onClick={todoElHistorial}>Todo el historial</button>
         </div>
       )}
     </>

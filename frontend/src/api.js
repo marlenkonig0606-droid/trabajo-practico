@@ -68,7 +68,8 @@ export const api = {
   panelLocal: () => pedir('GET', '/local/panel'),
   equipoLocal: () => pedir('GET', '/local/usuarios'),
   altaUsuarioLocal: (email, rol) => pedir('POST', '/local/usuarios', { email, rol }),
-  aprobarUsuario: (id, rol) => pedir('POST', `/local/usuarios/${id}/aprobar`, { rol }),
+  // Se aprueba con el rol que eligió el usuario (no se puede cambiar).
+  aprobarUsuario: (id) => pedir('POST', `/local/usuarios/${id}/aprobar`, {}),
   rechazarUsuario: (id, motivo) => pedir('POST', `/local/usuarios/${id}/rechazar`, { motivo }),
   sucursales: () => pedir('GET', '/sucursales'),
   sucursalesCatalogo: () => pedir('GET', '/catalogo/sucursales'),

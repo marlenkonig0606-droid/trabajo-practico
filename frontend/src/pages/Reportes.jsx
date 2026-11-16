@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import { formatearFecha, formatearFechaHora } from '../utils/fechas.js'
 import { BotonDescargarPdf, EncabezadoImpresion } from '../components/UI.jsx'
+import CampoFecha from '../components/CampoFecha.jsx'
 
 function fechaLocalHoy() {
   const hoy = new Date()
@@ -89,7 +90,7 @@ export default function Reportes({ usuario }) {
           <div>
             <div className="reportes-titulo">
               <h2>Resumen general · {usuario.tipo === 'CD' ? 'todas las sucursales' : usuario.sucursal}</h2>
-              <BotonDescargarPdf objetivo={reporteRef} nombreArchivo={`Reportes ${usuario.sucursal} ${hoy}`} />
+              <BotonDescargarPdf objetivo={reporteRef} nombreArchivo={`Reportes ${usuario.sucursal} ${hoy.split('-').reverse().join('-')}`} />
             </div>
             <p className="ayuda">
               {usuario.tipo === 'CD'
@@ -99,12 +100,12 @@ export default function Reportes({ usuario }) {
           </div>
           <div className="filtro-resumen">
             <label>Desde
-              <input type="date" value={fechasResumen.desde}
+              <CampoFecha value={fechasResumen.desde}
                 max={fechasResumen.hasta || hoy}
                 onChange={(e) => setFechasResumen({ ...fechasResumen, desde: e.target.value })} />
             </label>
             <label>Hasta
-              <input type="date" value={fechasResumen.hasta}
+              <CampoFecha value={fechasResumen.hasta}
                 max={hoy}
                 min={fechasResumen.desde || undefined}
                 onChange={(e) => setFechasResumen({ ...fechasResumen, hasta: e.target.value })} />
@@ -153,9 +154,9 @@ export default function Reportes({ usuario }) {
       </div>
       <div className="tarjeta filtro-fechas">
         <h2>Período</h2>
-        <label>Desde <input type="date" value={fechas.desde} max={fechas.hasta || hoy}
+        <label>Desde <CampoFecha value={fechas.desde} max={fechas.hasta || hoy}
           onChange={(e) => setFechas({ ...fechas, desde: e.target.value })} /></label>
-        <label>Hasta <input type="date" value={fechas.hasta} max={hoy}
+        <label>Hasta <CampoFecha value={fechas.hasta} max={hoy}
           min={fechas.desde || undefined}
           onChange={(e) => setFechas({ ...fechas, hasta: e.target.value })} /></label>
         <button className="link" onClick={() => setFechas({ desde: '', hasta: '' })}>Todo</button>
