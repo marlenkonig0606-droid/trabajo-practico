@@ -279,14 +279,16 @@ class BaseDeDatos:
         self._conexion.commit()
 
     def _migrar_minimo_por_sucursal(self):
-        """Stock mínimo independiente por local y mínimo del CD calculado.
-        - producto_sucursal.stock_minimo: mínimo propio de cada local. En bases
-          anteriores se inicializa con el mínimo que tenía el producto.
-        - Vista minimo_vigente: el mínimo que se usa para comparar el stock de
-          CADA sucursal. Local: su propio valor (0 si no vende el producto).
-          CD: la suma, por producto, de los mínimos de los locales activos que
-          lo tienen habilitado. Se calcula al consultar, así siempre refleja la
-          configuración actual."""
+        """Stock mínimo independiente por sucursal: cada una controla SOLO el suyo.
+        - producto_sucursal.stock_minimo: mínimo propio de cada local (lo cambia
+          únicamente el administrador del local). En bases anteriores se
+          inicializa con el mínimo que tenía el producto.
+        - minimo_cd: mínimo propio de cada CD (lo cambia únicamente ese CD). Si el
+          CD todavía no lo configuró, vale el mínimo por defecto del producto.
+          En bases anteriores (cuando el mínimo del CD era la suma de los locales)
+          se inicializa con esa suma, así ninguna alerta cambia de golpe.
+        - Vista minimo_vigente: el mínimo con el que se compara el stock de cada
+          sucursal (local: el suyo, 0 si no vende el producto; CD: el suyo)."""
         columnas = [c["name"] for c in self.consultar("PRAGMA table_info(producto_sucursal)")]
         if "stock_minimo" not in columnas:
             self._conexion.executescript("""
@@ -295,6 +297,29 @@ class BaseDeDatos:
                 UPDATE producto_sucursal SET stock_minimo = (
                     SELECT p.stock_minimo FROM producto p WHERE p.id = producto_id);
             """)
+        # ¿La base viene de la versión en que el mínimo del CD era la suma de los locales?
+        vista = self.consultar_uno(
+            "SELECT sql FROM sqlite_master WHERE type='view' AND name='minimo_vigente'")
+        venia_de_la_suma = bool(vista and "SUM(" in vista["sql"])
+        self._conexion.executescript("""
+            CREATE TABLE IF NOT EXISTS minimo_cd (
+                sucursal_id  INTEGER NOT NULL REFERENCES sucursal(id),
+                producto_id  INTEGER NOT NULL REFERENCES producto(id),
+                stock_minimo INTEGER NOT NULL CHECK (stock_minimo >= 0),
+                PRIMARY KEY (sucursal_id, producto_id)
+            );
+        """)
+        if venia_de_la_suma:
+            self._conexion.execute("""
+                INSERT OR IGNORE INTO minimo_cd (sucursal_id, producto_id, stock_minimo)
+                SELECT cd.id, p.id,
+                       COALESCE((SELECT SUM(COALESCE(ps.stock_minimo, 0))
+                                 FROM producto_sucursal ps
+                                 JOIN sucursal l ON l.id = ps.sucursal_id
+                                 WHERE l.tipo = 'LOCAL' AND l.activo = 1
+                                   AND ps.habilitado = 1 AND ps.producto_id = p.id), 0)
+                FROM sucursal cd CROSS JOIN producto p
+                WHERE cd.tipo = 'CD'""")
         self._conexion.executescript("""
             CREATE TRIGGER IF NOT EXISTS producto_sucursal_minimo_inicial
             AFTER INSERT ON producto_sucursal
@@ -314,13 +339,9 @@ class BaseDeDatos:
                 JOIN sucursal s ON s.id = ps.sucursal_id
                 WHERE s.tipo = 'LOCAL'
                 UNION ALL
-                SELECT cd.id, p.id,
-                       COALESCE((SELECT SUM(COALESCE(ps.stock_minimo, 0))
-                                 FROM producto_sucursal ps
-                                 JOIN sucursal l ON l.id = ps.sucursal_id
-                                 WHERE l.tipo = 'LOCAL' AND l.activo = 1
-                                   AND ps.habilitado = 1 AND ps.producto_id = p.id), 0)
+                SELECT cd.id, p.id, COALESCE(mc.stock_minimo, p.stock_minimo)
                 FROM sucursal cd CROSS JOIN producto p
+                LEFT JOIN minimo_cd mc ON mc.sucursal_id = cd.id AND mc.producto_id = p.id
                 WHERE cd.tipo = 'CD';
         """)
         self._conexion.commit()

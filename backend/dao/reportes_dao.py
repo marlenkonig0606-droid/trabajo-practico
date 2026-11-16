@@ -159,7 +159,7 @@ class ReportesDAO:
             FROM sucursal s
             CROSS JOIN producto p
             LEFT JOIN stock st ON st.sucursal_id = s.id AND st.producto_id = p.id
-            -- mínimo de ESA sucursal: propio del local o suma de locales para el CD
+            -- mínimo de ESA sucursal: el propio del local o el propio del CD
             LEFT JOIN minimo_vigente mv ON mv.sucursal_id = s.id AND mv.producto_id = p.id
             LEFT JOIN (
                 SELECT m.sucursal_id, m.producto_id, SUM(m.cantidad) AS movimientos

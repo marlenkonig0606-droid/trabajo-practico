@@ -23,8 +23,8 @@ class AlertaStockMinimoObserver(Observador):
             return      # un observador puede ignorar los eventos que no le interesan
 
         sucursal_id, producto_id, libre = datos["sucursal_id"], datos["producto_id"], datos["libre"]
-        # Mínimo de ESTA sucursal: el propio del local, o para un CD la suma de
-        # los mínimos de los locales (se calcula en la vista minimo_vigente).
+        # Mínimo de ESTA sucursal: el propio del local o el propio del CD
+        # (vista minimo_vigente).
         minimo = self.dao.stock_minimo(sucursal_id, producto_id)
         abierta = self.dao.alerta_pendiente(sucursal_id, producto_id)
 
