@@ -26,6 +26,7 @@ class CategoriaDAO:
 
     def obtener_por_id(self, categoria_id):
         with self._conn() as cx:
+            cx.row_factory = sqlite3.Row
             fila = cx.execute(
                 'SELECT * FROM categoria WHERE id = ?', (categoria_id,)
             ).fetchone()
@@ -35,6 +36,7 @@ class CategoriaDAO:
 
     def listar(self):
         with self._conn() as cx:
+            cx.row_factory = sqlite3.Row
             filas = cx.execute(
                 'SELECT * FROM categoria ORDER BY nombre'
             ).fetchall()

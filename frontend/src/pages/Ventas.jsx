@@ -7,7 +7,6 @@ import {
 } from '../components/UI.jsx'
 import { formatearFecha, formatearFechaHora, hoyISO, pesos } from '../utils/fechas.js'
 import CampoFecha from '../components/CampoFecha.jsx'
-import { festejarVenta, lamentarDevolucion } from '../utils/efectos.js'
 
 export const MEDIOS_PAGO = [
   ['EFECTIVO', 'Efectivo'],
@@ -44,7 +43,6 @@ export default function Ventas({ usuario }) {
   const ventaRegistrada = (venta) => {
     setModal(null)
     setNueva(venta.id)
-    festejarVenta()   // solo llega acá si el backend confirmó la venta
     setMensaje(`Venta n.º ${venta.id} registrada por ${pesos(venta.total)}. Comprobante ${venta.comprobante_numero}.`)
     // Se limpian los filtros para que la venta nueva aparezca primera en el listado.
     listado.limpiar()
@@ -52,7 +50,6 @@ export default function Ventas({ usuario }) {
 
   const devolucionRegistrada = async (venta, devolucion) => {
     setModal(null)
-    lamentarDevolucion()   // solo llega acá si el backend confirmó la devolución
     setMensaje(`Devolución registrada en la venta n.º ${venta.id}: reintegro de ${pesos(devolucion.total ?? devolucion.reintegro)}. El stock se actualizó.`)
     listado.recargar()
     await cargarDetalle(venta.id).catch(() => {})

@@ -1,5 +1,5 @@
 """
-Ciclo de vida del bulto.
+Ciclo de vida del bulto (lo que la cátedra va a evaluar "críticamente").
 
     PREPARADO ──precintar──▶ PRECINTADO ──despachar──▶ EN_TRANSITO
         │                        │                         │
