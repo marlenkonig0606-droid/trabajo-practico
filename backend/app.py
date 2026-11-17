@@ -590,8 +590,11 @@ def crear_app(cargar_demo=True):
     def resolver_orden(orden_id):
         datos = cuerpo_json()
         orden = logistica.obtener_orden(orden_id)
-        accion = (datos.get("accion") or "").upper()
-        if g.usuario["tipo"] != "CD":
+        accion = (datos.get("accion") or "").strip().upper()
+        if g.usuario["tipo"] == "CD":
+            if accion != "RECHAZAR":
+                raise AccesoDenegadoError("El centro de distribución solo puede rechazar solicitudes")
+        else:
             if orden["destino_id"] != g.usuario["sucursal_id"]:
                 raise AccesoDenegadoError("Solo podés resolver órdenes de tu local")
             if accion != "CANCELAR":

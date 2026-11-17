@@ -368,6 +368,54 @@ def test_local_solicita_a_cualquier_cd_y_cd_no_puede_crear_orden(cliente_api, mo
     assert respuesta_cd.status_code == 403
 
 
+def test_cd_solo_puede_rechazar_solicitudes(cliente_api, monkeypatch):
+    orden = cliente_api.post("/api/ordenes", json={
+        "origen_id": 1, "destino_id": 2,
+        "items": [{"producto_id": 1, "cantidad": 2}],
+    }).get_json()
+    monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
+    cd = crear_app(cargar_demo=False).test_client()
+    assert cd.post("/api/auth/register", json={
+        "email": "cd-rechaza@example.com", "password": "contraseña-segura",
+        "sucursal_id": 1, "codigo_cd": "marlufa",
+    }).status_code == 201
+
+    cancelar = cd.post(f"/api/ordenes/{orden['id']}/resolver", json={
+        "accion": "CANCELAR", "motivo": "No corresponde",
+    })
+    assert cancelar.status_code == 403
+
+    rechazar = cd.post(f"/api/ordenes/{orden['id']}/resolver", json={
+        "accion": "RECHAZAR", "motivo": "Sin disponibilidad",
+    })
+    assert rechazar.status_code == 200
+    assert rechazar.get_json()["resolucion"] == "RECHAZADA"
+
+
+def test_local_no_puede_cancelar_solicitud_con_preparacion_iniciada(
+        cliente_api, monkeypatch):
+    orden = cliente_api.post("/api/ordenes", json={
+        "origen_id": 1, "destino_id": 2,
+        "items": [{"producto_id": 1, "cantidad": 2}],
+    }).get_json()
+    monkeypatch.setenv("CD_REGISTRATION_CODE", "marlufa")
+    cd = crear_app(cargar_demo=False).test_client()
+    assert cd.post("/api/auth/register", json={
+        "email": "cd-prepara@example.com", "password": "contraseña-segura",
+        "sucursal_id": 1, "codigo_cd": "marlufa",
+    }).status_code == 201
+    bulto = cd.post(f"/api/ordenes/{orden['id']}/bultos", json={
+        "items": [{"producto_id": 1, "cantidad": 2}],
+    })
+    assert bulto.status_code == 201
+
+    cancelar = cliente_api.post(f"/api/ordenes/{orden['id']}/resolver", json={
+        "accion": "CANCELAR", "motivo": "Ya no hace falta",
+    })
+    assert cancelar.status_code == 400
+    assert "antes de que el CD empiece" in cancelar.get_json()["error"]
+
+
 def test_cd_ajusta_solo_el_stock_de_su_centro_y_respeta_reservas(
     cliente_api, monkeypatch
 ):

@@ -98,7 +98,8 @@ export default function Logistica() {
                     <td>{o.destino}<small className="codigo"> desde {o.origen}</small></td>
                     <td>{formatearFecha(o.fecha)}</td>
                     <td>{o.cantidad_productos} producto{o.cantidad_productos === 1 ? '' : 's'} · {o.unidades} u.</td>
-                    <td><EtiquetaEstado estado={o.estado} />
+                    <td><EtiquetaEstado estado={o.bultos?.some((b) => b.estado === 'PERDIDO')
+                      ? 'PERDIDO' : o.estado} />
                       {o.resolucion && <small className="codigo"> {o.resolucion.toLowerCase()}</small>}</td>
                     <td className="acciones">
                       <BotonIcono icono={abierta === o.id ? 'ocultar' : 'ver'}
@@ -107,8 +108,6 @@ export default function Logistica() {
                       {resoluble && <>
                         <BotonIcono icono="rechazar" etiqueta="Rechazar solicitud" tono="peligro"
                                     onClick={() => resolver(o, 'RECHAZAR')} />
-                        <BotonIcono icono="anular" etiqueta="Cancelar solicitud" tono="peligro"
-                                    onClick={() => resolver(o, 'CANCELAR')} />
                       </>}
                     </td>
                   </tr>

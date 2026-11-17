@@ -132,12 +132,18 @@ def test_sugerencia_descuenta_ordenes_abiertas_sin_contarlas_como_stock(svc):
 
 def test_cancelar_orden_libera_reservas_y_registra_resolucion(svc):
     orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 5}])
-    bulto = svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 5}])
-    svc.precintar(bulto["id"])
     resultado = svc.resolver_orden(orden["id"], "CANCELAR", "Solicitud duplicada")
     assert resultado["estado"] == "CERRADA"
     assert resultado["resolucion"] == "CANCELADA"
     assert StockService().reservado(CD, AGUA) == 0
+
+
+def test_no_cancelar_orden_despues_de_iniciar_preparacion(svc):
+    orden = svc.crear_orden(LOCAL, [{"producto_id": AGUA, "cantidad": 5}])
+    svc.crear_bulto(orden["id"], [{"producto_id": AGUA, "cantidad": 5}])
+
+    with pytest.raises(ReglaNegocioError, match="antes de que el CD empiece"):
+        svc.resolver_orden(orden["id"], "CANCELAR", "Ya no hace falta")
 
 
 def test_rechazo_del_cd_notifica_al_local_y_la_notificacion_se_marca_leida(svc):
