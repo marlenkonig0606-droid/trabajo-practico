@@ -65,7 +65,7 @@ function ListadoSolicitudes({ onMensaje, onError }) {
   const cancelar = async (orden) => {
     const motivo = await confirmar({ titulo: `Cancelar la solicitud #${orden.id}`, pedirMotivo: true,
       peligro: true, textoAceptar: 'Cancelar solicitud',
-      mensaje: 'Si el CD ya preparó bultos, se anulan y se libera la reserva.' })
+      mensaje: 'Solo podés cancelar antes de que el CD empiece a preparar los bultos.' })
     if (!motivo) return
     try {
       await api.resolverOrden(orden.id, 'CANCELAR', motivo)
@@ -111,7 +111,7 @@ function ListadoSolicitudes({ onMensaje, onError }) {
                     <BotonIcono icono={abierta === o.id ? 'ocultar' : 'ver'}
                                 etiqueta={abierta === o.id ? 'Cerrar detalle' : 'Ver detalle'}
                                 activo={abierta === o.id} onClick={() => setAbierta(abierta === o.id ? null : o.id)} />
-                    {['PENDIENTE', 'EN_PREPARACION'].includes(o.estado) && (
+                    {o.estado === 'PENDIENTE' && (
                       <BotonIcono icono="anular" etiqueta="Cancelar solicitud" tono="peligro"
                                   onClick={() => cancelar(o)} />
                     )}

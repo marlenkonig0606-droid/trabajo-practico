@@ -348,6 +348,9 @@ class LogisticaService(Sujeto):          # es el SUJETO del patrón Observer
         if not motivo:
             raise ReglaNegocioError("Debe indicar el motivo de la resolución")
         orden = self.obtener_orden(orden_id)
+        if accion == "CANCELAR" and orden["estado"] != "PENDIENTE":
+            raise ReglaNegocioError(
+                "Solo se puede cancelar una solicitud antes de que el CD empiece la preparación")
         if orden["estado"] not in ("PENDIENTE", "EN_PREPARACION"):
             raise ReglaNegocioError("Solo se pueden resolver órdenes pendientes")
         bultos = self._bultos_de_orden(orden_id)
