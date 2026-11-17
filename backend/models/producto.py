@@ -1,5 +1,5 @@
 def normalizar_codigo(codigo):
-    return "".join(codigo.split()).upper()
+    return "".join(codigo.split()).lower()
 
 
 class Producto:
