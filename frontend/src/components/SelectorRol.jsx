@@ -2,16 +2,8 @@
 // Se usa en el registro (perfil que se solicita) y en el panel del administrador
 // (alta directa y aprobación).
 export const ROLES = [
-  {
-    valor: 'EMPLEADO',
-    titulo: 'Empleado',
-    detalle: 'Vende, pide reposición y recibe mercadería. No ve reportes ni habilita productos.',
-  },
-  {
-    valor: 'ADMINISTRADOR',
-    titulo: 'Administrador',
-    detalle: 'Ve todo el local, aprueba empleados, habilita productos y consulta reportes.',
-  },
+  { valor: 'EMPLEADO', titulo: 'Empleado' },
+  { valor: 'ADMINISTRADOR', titulo: 'Administrador' },
 ]
 
 export default function SelectorRol({ valor, onCambiar, titulo = 'Perfil', ayuda, compacto = false }) {
@@ -25,7 +17,6 @@ export default function SelectorRol({ valor, onCambiar, titulo = 'Perfil', ayuda
                    checked={valor === rol.valor}
                    onChange={() => onCambiar(rol.valor)} />
             <strong>{rol.titulo}</strong>
-            {!compacto && <span>{rol.detalle}</span>}
           </label>
         ))}
       </div>
