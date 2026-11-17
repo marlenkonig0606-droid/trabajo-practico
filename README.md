@@ -18,6 +18,13 @@ npm install
 npm run dev                  # http://localhost:5173
 ```
 
+USUARIOS DE PREUBA
+Usuario	Sucursal	Contraseña
+adminnuevacordoba@dao.com	Local Nueva Córdoba	12345678
+admincentro@dao.com	Local Centro	12345678
+cdnorte@dao.com	CD Norte	12345678
+cdcentro@dao.com	CD Central	12345678
+
 La variable debe configurarse antes de iniciar Flask y en la misma terminal. Si el backend
 ya estaba ejecutándose cuando la configuraste, detenelo con Ctrl+C y volvé a iniciarlo. El
 registro permite crear cuentas locales y, con esa variable configurada, cuentas del CD.
@@ -34,20 +41,18 @@ Para producción, configurá además `FLASK_SECRET_KEY` con un valor secreto per
 serví la aplicación por HTTPS con `FLASK_COOKIE_SECURE=1`. En desarrollo se genera una clave
 temporal al iniciar, por lo que las sesiones no sobreviven a un reinicio del servidor.
 
-## Datos de demostración (los mismos para todo el equipo)
+## Base de datos local
 
-`backend/database/demo/datos_demo.db` tiene casi dos años de operación simulada
-(enero 2025 – noviembre 2026) con los servicios reales del sistema: ventas y devoluciones
-en los dos locales, compras de los CD a proveedores, pedidos de reposición, bultos
-despachados, recibidos y rechazados. Se sube al repositorio para que todos vean lo mismo.
+`backend/tp_cd_locales.db` es la base de trabajo de cada integrante y está ignorada por Git.
+Los cambios se conservan en esa computadora y no se sincronizan con las bases de los demás.
+La plantilla `backend/database/demo/datos_demo.db` contiene casi dos años de operaciones
+simuladas (desde enero de 2025 hasta noviembre de 2026). Al iniciar con `python app.py`, se
+copia a `tp_cd_locales.db` solo si esa base todavía no existe. Las bases existentes no se
+reemplazan ni se generan respaldos automáticos, así cada integrante conserva sus cambios.
 
-- **Automático:** después de `git pull`, al correr `python app.py` el backend deja
-  `backend/tp_cd_locales.db` con los datos del equipo. Si no existía, la crea; si era de una
-  versión de datos anterior, guarda un respaldo (`respaldo_<fecha>.db`) y la reemplaza. Pasa
-  una sola vez por versión: lo que cargues después se conserva.
-- Para volver a los datos del equipo cuando quieras: cerrá el backend y corré
-  `python restaurar_demo.py` (tu base anterior queda como respaldo).
-- Para volver a generarla: `python generar_datos_demo.py` (es determinística).
+`python generar_datos_demo.py` permite regenerar la plantilla opcionalmente; reemplaza el
+archivo de plantilla, pero no modifica las bases locales ya creadas. Los datos locales siguen
+sin sincronizarse entre integrantes.
 
 Usuarios (contraseña `12345678`): `admincentro@dao.com` (Local Centro),
 `adminnuevacordoba@dao.com` (Local Nueva Córdoba), `cdcentro@dao.com` (CD Central),
