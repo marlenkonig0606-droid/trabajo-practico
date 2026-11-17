@@ -1,6 +1,7 @@
-"""Genera la base de DEMOSTRACIÓN que se comparte con el equipo
-(database/demo/datos_demo.db). Simula la operación real día por día desde el
-06/01/2025 hasta la fecha indicada, usando los servicios del sistema:
+"""Genera la plantilla de demostración (database/demo/datos_demo.db).
+No modifica la base local tp_cd_locales.db ni sincroniza los datos entre integrantes.
+Simula la operación real día por día desde el 06/01/2025 hasta la fecha indicada,
+usando los servicios del sistema:
 
 - Los CD compran a los proveedores (INGRESO_PROVEEDOR, con número de factura).
 - Los locales venden (comprobante, pago, costo histórico) y a veces devuelven.
@@ -11,15 +12,17 @@
   bultos; el local los recibe días después y los verifica (o rechaza algunos).
   Algunas órdenes las rechaza el CD o las cancela el local.
 
-Cada fila queda con la fecha del día simulado. Es determinístico (misma semilla):
-todos los integrantes obtienen exactamente la misma base.
+Cada fila queda con la fecha del día simulado. Con la misma fecha final, genera
+la misma plantilla determinística.
 
 Uso:  python generar_datos_demo.py [ruta de salida] [AAAA-MM-DD fecha final]
+Si el archivo de salida ya existe, se reemplaza.
 """
 import os
 import random
 import sys
 from datetime import date, datetime, timedelta
+from typing import Any
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, RAIZ)
@@ -38,7 +41,7 @@ INICIO = date(2025, 1, 6)
 
 if os.path.exists(SALIDA):
     os.remove(SALIDA)
-os.makedirs(os.path.dirname(SALIDA), exist_ok=True)
+os.makedirs(os.path.dirname(os.path.abspath(SALIDA)), exist_ok=True)
 random.seed(2026)
 db = BaseDeDatos(SALIDA)
 cargar(incluir_demo=True)
@@ -100,7 +103,7 @@ MEDIOS = ["EFECTIVO"] * 4 + ["TARJETA_DEBITO"] * 3 + ["TARJETA_CREDITO"] * 2 + [
 MOTIVOS_DEV = ["Producto fallado", "Vencido", "Envase dañado", "Cambio de opinión"]
 MOTIVOS_RECHAZO = ["Precinto dañado", "Faltan unidades", "Mercadería golpeada"]
 actividad = {LOCALES[0]: 1.0, LOCALES[-1]: 0.8}       # un local vende algo más que el otro
-pendientes = []                                         # (bulto, día de llegada, rechazar)
+pendientes: list[tuple[int, date, bool]] = []           # (bulto, día de llegada, rechazar)
 factura = 1000
 resumen = {"ventas": 0, "devoluciones": 0, "ordenes": 0, "bultos": 0, "rechazos": 0, "compras": 0}
 
@@ -111,7 +114,7 @@ while dia <= HOY:
     # 0) los lunes, cada CD compra a los proveedores lo que le está faltando
     if dia.weekday() == 0:
         for cd in CDS:
-            por_proveedor = {}
+            por_proveedor: dict[str, list[dict[str, Any]]] = {}
             for p in CATALOGO:
                 if stock.libre(cd, p["id"]) < 700:
                     por_proveedor.setdefault(p["proveedor"], []).append(p)
@@ -199,7 +202,7 @@ distintos = db.consultar_uno("""
     WHERE st.disponible <> COALESCE((SELECT SUM(m.cantidad) FROM movimiento_stock m
           WHERE m.sucursal_id = st.sucursal_id AND m.producto_id = st.producto_id), 0)""")["n"]
 from database.base_demo import VERSION_DATOS  # noqa: E402
-db.ejecutar(f"PRAGMA user_version = {VERSION_DATOS}")   # versión de los datos del equipo
+db.ejecutar(f"PRAGMA user_version = {VERSION_DATOS}")   # versión de la plantilla demo
 db.ejecutar("VACUUM")
 print("RESUMEN", resumen, "| en tránsito:", len(pendientes))
 print("stock distinto de movimientos:", distintos,

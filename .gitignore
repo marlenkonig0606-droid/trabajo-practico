@@ -2,7 +2,7 @@ node_modules/
 dist/
 __pycache__/
 *.db
-# ...salvo la base de demostración que comparte todo el equipo
+# La base de trabajo es local; solo se versiona la plantilla de demostración.
 !backend/database/demo/datos_demo.db
 .pytest_cache/
 # código de invitación del CD (local, no se sube)

@@ -879,7 +879,6 @@ def crear_app(cargar_demo=True):
 
 
 if __name__ == "__main__":
-    # Primera vez: la base arranca con los datos de demostración del equipo.
     from database.base_demo import preparar_base_de_trabajo
     preparar_base_de_trabajo()
     crear_app().run(debug=True, port=5000)
